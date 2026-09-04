@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafaf8">
+  <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
+  <title>Taskpath</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to your tasks</a>
+  <main id="main">
+    <header class="app-header">
+      <div class="app-heading"><h1>taskpath<span>.</span></h1><span id="week-label" class="week-label">This week</span></div>
+      <div class="toolbar">
+        <label class="search"><span data-icon="search"></span><input type="search" id="search" placeholder="Search" aria-label="Search tasks"></label>
+        <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
+        <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
+        <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="show-guide">How it works</button></div></details>
+      </div>
+    </header>
+    <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
+    <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
+    <section class="board" id="board" aria-label="Task planning board" aria-busy="true"><p class="loading-message">Loading tasks…</p></section>
+    <footer class="board-footer"><p>Plan your week. Pick your day.</p><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
+  </main>
+
+  <dialog id="task-dialog" class="task-dialog" aria-labelledby="dialog-title">
+    <form id="task-form"><div class="dialog-top"><h2 id="dialog-title">New task</h2><button type="button" class="icon-button" data-close="task-dialog" aria-label="Close task editor"><span data-icon="x"></span></button></div>
+      
+      <label class="field">Task<input id="task-title" name="title" required maxlength="240" placeholder="What needs doing?" autocomplete="off"></label>
+      <label class="field">Notes <span class="optional">optional</span><textarea id="task-notes" name="notes" maxlength="10000" rows="3" placeholder="Details or a link"></textarea></label>
+      <div class="field-row"><label class="field">Column<select id="task-status" name="status"><option value="later">Later</option><option value="week">This Week</option><option value="today">Today</option><option value="done">Done</option></select></label><label class="field">Category<select id="task-category" name="category"><option value="personal">Personal</option><option value="work">Work</option></select></label></div>
+      <details id="task-schedule" class="task-schedule"><summary>Date &amp; reminder <span>optional</span></summary>
+        <div class="field-row schedule-fields"><label class="field">Due date<input type="date" id="task-due-date" name="dueDate" min="0001-01-01" max="9999-12-31"></label><label class="field">Remind me<input type="datetime-local" id="task-reminder" min="0001-01-01T00:00" max="9999-12-31T23:59" step="60"></label></div>
+        <p class="schedule-hint" id="reminder-timezone"></p>
+        <p class="schedule-hint">Keep Taskpath open for reminders. Missed reminders appear when you return.</p>
+        <div class="schedule-actions"><button type="button" id="enable-notifications" class="subtle-button">Enable desktop notifications</button><button type="button" id="clear-task-dates" class="subtle-button">Clear dates</button></div>
+        <p id="notification-status" class="schedule-hint" role="status"></p>
+      </details>
+      <p id="form-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="subtle-button danger" id="delete-task" hidden><span data-icon="trash"></span>Delete task</button><div class="dialog-actions-right"><button type="button" class="secondary-button" data-close="task-dialog">Cancel</button><button type="submit" class="primary-button" id="save-task">Add task<span data-icon="arrow-right"></span></button></div></div>
+    </form>
+  </dialog>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <div class="dialog-top"><h2 id="import-title">Import Markdown</h2><button type="button" class="icon-button" data-close="import-dialog" aria-label="Close import"><span data-icon="x"></span></button></div>
+    <p class="import-hint">Choose a file or paste a checklist. Use headings Later, This Week, Today, and Done to place tasks. Exact duplicates are skipped.</p>
+    <label class="field">Markdown file<input id="markdown-file" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain"></label>
+    <label class="field">Markdown text<textarea id="markdown-text" rows="7" spellcheck="false" placeholder="## This Week&#10;- [ ] Write the first draft&#10;  - Due: 2026-09-10"></textarea></label>
+    <p class="schedule-hint">Up to 500 tasks / 256 KB. Existing tasks are kept. Imported Today and This Week tasks use the current day and week.</p>
+    <p id="import-error" class="form-error" role="alert" hidden></p>
+    <section id="import-preview" class="import-preview" aria-label="Import preview" hidden>
+      <p id="import-summary" role="status"></p><p id="import-warning" class="schedule-hint" hidden></p><ul id="import-tasks"></ul>
+    </section>
+    <div class="dialog-actions"><button type="button" class="secondary-button" data-close="import-dialog">Cancel</button><div class="dialog-actions-right"><button type="button" class="secondary-button" id="preview-markdown">Preview</button><button type="button" class="primary-button" id="confirm-import" hidden>Import tasks</button></div></div>
+  </dialog>
+
+  <dialog id="guide-dialog" aria-labelledby="guide-title">
+    <div class="dialog-top"><h2 id="guide-title">How it works</h2><button class="icon-button" data-close="guide-dialog" aria-label="Close guide"><span data-icon="x"></span></button></div>
+    <div class="guide-copy"><p>Collect tasks in <strong>Later</strong>. Each week, drag a few into <strong>This Week</strong>. Each morning, move your priorities into <strong>Today</strong>.</p><p>Check off a task to send it to <strong>Done</strong>. Drag within a column to reorder, or use the task’s move control.</p><p>At midnight, unfinished Today tasks return to This Week. On Monday, unfinished weekly tasks return to Later. Done stays done.</p><p id="guide-timezone"></p></div>
+    <p class="guide-shortcuts"><kbd>N</kbd> New task <kbd>/</kbd> Search <kbd>Esc</kbd> Close</p>
+  </dialog>
+  <div id="task-context-menu" class="context-menu" role="menu" aria-label="Task actions" hidden></div>
+  <div id="toast" class="toast" role="status" hidden><span id="toast-message"></span><button id="toast-action" hidden>Undo</button><button class="toast-close" id="toast-close" aria-label="Dismiss notification">×</button></div>
+  <div class="sr-only" id="announcer" aria-live="polite"></div>
+  <noscript><div class="noscript">Please enable JavaScript to use your task board.</div></noscript>
+</body>
+</html>

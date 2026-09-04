@@ -1,0 +1,83 @@
+# Nginx runs on the VPS host; Taskpath listens on 127.0.0.1:3000.
+# Replace every tasks.example.com and adjust the upstream port if needed.
+# Install as /etc/nginx/conf.d/taskpath.conf, included inside nginx.conf's http {}.
+# Obtain the certificate before enabling the HTTPS server below.
+# Taskpath must have TASKPATH_USERNAME, TASKPATH_PASSWORD, and
+# TASKPATH_ORIGIN=https://tasks.example.com set before public access.
+
+# Per-client request limit, including requests with incorrect passwords.
+# This is a general limit, not failed-login lockout or distributed attack protection.
+limit_req_zone $binary_remote_addr zone=taskpath_per_ip:10m rate=2r/s;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name tasks.example.com;
+    server_tokens off;
+
+    # Webroot for ACME certificate issuance and renewal.
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 308 https://tasks.example.com$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name tasks.example.com;
+    server_tokens off;
+
+    ssl_certificate /etc/letsencrypt/live/tasks.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tasks.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:taskpath_tls:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # Applies to this hostname only; does not opt subdomains into HSTS.
+    add_header Strict-Transport-Security "max-age=15552000" always;
+
+    client_max_body_size 32k;
+    client_header_timeout 10s;
+    client_body_timeout 10s;
+    send_timeout 30s;
+    keepalive_timeout 30s;
+
+    limit_req zone=taskpath_per_ip burst=20 nodelay;
+    limit_req_status 429;
+    limit_req_log_level warn;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    # This template assumes Nginx is the public edge, with no proxy/CDN ahead.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Preserve the browser's credentials and Origin for Taskpath's checks.
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header Origin $http_origin;
+
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+    proxy_send_timeout 30s;
+    proxy_cache off;
+    # Keep Taskpath's 401 challenge, error responses, and security headers.
+    proxy_intercept_errors off;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+    }
+
+    # Markdown imports have a larger, separately bounded JSON request body.
+    location /api/import/ {
+        client_max_body_size 2m;
+        proxy_pass http://127.0.0.1:3000;
+    }
+}

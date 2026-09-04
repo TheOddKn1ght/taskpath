@@ -1,0 +1,17 @@
+services:
+  taskpath:
+    build: .
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    environment:
+      TASKPATH_TIMEZONE: ${TASKPATH_TIMEZONE:-UTC}
+      TASKPATH_ORIGIN: ${TASKPATH_ORIGIN:-}
+      TASKPATH_USERNAME: ${TASKPATH_USERNAME:-}
+      TASKPATH_PASSWORD: ${TASKPATH_PASSWORD:-}
+    volumes:
+      - taskpath-data:/app/data
+    restart: unless-stopped
+    init: true
+
+volumes:
+  taskpath-data:

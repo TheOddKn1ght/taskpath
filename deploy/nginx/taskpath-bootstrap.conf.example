@@ -1,0 +1,18 @@
+# Temporary HTTP-only configuration used to obtain the first TLS certificate.
+# Replace every tasks.example.com before installing this file.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name tasks.example.com;
+    server_tokens off;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 404;
+    }
+}
