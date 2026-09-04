@@ -14,6 +14,8 @@ bun run start
 
 Open http://127.0.0.1:3000. No `bun install` is needed. `bun run dev` restarts the server when source changes; refresh the browser after frontend edits.
 
+For Bun's optional `--smol` mode, run `bun run start:smol` (or `bun run dev:smol` while developing). This reduces JavaScript heap memory usage by collecting garbage more often, which can trade performance for memory. Normal startup keeps Bun's default behavior.
+
 Tasks persist in `data/taskpath.sqlite`. The app starts empty. Drag anywhere on a card to move or reorder it; on touch screens, use its drag handle. Task move controls and the menu also support moving without dragging. Click a task title to edit its title, notes, category, or column. Delete offers Undo for 15 seconds.
 
 Right-click a task for editing, dates and reminders, moving, completing, or deleting. On a focused task, **Shift+F10** opens the same menu; arrow keys navigate it and **Esc** closes it.
@@ -57,6 +59,8 @@ docker compose up -d --build
 ```
 
 Open http://127.0.0.1:3000. Compose stores SQLite in the `taskpath-data` named volume, mounts it at `/app/data`, and binds the published port to loopback. The container runs as the non-root `bun` user. Container restarts and image replacements preserve the volume. Compose defaults to UTC when no planning timezone is provided.
+
+To enable `--smol` in Docker Compose, set `TASKPATH_START_SCRIPT=start:smol` in `.env`, then run `docker compose up -d`. Remove the setting or set it to `start` to switch back. This setting selects the Compose startup command; for local runs use the scripts above. With plain Docker, override the image command with `bun run start:smol`.
 
 For another host, copy the project and use the same Compose command there. For remote access, put it behind an HTTPS reverse proxy and enable session authentication. Generate a password hash with `bun run hash-password`, then put the result in `.env` inside single quotes:
 

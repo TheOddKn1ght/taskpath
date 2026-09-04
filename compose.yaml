@@ -1,6 +1,7 @@
 services:
   taskpath:
     build: .
+    command: ["bun", "run", "${TASKPATH_START_SCRIPT:-start}"]
     ports:
       - "127.0.0.1:${PORT:-3000}:3000"
     environment:

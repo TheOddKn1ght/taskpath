@@ -137,6 +137,8 @@ TASKPATH_PASSWORD_HASH='$argon2id$v=19$m=65536,t=2,p=1$paste-the-rest-of-the-gen
 TASKPATH_SESSION_DAYS=30
 ```
 
+For optional lower-memory operation, also add `TASKPATH_START_SCRIPT=start:smol` to `.env`. This enables Bun's `--smol` mode, which collects garbage more often and may reduce performance. The default is `start`. Change this setting and run `sudo docker compose up -d` to switch modes; no image rebuild is needed once this version is installed.
+
 Do not put the plain password in `.env`. Do not set `HOST` or `DATABASE_PATH` for the Compose deployment. The container already uses `0.0.0.0` internally and stores SQLite at `/app/data/taskpath.sqlite`. Protect the file:
 
 ```sh
