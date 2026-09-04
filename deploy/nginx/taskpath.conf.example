@@ -2,7 +2,7 @@
 # Replace every tasks.example.com and adjust the upstream port if needed.
 # Install as /etc/nginx/conf.d/taskpath.conf, included inside nginx.conf's http {}.
 # Obtain the certificate before enabling the HTTPS server below.
-# Taskpath must have TASKPATH_USERNAME, TASKPATH_PASSWORD, and
+# Taskpath must have TASKPATH_USERNAME, TASKPATH_PASSWORD_HASH, and
 # TASKPATH_ORIGIN=https://tasks.example.com set before public access.
 
 # Per-client request limit, including requests with incorrect passwords.
@@ -60,15 +60,15 @@ server {
     # This template assumes Nginx is the public edge, with no proxy/CDN ahead.
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
-    # Preserve the browser's credentials and Origin for Taskpath's checks.
-    proxy_set_header Authorization $http_authorization;
+    # Preserve Taskpath's session cookie and Origin checks.
+    proxy_set_header Cookie $http_cookie;
     proxy_set_header Origin $http_origin;
 
     proxy_connect_timeout 5s;
     proxy_read_timeout 30s;
     proxy_send_timeout 30s;
     proxy_cache off;
-    # Keep Taskpath's 401 challenge, error responses, and security headers.
+    # Keep Taskpath's redirects, error responses, cookies, and security headers.
     proxy_intercept_errors off;
 
     location / {

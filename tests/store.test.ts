@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store, calendar } from "../src/store";
 import { createHandler } from "../src/server";
+import { login, testAuth } from "./auth-helpers";
 
 let now: Date;
 let store: Store;
@@ -111,14 +112,61 @@ test("HTTP API persists valid writes and rejects cross-site or malformed writes"
   expect(store.board().tasks.map(t => t.title)).toEqual(["Created"]);
 });
 
-test("optional authentication gates both the page and API", async () => {
-  const handle = createHandler(store, { username: "tester", password: "a-test-password" });
-  for (const path of ["/", "/api/board", "/api/export"]) {
-    expect((await handle(new Request(`http://localhost:3000${path}`))).status).toBe(401);
-  }
-  const response = await handle(new Request("http://localhost:3000/api/board", { headers: { Authorization: `Basic ${btoa("tester:a-test-password")}` } }));
-  expect(response.status).toBe(200);
+test("session authentication gates the workspace and API", async () => {
+  const handle = createHandler(store, testAuth, "https://tasks.example.com");
+  expect((await handle(new Request("http://localhost:3000/"))).status).toBe(303);
+  expect((await handle(new Request("http://localhost:3000/"))).headers.get("location")).toBe("/login");
+  for (const path of ["/api/board", "/api/export"]) expect((await handle(new Request(`http://localhost:3000${path}`))).status).toBe(401);
+  expect((await handle(new Request("http://localhost:3000/login"))).status).toBe(200);
+  const signedIn = await login(handle);
+  expect(signedIn.response.status).toBe(200);
+  expect(signedIn.response.headers.get("set-cookie")).toContain("HttpOnly");
+  expect(signedIn.response.headers.get("set-cookie")).toContain("SameSite=Strict");
+  expect(signedIn.response.headers.get("set-cookie")).toContain("Secure");
+  expect((await handle(new Request("http://localhost:3000/api/board", { headers: { Cookie: signedIn.cookie } }))).status).toBe(200);
+  expect((await handle(new Request("http://localhost:3000/login", { headers: { Cookie: signedIn.cookie } }))).status).toBe(303);
   expect((await handle(new Request("http://localhost:3000/healthz"))).status).toBe(200);
+});
+
+test("login rejects bad credentials and cross-origin requests", async () => {
+  const handle = createHandler(store, testAuth, "https://tasks.example.com");
+  expect((await login(handle, "https://tasks.example.com", "test", "wrong")).response.status).toBe(401);
+  expect((await login(handle, "https://tasks.example.com", "wrong", "secret")).response.status).toBe(401);
+  expect((await login(handle, "https://evil.example")).response.status).toBe(403);
+  const missingOrigin = await handle(new Request("http://localhost:3000/api/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: '{"username":"test","password":"secret"}',
+  }));
+  expect(missingOrigin.status).toBe(403);
+});
+
+test("logout revokes the current session", async () => {
+  const handle = createHandler(store, testAuth, "https://tasks.example.com");
+  const { cookie } = await login(handle);
+  const logout = await handle(new Request("http://localhost:3000/api/auth/logout", {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: "https://tasks.example.com", Cookie: cookie }, body: "{}",
+  }));
+  expect(logout.status).toBe(200);
+  expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+  expect((await handle(new Request("http://localhost:3000/api/board", { headers: { Cookie: cookie } }))).status).toBe(401);
+});
+
+test("sessions survive a handler restart and a password change invalidates them", async () => {
+  let handle = createHandler(store, testAuth, "https://tasks.example.com");
+  const { cookie } = await login(handle);
+  handle = createHandler(store, testAuth, "https://tasks.example.com");
+  expect((await handle(new Request("http://localhost:3000/api/board", { headers: { Cookie: cookie } }))).status).toBe(200);
+  const newHash = await Bun.password.hash("a-new-test-password", { algorithm: "argon2id", memoryCost: 8192, timeCost: 1 });
+  handle = createHandler(store, { ...testAuth, passwordHash: newHash }, "https://tasks.example.com");
+  expect((await handle(new Request("http://localhost:3000/api/board", { headers: { Cookie: cookie } }))).status).toBe(401);
+});
+
+test("repeated failed logins are temporarily blocked", async () => {
+  const handle = createHandler(store, testAuth, "https://tasks.example.com");
+  for (let attempt = 1; attempt <= 4; attempt++) expect((await login(handle, "https://tasks.example.com", "test", "wrong")).response.status).toBe(401);
+  const blocked = (await login(handle, "https://tasks.example.com", "test", "wrong")).response;
+  expect(blocked.status).toBe(429);
+  expect(blocked.headers.get("retry-after")).toBe("900");
+  expect((await login(handle)).response.status).toBe(429);
 });
 
 test("HTTPS reverse proxy accepts only the configured public origin", async () => {

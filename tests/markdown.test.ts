@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { Store, statuses, type Task } from '../src/store';
 import { exportMarkdown, parseMarkdown } from '../src/markdown';
 import { createHandler } from '../src/server';
+import { login, testAuth } from './auth-helpers';
 
 let store: Store;
 beforeEach(() => { store = new Store(':memory:', () => new Date('2026-09-03T10:00:00Z'), 'Europe/Moscow'); });
@@ -77,10 +78,10 @@ test('a storage failure rolls back every inserted task', () => {
 });
 
 test('Markdown endpoints require authentication and same-origin JSON requests', async () => {
-  const handle = createHandler(store, { username: 'test', password: 'secret' }, 'https://tasks.example.com');
-  const auth = `Basic ${btoa('test:secret')}`;
-  const post = (path: string, origin = 'https://tasks.example.com', authorization = auth, markdown = '- [ ] Imported', type = 'application/json') => handle(new Request(`http://localhost:3000${path}`, {
-    method: 'POST', headers: { 'Content-Type': type, origin, authorization }, body: JSON.stringify({ markdown }),
+  const handle = createHandler(store, testAuth, 'https://tasks.example.com');
+  const { cookie } = await login(handle);
+  const post = (path: string, origin = 'https://tasks.example.com', session = cookie, markdown = '- [ ] Imported', type = 'application/json') => handle(new Request(`http://localhost:3000${path}`, {
+    method: 'POST', headers: { 'Content-Type': type, origin, cookie: session }, body: JSON.stringify({ markdown }),
   }));
   expect((await handle(new Request('http://localhost:3000/api/export?format=markdown'))).status).toBe(401);
   for (const path of ['/api/import/preview', '/api/import/markdown']) {
@@ -91,7 +92,7 @@ test('Markdown endpoints require authentication and same-origin JSON requests', 
   expect((await post('/api/import/preview')).status).toBe(200);
   expect(store.board().tasks).toEqual([]);
   expect((await post('/api/import/markdown')).status).toBe(201);
-  const exported = await handle(new Request('http://localhost:3000/api/export?format=markdown', { headers: { authorization: auth } }));
+  const exported = await handle(new Request('http://localhost:3000/api/export?format=markdown', { headers: { cookie } }));
   expect(exported.headers.get('content-type')).toContain('text/markdown');
   expect(exported.headers.get('content-disposition')).toContain('.md');
   expect(await exported.text()).toContain('- [ ] Imported');

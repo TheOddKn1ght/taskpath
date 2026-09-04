@@ -1,47 +1,56 @@
 import { resolve } from "node:path";
-import { timingSafeEqual } from "node:crypto";
-import { InputError, Store } from "./store";
-import { exportMarkdown, parseMarkdown } from './markdown';
+import { AuthManager, type AuthConfig } from "./auth";
+import { InputError, Store, object } from "./store";
+import { exportMarkdown, parseMarkdown } from "./markdown";
 
-const assets = new Map([
+const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
+  ["/login", ["login.html", "text/html; charset=utf-8"]],
+  ["/login.js", ["login.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/dates.js", ["dates.js", "text/javascript; charset=utf-8"]],
   ["/theme.js", ["theme.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
 ]);
+const publicAssets = new Set(["/login", "/login.js", "/theme.js", "/style.css", "/favicon.svg"]);
 
-export function createHandler(store: Store, credentials?: { username: string; password: string }, publicOrigin?: string) {
+export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigin?: string) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && !["http:", "https:"].includes(trustedOrigin.protocol)) throw new Error("TASKPATH_ORIGIN must be an HTTP or HTTPS URL.");
-  const auth = credentials ? `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}` : null;
+  if (authConfig && !/^\$argon2id\$v=19\$/.test(authConfig.passwordHash)) throw new Error("TASKPATH_PASSWORD_HASH must be a Bun Argon2id password hash.");
+  if (authConfig?.sessionDays !== undefined && (!Number.isInteger(authConfig.sessionDays) || authConfig.sessionDays < 1 || authConfig.sessionDays > 365)) {
+    throw new Error("TASKPATH_SESSION_DAYS must be a whole number from 1 to 365.");
+  }
+  const auth = authConfig ? new AuthManager(store.db, authConfig) : null;
   const headers = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
-  const json = (data: unknown, status = 200) => Response.json(data, { status, headers });
+  const json = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...headers, ...extra } });
+  const asset = (pathname: string, method: string) => {
+    const [filename, contentType] = assets.get(pathname)!;
+    return new Response(method === "HEAD" ? null : Bun.file(resolve(import.meta.dir, "../public", filename)), { headers: { ...headers, "Content-Type": contentType } });
+  };
+
   return async (request: Request) => {
     try {
       const url = new URL(request.url);
-      if (url.pathname === "/healthz" && request.method === "GET") return json({ ok: true });
-      if (auth) {
-        const actual = Buffer.from(request.headers.get("authorization") || "");
-        const expected = Buffer.from(auth);
-        if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-          return new Response("Sign in to your Taskpath workspace.", { status: 401, headers: { ...headers, "WWW-Authenticate": 'Basic realm="Taskpath", charset="UTF-8"' } });
-        }
-      }
-      // JSON-only mutations plus Origin validation prevent cross-site writes to local data.
-      if (!["GET", "HEAD"].includes(request.method)) {
+      const secureCookie = (trustedOrigin?.protocol || url.protocol) === "https:";
+      const isRead = ["GET", "HEAD"].includes(request.method);
+      const validateMutation = () => {
+        if (isRead) return;
         const origin = request.headers.get("origin");
-        if ((origin && origin !== (trustedOrigin?.origin || url.origin)) || request.headers.get("sec-fetch-site") === "cross-site") throw new InputError("Cross-origin requests are not allowed.", 403);
+        const expected = trustedOrigin?.origin || url.origin;
+        if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== expected) || ((auth || trustedOrigin) && !origin)) {
+          throw new InputError("Cross-origin requests are not allowed.", 403);
+        }
         if (request.method !== "DELETE" && request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new InputError("Use application/json.", 415);
-      }
+      };
       const body = async () => {
-        const limit = ['/api/import/markdown', '/api/import/preview'].includes(url.pathname) ? 2 * 1024 * 1024 : 32768;
+        const limit = ["/api/import/markdown", "/api/import/preview"].includes(url.pathname) ? 2 * 1024 * 1024 : 32768;
         if (Number(request.headers.get("content-length")) > limit) throw new InputError("Request is too large.", 413);
         let size = 0;
         const reader = request.body?.getReader();
@@ -57,19 +66,62 @@ export function createHandler(store: Store, credentials?: { username: string; pa
         }
         try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new InputError("Invalid JSON."); }
       };
+
+      if (url.pathname === "/healthz" && request.method === "GET") return json({ ok: true });
+      if (url.pathname === "/api/auth/status" && request.method === "GET") {
+        return json({ enabled: Boolean(auth), authenticated: !auth || auth.isAuthenticated(request) });
+      }
+
+      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+        if (!auth) return json({ error: "Authentication is not enabled." }, 404);
+        validateMutation();
+        const data = object(await body());
+        if (Object.keys(data).some(key => !["username", "password"].includes(key)) || typeof data.username !== "string" || !data.username || data.username.length > 254 || typeof data.password !== "string" || !data.password || data.password.length > 1024) {
+          throw new InputError("Enter your username and password.");
+        }
+        const forwardedClient = trustedOrigin ? request.headers.get("x-real-ip") : null;
+        const client = forwardedClient && forwardedClient.length <= 100 ? forwardedClient : "direct-client";
+        const result = await auth.login(client, data.username, data.password);
+        if (!result.ok) return json(
+          { error: result.status === 429 ? "Too many attempts. Wait 15 minutes and try again." : "Username or password is incorrect." },
+          result.status,
+          result.retryAfter ? { "Retry-After": String(result.retryAfter) } : {},
+        );
+        return json({ ok: true }, 200, { "Set-Cookie": auth.cookie(result.token, result.maxAge, secureCookie) });
+      }
+
+      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        if (!auth) return json({ ok: true });
+        validateMutation();
+        auth.logout(request);
+        return json({ ok: true }, 200, { "Set-Cookie": auth.clearCookie(secureCookie) });
+      }
+
+      const authenticated = !auth || auth.isAuthenticated(request);
+      if (url.pathname === "/login" && isRead) {
+        if (authenticated) return new Response(null, { status: 303, headers: { ...headers, Location: "/" } });
+        return asset(url.pathname, request.method);
+      }
+      if (isRead && publicAssets.has(url.pathname)) return asset(url.pathname, request.method);
+      if (!authenticated) {
+        if (url.pathname.startsWith("/api/")) return json({ error: "Your session has expired. Sign in again." }, 401);
+        return new Response(null, { status: 303, headers: { ...headers, Location: "/login" } });
+      }
+
+      validateMutation();
       if (url.pathname === "/api/board" && request.method === "GET") return json(store.board());
       if (url.pathname === "/api/export" && request.method === "GET") {
-        if (url.searchParams.get('format') === 'markdown') return new Response(exportMarkdown(store.board().tasks), {
-          headers: { ...headers, 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="taskpath-export.md"' },
+        if (url.searchParams.get("format") === "markdown") return new Response(exportMarkdown(store.board().tasks), {
+          headers: { ...headers, "Content-Type": "text/markdown; charset=utf-8", "Content-Disposition": 'attachment; filename="taskpath-export.md"' },
         });
         return new Response(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), ...store.board() }, null, 2), {
           headers: { ...headers, "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="taskpath-export.json"' },
         });
       }
-      if (['/api/import/preview', '/api/import/markdown'].includes(url.pathname) && request.method === 'POST') {
+      if (["/api/import/preview", "/api/import/markdown"].includes(url.pathname) && request.method === "POST") {
         const input = await body();
         const parsed = parseMarkdown(input?.markdown);
-        if (url.pathname === '/api/import/preview') return json({ ...store.previewImport(parsed.tasks), ignoredBlocks: parsed.ignoredBlocks });
+        if (url.pathname === "/api/import/preview") return json({ ...store.previewImport(parsed.tasks), ignoredBlocks: parsed.ignoredBlocks });
         return json(store.importTasks(parsed.tasks), 201);
       }
       if (url.pathname === "/api/tasks" && request.method === "POST") return json({ task: store.create(await body()) }, 201);
@@ -83,10 +135,7 @@ export function createHandler(store: Store, credentials?: { username: string; pa
         if (!match[2] && request.method === "PATCH") return json({ task: store.update(id, await body()) });
         if (!match[2] && request.method === "DELETE") { store.remove(id); return json({ ok: true }); }
       }
-      if (["GET", "HEAD"].includes(request.method) && assets.has(url.pathname)) {
-        const [filename, contentType] = assets.get(url.pathname)!;
-        return new Response(request.method === "HEAD" ? null : Bun.file(resolve(import.meta.dir, "../public", filename!)), { headers: { ...headers, "Content-Type": contentType! } });
-      }
+      if (isRead && assets.has(url.pathname)) return asset(url.pathname, request.method);
       return json({ error: "Not found." }, 404);
     } catch (error) {
       if (error instanceof InputError) return json({ error: error.message }, error.status);
@@ -97,18 +146,20 @@ export function createHandler(store: Store, credentials?: { username: string; pa
 }
 
 if (import.meta.main) {
+  if (process.env.TASKPATH_PASSWORD) throw new Error("TASKPATH_PASSWORD is no longer supported. Set TASKPATH_PASSWORD_HASH to an Argon2id hash instead.");
   const username = process.env.TASKPATH_USERNAME;
-  const password = process.env.TASKPATH_PASSWORD;
-  if (Boolean(username) !== Boolean(password)) throw new Error("Set both TASKPATH_USERNAME and TASKPATH_PASSWORD, or neither.");
-  if (username?.includes(":")) throw new Error("TASKPATH_USERNAME cannot contain a colon.");
+  const passwordHash = process.env.TASKPATH_PASSWORD_HASH;
+  if (Boolean(username) !== Boolean(passwordHash)) throw new Error("Set both TASKPATH_USERNAME and TASKPATH_PASSWORD_HASH, or neither.");
+  const sessionDays = Number(process.env.TASKPATH_SESSION_DAYS || "30");
+  const authConfig = username && passwordHash ? { username, passwordHash, sessionDays } : undefined;
   const store = new Store(process.env.DATABASE_PATH || "./data/taskpath.sqlite", undefined, process.env.TASKPATH_TIMEZONE);
   const server = Bun.serve({
     hostname: process.env.HOST || "127.0.0.1",
     port: Number(process.env.PORT || 3000),
     maxRequestBodySize: 2 * 1024 * 1024,
-    fetch: createHandler(store, username && password ? { username, password } : undefined, process.env.TASKPATH_ORIGIN),
+    fetch: createHandler(store, authConfig, process.env.TASKPATH_ORIGIN),
   });
-  console.log(`Taskpath is ready at ${server.url} (planning timezone: ${store.timezone})`);
+  console.log(`Taskpath is ready at ${server.url} (planning timezone: ${store.timezone}; authentication: ${authConfig ? "enabled" : "disabled"})`);
   const shutdown = async () => { await server.stop(); store.close(); process.exit(0); };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

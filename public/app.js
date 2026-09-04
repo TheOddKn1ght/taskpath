@@ -151,12 +151,24 @@ function showError(error) {
 }
 async function request(path, method = 'GET', body, format = 'json') {
   const response = await fetch(path, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000) });
+  if (response.status === 401) {
+    location.replace('/login');
+    throw new Error('Your session has expired. Sign in again.');
+  }
   if (!response.ok) {
-    let message = response.status === 401 ? 'Sign in again by reloading the page.' : 'Could not save your change. Please try again.';
+    let message = 'Could not save your change. Please try again.';
     try { message = (await response.json()).error || message; } catch { /* Keep the readable fallback. */ }
     throw new Error(message);
   }
   return format === 'text' ? response.text() : response.json();
+}
+
+async function authControls() {
+  try {
+    const response = await fetch('/api/auth/status', { signal: AbortSignal.timeout(12000) });
+    const status = await response.json();
+    $('#logout').hidden = !status.enabled;
+  } catch { /* The normal board request reports connection errors. */ }
 }
 
 async function refresh({ quiet = false } = {}) {
@@ -306,6 +318,15 @@ $('#reminder-panel').addEventListener('click', async event => {
 $$('[data-close]').forEach(button => button.addEventListener('click', () => { if (button.dataset.close !== 'import-dialog' || !importBusy) $(`#${button.dataset.close}`).close(); }));
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => { if (event.target === dialog && !(dialog.id === 'import-dialog' && importBusy)) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } }));
 $('#show-guide').addEventListener('click', () => { $('.app-menu').open = false; $('#guide-dialog').showModal(); });
+$('#logout').addEventListener('click', async () => {
+  $('.app-menu').open = false;
+  $('#logout').disabled = true;
+  try {
+    await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  } finally {
+    location.replace('/login');
+  }
+});
 async function downloadTasks(markdown = false) {
   $('.app-menu').open = false;
   try {
@@ -672,6 +693,7 @@ if (context?.registerTool) {
 }
 
 notificationControls();
+void authControls();
 await refresh();
 window.addEventListener('focus', () => refresh({ quiet: true }));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh({ quiet: true }); });

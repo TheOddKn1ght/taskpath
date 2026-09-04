@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafaf8">
+  <meta name="description" content="Sign in to your private Taskpath workspace.">
+  <title>Sign in · Taskpath</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/login.js" type="module"></script>
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <header class="auth-header">
+      <h1>taskpath<span>.</span></h1>
+      <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch theme" title="Switch theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg>
+      </button>
+    </header>
+    <section class="auth-card" aria-labelledby="login-title">
+      <h2 id="login-title">Welcome back</h2>
+      <p>Sign in to open your workspace.</p>
+      <form id="login-form">
+        <label class="field">Username<input id="username" name="username" required maxlength="254" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+        <label class="field">Password<input id="password" name="password" type="password" required maxlength="1024" autocomplete="current-password"></label>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button type="submit" class="primary-button auth-submit" id="login-button">Sign in</button>
+      </form>
+    </section>
+    <p class="auth-note">Your session stays signed in on this browser until it expires or you sign out.</p>
+  </main>
+  <noscript><div class="noscript">Please enable JavaScript to sign in.</div></noscript>
+</body>
+</html>

@@ -120,21 +120,24 @@ Create the production environment file:
 ```sh
 cd /opt/taskpath
 cp .env.example .env
-openssl rand -base64 36
-sudoedit .env
+sudo docker compose build
+sudo docker compose run --rm --no-deps taskpath bun run hash-password
 ```
 
-Copy the generated password into `.env`. Use this shape, with your own domain, username, password, and IANA timezone:
+Enter and confirm a long password at the prompts. The command prints an Argon2id hash; the password itself is not stored. Open `.env` with `sudoedit .env` and copy the complete hash into `TASKPATH_PASSWORD_HASH`. Keep the single quotes because the hash contains dollar signs.
+
+Use this shape, with your own domain, username, hash, and IANA timezone:
 
 ```dotenv
 PORT=3000
 TASKPATH_TIMEZONE=Europe/Moscow
 TASKPATH_ORIGIN=https://tasks.example.com
 TASKPATH_USERNAME=taskpath
-TASKPATH_PASSWORD=paste-the-generated-password-here
+TASKPATH_PASSWORD_HASH='$argon2id$v=19$m=65536,t=2,p=1$paste-the-rest-of-the-generated-hash-here'
+TASKPATH_SESSION_DAYS=30
 ```
 
-Do not set `HOST` or `DATABASE_PATH` for the Compose deployment. The container already uses `0.0.0.0` internally and stores SQLite at `/app/data/taskpath.sqlite`. Protect the file:
+Do not put the plain password in `.env`. Do not set `HOST` or `DATABASE_PATH` for the Compose deployment. The container already uses `0.0.0.0` internally and stores SQLite at `/app/data/taskpath.sqlite`. Protect the file:
 
 ```sh
 chmod 600 .env
@@ -148,14 +151,14 @@ sudo docker compose ps
 sudo docker compose logs --tail=50 taskpath
 ```
 
-The service should report that it is ready. Confirm that it is reachable only on the VPS loopback interface and that authentication is enabled:
+The service should report that authentication is enabled. Confirm that it is reachable only on the VPS loopback interface and that the login page is active:
 
 ```sh
-curl -i http://127.0.0.1:3000/
-curl --user taskpath http://127.0.0.1:3000/api/board
+curl -I http://127.0.0.1:3000/
+curl -i http://127.0.0.1:3000/api/auth/status
 ```
 
-The first command should return `401 Unauthorized`. The second prompts for the password and should return JSON. Do not put the password directly in the command because shell history may retain it.
+The first command should redirect to `/login`. The second should report `"enabled":true` and `"authenticated":false`.
 
 ## 6. Obtain the first HTTPS certificate
 
@@ -205,12 +208,12 @@ The production template:
 
 - redirects HTTP to HTTPS while preserving the ACME renewal path;
 - supports TLS 1.2 and 1.3 and sends HSTS for this hostname;
-- passes the browser's authentication and Origin headers to Taskpath;
+- passes the browser's session cookie and Origin header to Taskpath;
 - limits each client IP to two requests per second with a burst of 20;
 - keeps ordinary request bodies at 32 KB and permits up to 2 MB for the bounded Markdown import endpoints;
 - proxies only to the host's loopback port.
 
-Open `https://tasks.example.com` in a private browser window. The browser should show a valid certificate and prompt for the Taskpath credentials.
+Open `https://tasks.example.com` in a private browser window. The browser should show a valid certificate and Taskpath's sign-in page. Sign in with the username from `.env` and the original password you entered when generating the hash. The workspace menu includes **Sign out**.
 
 ## 8. Verify the public deployment
 
@@ -219,14 +222,16 @@ Run these checks from your computer:
 ```sh
 curl -I http://tasks.example.com/
 curl -I https://tasks.example.com/
-curl --user taskpath https://tasks.example.com/api/board
+curl -I https://tasks.example.com/login
+curl -i https://tasks.example.com/api/board
 ```
 
 Expected results:
 
 1. HTTP returns a `308` redirect to the HTTPS URL.
-2. HTTPS without credentials returns `401 Unauthorized`.
-3. The authenticated API request prompts for the password and returns the board JSON.
+2. HTTPS redirects an unsigned-in browser to `/login`.
+3. The login page returns `200 OK`.
+4. The unsigned-in board API returns `401 Unauthorized` without a browser credential prompt.
 
 In the browser, create a temporary task, move it between columns, refresh the page, and confirm it remains. Test Markdown export and import from the workspace menu. Desktop reminders require browser notification permission and an open Taskpath tab.
 
@@ -276,6 +281,27 @@ sudo docker compose logs --tail=50 taskpath
 
 The named volume survives image replacement. Review changes to `.env.example`, `compose.yaml`, and the Nginx template during upgrades; merge required configuration changes into the live files before restarting.
 
+### Upgrade from the old Basic Auth release
+
+The first release accepted a plain `TASKPATH_PASSWORD`. The current release deliberately refuses that setting. After copying the new files, build the image and generate a hash before restarting:
+
+```sh
+cd /opt/taskpath
+sudo docker compose build
+sudo docker compose run --rm --no-deps taskpath bun run hash-password
+sudoedit .env
+```
+
+Remove `TASKPATH_PASSWORD`. Add the generated value as `TASKPATH_PASSWORD_HASH='...'`, keeping the single quotes, and optionally add `TASKPATH_SESSION_DAYS=30`. Then recreate the app and install the current Nginx template:
+
+```sh
+sudo docker compose up -d --force-recreate
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Opening the site now shows Taskpath's own sign-in page instead of the browser credential dialog. Your existing SQLite tasks are unchanged.
+
 ## Migrate an existing local workspace
 
 Markdown export/import is the simplest cross-platform migration and preserves task content, columns, notes, categories, dates, reminders, and dismissal state. It creates new task IDs and does not preserve original creation/completion timestamps.
@@ -315,7 +341,7 @@ sudo docker compose up -d --force-recreate
 
 ### Forgot the password
 
-Generate a new one, update `TASKPATH_PASSWORD` in `.env`, and recreate the container. Existing tasks remain in the named volume.
+Generate a new hash with `sudo docker compose run --rm --no-deps taskpath bun run hash-password`, replace `TASKPATH_PASSWORD_HASH` in `.env`, and recreate the container with `sudo docker compose up -d --force-recreate`. Existing tasks remain in the named volume, and all existing sessions are invalidated.
 
 ## References
 

@@ -83,6 +83,15 @@ main { max-width:1500px; margin:auto; padding:0 40px 26px; }
 .app-header { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:34px 0 30px; }
 .app-heading { display:flex; align-items:center; gap:24px; }
 h1 { font-size:24px; font-weight:650; letter-spacing:-1px; } h1 span { color:var(--brand); }
+.auth-page { min-height:100dvh; display:grid; place-items:center; padding:24px; }
+.auth-shell { width:100%; max-width:390px; padding:0; }
+.auth-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; padding:0 4px; }
+.auth-card { border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:28px; box-shadow:0 12px 45px var(--shadow); }
+.auth-card h2 { font-size:20px; font-weight:600; letter-spacing:-.3px; }
+.auth-card>p,.auth-note { color:var(--muted); font-size:12px; line-height:1.6; }
+.auth-card>p { margin-top:7px; }
+.auth-submit { width:100%; margin-top:22px; }
+.auth-note { margin-top:17px; text-align:center; padding-inline:16px; }
 .week-label { font-size:12px; color:var(--muted); white-space:nowrap; }
 .theme-toggle { flex:none; }
 .import-hint { margin-top:16px; font-size:12px; line-height:1.7; color:var(--muted); }

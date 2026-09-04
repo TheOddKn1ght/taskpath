@@ -8,6 +8,7 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
+    "hash-password": "bun run src/hash-password.ts",
     "test": "bun test"
   }
 }

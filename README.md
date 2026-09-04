@@ -58,21 +58,22 @@ docker compose up -d --build
 
 Open http://127.0.0.1:3000. Compose stores SQLite in the `taskpath-data` named volume, mounts it at `/app/data`, and binds the published port to loopback. The container runs as the non-root `bun` user. Container restarts and image replacements preserve the volume. Compose defaults to UTC when no planning timezone is provided.
 
-For another host, copy the project and use the same Compose command there. For remote access, put it behind an HTTPS reverse proxy and enable the optional HTTP Basic login:
+For another host, copy the project and use the same Compose command there. For remote access, put it behind an HTTPS reverse proxy and enable session authentication. Generate a password hash with `bun run hash-password`, then put the result in `.env` inside single quotes:
 
 ```dotenv
 TASKPATH_USERNAME=me
-TASKPATH_PASSWORD=your-long-password
+TASKPATH_PASSWORD_HASH='$argon2id$v=19$m=65536,t=2,p=1$...'
+TASKPATH_SESSION_DAYS=30
 TASKPATH_ORIGIN=https://tasks.example.com
 ```
 
-The app is a single shared workspace, not a multi-user account system. Both credentials must be set together. Basic authentication relies on HTTPS for transport security. Set `TASKPATH_ORIGIN` to your actual public origin when TLS terminates at a reverse proxy; preserve the browser's Origin header. The API accepts mutations from that exact origin. The `/healthz` endpoint is public and returns only a health flag.
+The app is a single shared workspace, not a multi-user account system. Both authentication settings must be set together. Taskpath verifies the password with Argon2id and stores only hashed, revocable session tokens in SQLite. Browser cookies are `HttpOnly` and `SameSite=Strict`, and are marked `Secure` when the public origin uses HTTPS. Changing the password hash invalidates existing sessions. Set `TASKPATH_ORIGIN` to your actual public origin when TLS terminates at a reverse proxy; preserve the browser's Origin header. The API accepts mutations from that exact origin. The `/healthz` endpoint is public and returns only a health flag.
 
 ### Nginx reverse proxy
 
-Use [`deploy/nginx/taskpath.conf.example`](deploy/nginx/taskpath.conf.example) when Nginx runs directly on the VPS host. It proxies to Taskpath's existing loopback port, redirects HTTP to HTTPS, preserves authentication and origin checks, and limits each client IP to 2 requests/second with a burst of 20. Excess requests receive HTTP 429. This limit covers all proxied requests, including password guesses; it is not failed-login lockout or MFA.
+Use [`deploy/nginx/taskpath.conf.example`](deploy/nginx/taskpath.conf.example) when Nginx runs directly on the VPS host. It proxies to Taskpath's existing loopback port, redirects HTTP to HTTPS, preserves session cookies and origin checks, and limits each client IP to 2 requests/second with a burst of 20. Excess requests receive HTTP 429. Taskpath also blocks a client for 15 minutes after five failed sign-in attempts.
 
-1. Point your domain's DNS to the VPS. Set both Taskpath credentials and `TASKPATH_ORIGIN=https://your-domain` in `.env`, then restart Taskpath to load them. Keep port 3000 bound to `127.0.0.1`; allow public traffic only to Nginx's ports 80/443, plus your administration access.
+1. Point your domain's DNS to the VPS. Set `TASKPATH_USERNAME`, `TASKPATH_PASSWORD_HASH`, and `TASKPATH_ORIGIN=https://your-domain` in `.env`, then restart Taskpath to load them. Keep port 3000 bound to `127.0.0.1`; allow public traffic only to Nginx's ports 80/443, plus your administration access.
 2. Replace **every** `tasks.example.com` in the template with your domain. If you changed `PORT`, also change `proxy_pass` to that port. The certificate paths assume Let's Encrypt; adjust them for your certificate provider.
 3. Obtain a certificate before enabling the HTTPS block. For a first certificate using ACME webroot validation, initially enable only the port-80 server block and create `/var/www/letsencrypt`. Have your ACME client use that directory as its webroot. Once the certificate files exist, enable the full template. Keep the ACME location for renewals and arrange an Nginx reload after certificate renewal.
 4. Save the edited file as `/etc/nginx/conf.d/taskpath.conf`. It must be included **inside the `http {}` block** of `/etc/nginx/nginx.conf`; do not wrap this template in another `http {}` block. Alternatively, use your distribution's `sites-available`/`sites-enabled` convention, but include the file only once.
@@ -83,7 +84,7 @@ Use [`deploy/nginx/taskpath.conf.example`](deploy/nginx/taskpath.conf.example) w
    sudo systemctl reload nginx
    ```
 
-Visit the HTTPS URL: Taskpath should prompt for credentials before showing any tasks. An unauthenticated request to `/api/board` should return 401. The public `/healthz` endpoint is intentionally exempt. The template adds HSTS for this hostname only, so browsers will require HTTPS for it afterward.
+Visit the HTTPS URL: Taskpath should show its sign-in page before showing any tasks. An unauthenticated request to `/api/board` returns 401. The public `/healthz` endpoint is intentionally exempt. The template adds HSTS for this hostname only, so browsers will require HTTPS for it afterward.
 
 This template assumes Nginx is the public edge. If another proxy or CDN sits in front of it, configure trusted real-client-IP handling before relying on per-IP limits. If Nginx runs in a separate container, its `127.0.0.1` is not the Taskpath container; use a shared private Docker network and the Taskpath service address instead.
 
