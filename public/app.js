@@ -1,4 +1,5 @@
-import { offlineRequest, sync, localState, signOut } from './offline.js';
+import { offlineRequest, sync, syncAfterCurrent, localState, signOut } from './offline.js';
+import { createRealtime } from './realtime.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -697,15 +698,26 @@ if (context?.registerTool) {
   window.addEventListener('pagehide', () => lifecycle.abort(), { once: true });
 }
 
+const realtime = createRealtime({ sync: syncAfterCurrent, localState, url: location.href });
 notificationControls();
 void authControls();
-window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); });
-window.addEventListener('online', () => { void sync().catch(() => {}); });
-window.addEventListener('offline', () => { void localState(r => { r.online = false; }).then(() => syncStatus()); });
+window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });
+window.addEventListener('online', () => realtime.resume());
+window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()); });
 await refresh();
-void sync().catch(() => {});
-window.addEventListener('focus', () => { void refresh({ quiet: true }); void sync().catch(() => {}); });
-window.addEventListener('pageshow', event => { if (event.persisted) { void refresh({ quiet: true }); void sync().catch(() => {}); } });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh({ quiet: true }); void sync().catch(() => {}); } });
+realtime.resume();
+window.addEventListener('focus', () => { void refresh({ quiet: true }); realtime.resume(); });
+window.addEventListener('pagehide', () => realtime.pause());
+window.addEventListener('pageshow', event => { if (event.persisted) { void refresh({ quiet: true }); realtime.resume(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) realtime.pause();
+  else { void refresh({ quiet: true }); realtime.resume(); }
+});
 // iOS resumes syncing here when reopened; supporting browsers also use Background Sync.
-setInterval(() => { void refresh({ quiet: true }); void sync().catch(() => {}); }, 15000);
+setInterval(() => {
+  void refresh({ quiet: true });
+  // Retry pending writes even when the notification socket is healthy.
+  void localState().then(record => {
+    if (!realtime.connected || record.pending.length) void sync().catch(() => {});
+  }).catch(() => {});
+}, 15000);

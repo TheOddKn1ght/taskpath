@@ -1,3 +1,5 @@
+import type { Server } from "bun";
+import { Realtime, type RealtimeData } from "./realtime";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { AuthManager, type AuthConfig } from "./auth";
@@ -19,6 +21,7 @@ const assets = new Map<string, [string, string]>([
   ["/offline.js", ["offline.js", "text/javascript; charset=utf-8"]],
   ["/offline-model.js", ["offline-model.js", "text/javascript; charset=utf-8"]],
   ["/export-markdown.js", ["export-markdown.js", "text/javascript; charset=utf-8"]],
+  ["/realtime.js", ["realtime.js", "text/javascript; charset=utf-8"]],
   ["/pwa.js", ["pwa.js", "text/javascript; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
   ["/icon-192.png", ["icon-192.png", "image/png"]],
@@ -28,7 +31,7 @@ const assets = new Map<string, [string, string]>([
 // Static shells contain no task data. API data always requires authentication.
 const publicAssets = new Set([...assets.keys()].filter(path => path !== '/'));
 
-export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigin?: string) {
+export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigin?: string, realtime?: Realtime) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && !["http:", "https:"].includes(trustedOrigin.protocol)) throw new Error("TASKPATH_ORIGIN must be an HTTP or HTTPS URL.");
   if (authConfig && !/^\$argon2id\$v=19\$/.test(authConfig.passwordHash)) throw new Error("TASKPATH_PASSWORD_HASH must be a Bun Argon2id password hash.");
@@ -45,12 +48,22 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
   const json = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...headers, ...extra } });
-  const asset = (pathname: string, method: string) => {
+  const mutation = <T>(write: () => T) => {
+    const changes = () => store.db.query<{ count: number }, []>('SELECT total_changes() AS count').get()!.count;
+    const before = changes();
+    const result = write();
+    if (changes() !== before) realtime?.notify();
+    return result;
+  };
+  const asset = (pathname: string, method: string, requestUrl: string) => {
     const [filename, contentType] = assets.get(pathname)!;
-    return new Response(method === "HEAD" ? null : Bun.file(resolve(import.meta.dir, "../public", filename)), { headers: { ...headers, "Content-Type": contentType } });
+    const socketOrigin = new URL(trustedOrigin?.origin || requestUrl);
+    socketOrigin.protocol = socketOrigin.protocol === 'https:' ? 'wss:' : 'ws:';
+    const csp = headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin.origin}`);
+    return new Response(method === "HEAD" ? null : Bun.file(resolve(import.meta.dir, "../public", filename)), { headers: { ...headers, "Content-Security-Policy": csp, "Content-Type": contentType } });
   };
 
-  return async (request: Request) => {
+  return async (request: Request, server?: Pick<Server<RealtimeData>, "upgrade">) => {
     try {
       const url = new URL(request.url);
       const secureCookie = (trustedOrigin?.protocol || url.protocol) === "https:";
@@ -109,18 +122,31 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
         if (!auth) return json({ ok: true });
         validateMutation();
         auth.logout(request);
+        realtime?.checkSessions();
         return json({ ok: true }, 200, { "Set-Cookie": auth.clearCookie(secureCookie) });
       }
 
       const authenticated = !auth || auth.isAuthenticated(request);
       if (url.pathname === "/login" && isRead) {
         if (authenticated) return new Response(null, { status: 303, headers: { ...headers, Location: "/" } });
-        return asset(url.pathname, request.method);
+        return asset(url.pathname, request.method, request.url);
       }
-      if (isRead && publicAssets.has(url.pathname)) return asset(url.pathname, request.method);
+      if (isRead && publicAssets.has(url.pathname)) return asset(url.pathname, request.method, request.url);
       if (!authenticated) {
         if (url.pathname.startsWith("/api/")) return json({ error: "Your session has expired. Sign in again." }, 401);
         return new Response(null, { status: 303, headers: { ...headers, Location: "/login" } });
+      }
+
+      if (url.pathname === '/api/events') {
+        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405);
+        if (request.headers.get('origin') !== (trustedOrigin?.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
+          throw new InputError('Cross-origin requests are not allowed.', 403);
+        }
+        if (!realtime || !server || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+          return json({ error: 'WebSocket upgrade required.' }, 426);
+        }
+        if (server.upgrade(request, { data: { authorized: () => !auth || auth.isAuthenticated(request) } })) return;
+        return json({ error: 'WebSocket upgrade failed.' }, 400);
       }
 
       validateMutation();
@@ -128,7 +154,7 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
       if (url.pathname === '/api/sync' && request.method === 'POST') {
         const input = object(await body());
         if (input.workspaceKey !== workspaceKey) throw new InputError('This server has a different workspace. Export pending changes before switching.', 409);
-        return json({ ...store.sync(input), workspaceKey });
+        return json({ ...mutation(() => store.sync(input)), workspaceKey });
       }
       if (url.pathname === "/api/board" && request.method === "GET") return json(store.board());
       if (url.pathname === "/api/export" && request.method === "GET") {
@@ -143,20 +169,20 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
         const input = await body();
         const parsed = parseMarkdown(input?.markdown);
         if (url.pathname === "/api/import/preview") return json({ ...store.previewImport(parsed.tasks), ignoredBlocks: parsed.ignoredBlocks });
-        return json(store.importTasks(parsed.tasks), 201);
+        return json(mutation(() => store.importTasks(parsed.tasks)), 201);
       }
-      if (url.pathname === "/api/tasks" && request.method === "POST") return json({ task: store.create(await body()) }, 201);
-      if (url.pathname === "/api/reminders/claim" && request.method === "POST") return json({ tasks: store.claimReminders() });
+      if (url.pathname === "/api/tasks" && request.method === "POST") { const input = await body(); return json({ task: mutation(() => store.create(input)) }, 201); }
+      if (url.pathname === "/api/reminders/claim" && request.method === "POST") return json({ tasks: mutation(() => store.claimReminders()) });
       const reminderMatch = url.pathname.match(/^\/api\/tasks\/([\w-]+)\/reminder$/);
-      if (reminderMatch && request.method === "POST") return json({ task: store.actOnReminder(reminderMatch[1]!, await body()) });
+      if (reminderMatch && request.method === "POST") { const input = await body(); return json({ task: mutation(() => store.actOnReminder(reminderMatch[1]!, input)) }); }
       const match = url.pathname.match(/^\/api\/tasks\/([\w-]+)(\/restore)?$/);
       if (match) {
         const id = match[1]!;
-        if (match[2] && request.method === "POST") return json({ task: store.restore(id) });
-        if (!match[2] && request.method === "PATCH") return json({ task: store.update(id, await body()) });
-        if (!match[2] && request.method === "DELETE") { store.remove(id); return json({ ok: true }); }
+        if (match[2] && request.method === "POST") return json({ task: mutation(() => store.restore(id)) });
+        if (!match[2] && request.method === "PATCH") { const input = await body(); return json({ task: mutation(() => store.update(id, input)) }); }
+        if (!match[2] && request.method === "DELETE") { mutation(() => store.remove(id)); return json({ ok: true }); }
       }
-      if (isRead && assets.has(url.pathname)) return asset(url.pathname, request.method);
+      if (isRead && assets.has(url.pathname)) return asset(url.pathname, request.method, request.url);
       return json({ error: "Not found." }, 404);
     } catch (error) {
       if (error instanceof InputError) return json({ error: error.message }, error.status);
@@ -174,14 +200,16 @@ if (import.meta.main) {
   const sessionDays = Number(process.env.TASKPATH_SESSION_DAYS || "30");
   const authConfig = username && passwordHash ? { username, passwordHash, sessionDays } : undefined;
   const store = new Store(process.env.DATABASE_PATH || "./data/taskpath.sqlite", undefined, process.env.TASKPATH_TIMEZONE);
+  const realtime = new Realtime();
   const server = Bun.serve({
     hostname: process.env.HOST || "127.0.0.1",
     port: Number(process.env.PORT || 3000),
     maxRequestBodySize: 2 * 1024 * 1024,
-    fetch: createHandler(store, authConfig, process.env.TASKPATH_ORIGIN),
+    fetch: createHandler(store, authConfig, process.env.TASKPATH_ORIGIN, realtime),
+    websocket: realtime.websocket,
   });
   console.log(`Taskpath is ready at ${server.url} (planning timezone: ${store.timezone}; authentication: ${authConfig ? "enabled" : "disabled"})`);
-  const shutdown = async () => { await server.stop(); store.close(); process.exit(0); };
+  const shutdown = async () => { realtime.close(); await server.stop(); store.close(); process.exit(0); };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

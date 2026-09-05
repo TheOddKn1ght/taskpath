@@ -306,11 +306,21 @@ Opening the site now shows Taskpath's own sign-in page instead of the browser cr
 
 ## Enable offline use and phone installation
 
-Deploy the updated application files/image and the updated Nginx template. The template includes `location = /api/sync` with `client_max_body_size 2m` and increases the request burst to 60 so initial PWA downloads do not hit the general rate limit. Keep HTTPS, cookie forwarding, and Origin checks enabled. Restart the app and validate/reload Nginx as above.
+Deploy the updated application files/image and the updated Nginx template. The template includes `location = /api/sync` with `client_max_body_size 2m`, a request burst of 60 for PWA downloads, and `location = /api/events` for WebSocket upgrades. Copy the complete events location, including its Cookie, Origin, and other proxy headers: Nginx replaces inherited proxy headers when a location defines its own. Keep its 90-second read timeout; Taskpath sends a heartbeat every 25 seconds. Keep HTTPS, cookie forwarding, and Origin checks enabled. Restart the app and validate/reload Nginx as above.
 
 Sign in online once and let the board load. On iPhone, use Safari's **Share → Add to Home Screen**; on Android use the browser's **Install app** action or Taskpath's install menu item. Open the installed app online once. To verify: disconnect the phone, add a task, close/reopen the app, confirm it is still there, reconnect and reopen, then check for **All changes synced** and confirm the task appears on another device.
 
 The latest edit wins for each whole task, including deletions. Pending edits survive session expiry; sign in again to sync them. Signing out requires syncing first and clears device data. iOS may suspend background work, so reopen the app online to sync. Markdown preview and cross-device notification claims still require a connection. See the README for detailed offline and conflict behavior.
+
+## Enable instant updates on an existing deployment
+
+1. Deploy the updated app and restart its container using the upgrade steps above.
+2. Copy `location = /api/events` from `deploy/nginx/taskpath.conf.example` into your existing **HTTPS** server block, adjusting its upstream port if needed. Keep the existing certificate paths and hostname.
+3. Run `sudo nginx -t`, then `sudo systemctl reload nginx` after validation succeeds.
+4. Open Taskpath once to download the new offline shell, close all its tabs and installed-app windows, then reopen to activate the update.
+5. Keep Taskpath visible on two devices. Create or move a task on one; the other should update immediately. Disconnect one device, edit there, then reconnect and verify its changes arrive.
+
+The app continues using 15-second polling when WebSockets cannot connect. If updates only arrive on that interval, check `/api/events` in the browser Network panel: a successful connection returns **101 Switching Protocols**. Check that `TASKPATH_ORIGIN` matches the HTTPS site, the events location is in the HTTPS server, and any additional CDN/proxy allows WebSockets. An expired session requires signing in again. WebSockets do not keep a sleeping phone or closed app running.
 
 ## Migrate an existing local workspace
 

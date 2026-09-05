@@ -46,6 +46,12 @@ export async function network(path, method = 'GET', body) {
   return response.json();
 }
 let syncing;
+export async function syncAfterCurrent() {
+  // A socket notice may describe a commit made after an in-flight HTTP snapshot.
+  // Wait for that response, then fetch again instead of reusing its promise.
+  if (syncing) { try { await syncing; } catch { /* Retry through the normal path. */ } }
+  return sync();
+}
 export function sync() {
   if (syncing) return syncing;
   const run = async () => {
