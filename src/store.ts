@@ -74,6 +74,7 @@ export class Store {
         createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, deletedAt TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(status, position) WHERE deletedAt IS NULL;
+      CREATE TABLE IF NOT EXISTS sync_versions (taskId TEXT PRIMARY KEY, editedAt TEXT NOT NULL, changeId TEXT NOT NULL);
     `);
     // Versioned, transactional migration preserves existing tasks and ordering.
     this.db.transaction(() => {
@@ -94,6 +95,7 @@ export class Store {
     this.timezone = timezone || saved?.value || Intl.DateTimeFormat().resolvedOptions().timeZone;
     try { calendar(this.now(), this.timezone); } catch { throw new Error(`Invalid TASKPATH_TIMEZONE: ${this.timezone}`); }
     this.db.query("INSERT INTO settings VALUES ('timezone', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(this.timezone);
+    this.db.query("INSERT OR IGNORE INTO settings VALUES ('workspaceId', ?)").run(crypto.randomUUID());
   }
 
   private rows() {
@@ -119,8 +121,9 @@ export class Store {
         if (task.status !== "today" && task.status !== "week") continue;
         const status = task.plannedWeek !== week ? "later" : task.status === "today" && task.plannedDay !== day ? "week" : null;
         if (!status) continue;
-        this.db.query("UPDATE tasks SET status = ?, position = ?, plannedDay = NULL, plannedWeek = ?, updatedAt = ? WHERE id = ?")
-          .run(status, this.next(status), status === "week" ? week : null, now.toISOString(), task.id);
+        // Rollover is derived calendar state, not a user edit competing with offline work.
+        this.db.query("UPDATE tasks SET status = ?, position = ?, plannedDay = NULL, plannedWeek = ? WHERE id = ?")
+          .run(status, this.next(status), status === "week" ? week : null, task.id);
       }
     })();
   }
@@ -288,4 +291,55 @@ export class Store {
   }
 
   close() { this.db.close(); }
+
+  syncBoard() {
+    const board = this.board();
+    return { ...board, rows: this.db.query<Task, []>('SELECT * FROM tasks ORDER BY position, createdAt, id').all() };
+  }
+
+  // Whole-task LWW with retained tombstones. Retrying the same operation is a no-op.
+  sync(input: unknown) {
+    const data = object(input);
+    if (!Array.isArray(data.changes) || data.changes.length > 50) throw new InputError('Sync up to 50 changes at a time.');
+    return this.db.transaction(() => {
+      const acknowledged: string[] = [];
+      let conflicts = 0;
+      for (const raw of data.changes as unknown[]) {
+        const change = object(raw);
+        if (typeof change.changeId !== 'string' || !/^[\w-]{1,80}$/.test(change.changeId)) throw new InputError('Invalid change ID.');
+        const editedAt = reminderTime(change.editedAt);
+        if (!editedAt || Date.parse(editedAt) > this.now().getTime() + 300000) throw new InputError('Your device clock is ahead. Correct it before syncing.');
+        const task = object(change.task);
+        if (typeof task.id !== 'string' || !/^[\w-]{1,80}$/.test(task.id)) throw new InputError('Invalid task ID.');
+        const fields = this.validate(Object.fromEntries(['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt'].map(key => [key, task[key]])));
+        const plannedDay = dateOnly(task.plannedDay);
+        const plannedWeek = dateOnly(task.plannedWeek);
+        const deletedAt = reminderTime(task.deletedAt);
+        const completedAt = reminderTime(task.completedAt);
+        const dismissedAt = reminderTime(task.reminderDismissedAt);
+        const createdAt = reminderTime(task.createdAt);
+        if (!createdAt || typeof task.position !== 'number' || !Number.isFinite(task.position) || Math.abs(task.position) > 1e12) throw new InputError('Invalid task position or creation date.');
+        const current = this.db.query<Task, [string]>('SELECT * FROM tasks WHERE id = ?').get(task.id);
+        const version = this.db.query<{ editedAt: string; changeId: string }, [string]>('SELECT * FROM sync_versions WHERE taskId = ?').get(task.id);
+        const currentTime = current?.updatedAt || '';
+        const currentChange = version?.editedAt === currentTime ? version.changeId : '';
+        if (current && (editedAt < currentTime || (editedAt === currentTime && change.changeId <= currentChange))) {
+          if (change.changeId !== currentChange) conflicts++;
+          acknowledged.push(change.changeId);
+          continue;
+        }
+        const notifiedAt = current?.reminderAt === fields.reminderAt ? current.reminderNotifiedAt : null;
+        this.db.query(`INSERT INTO tasks (id,title,notes,category,status,position,plannedDay,plannedWeek,completedAt,createdAt,updatedAt,deletedAt,dueDate,reminderAt,reminderDismissedAt,reminderNotifiedAt)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+          title=excluded.title,notes=excluded.notes,category=excluded.category,status=excluded.status,position=excluded.position,
+          plannedDay=excluded.plannedDay,plannedWeek=excluded.plannedWeek,completedAt=excluded.completedAt,updatedAt=excluded.updatedAt,
+          deletedAt=excluded.deletedAt,dueDate=excluded.dueDate,reminderAt=excluded.reminderAt,reminderDismissedAt=excluded.reminderDismissedAt,reminderNotifiedAt=excluded.reminderNotifiedAt`)
+          .run(task.id, fields.title!, fields.notes!, fields.category!, fields.status!, task.position as number, plannedDay, plannedWeek,
+            completedAt, createdAt, editedAt, deletedAt, fields.dueDate!, fields.reminderAt!, dismissedAt, notifiedAt);
+        this.db.query('INSERT OR REPLACE INTO sync_versions VALUES (?,?,?)').run(task.id, editedAt, change.changeId);
+        acknowledged.push(change.changeId);
+      }
+      return { acknowledged, conflicts, ...this.syncBoard() };
+    })();
+  }
 }

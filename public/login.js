@@ -1,3 +1,4 @@
+import { unlockAfterLogin } from './offline.js';
 const form = document.getElementById('login-form');
 const button = document.getElementById('login-button');
 const error = document.getElementById('login-error');
@@ -17,6 +18,7 @@ form.addEventListener('submit', async event => {
       }),
     });
     if (response.ok) {
+      await unlockAfterLogin();
       document.getElementById('password').value = '';
       location.replace('/');
       return;

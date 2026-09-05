@@ -2,13 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css">
+  <script src="/pwa.js" type="module"></script>
   <script src="/app.js" type="module"></script>
 </head>
 <body>
@@ -21,13 +26,13 @@
         <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
-        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="show-guide">How it works</button><button id="logout" hidden>Sign out</button></div></details>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="logout" hidden>Sign out</button></div></details>
       </div>
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
     <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
     <section class="board" id="board" aria-label="Task planning board" aria-busy="true"><p class="loading-message">Loading tasks…</p></section>
-    <footer class="board-footer"><p>Plan your week. Pick your day.</p><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
+    <footer class="board-footer"><p>Plan your week. Pick your day.</p><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
   </main>
 
   <dialog id="task-dialog" class="task-dialog" aria-labelledby="dialog-title">
@@ -50,7 +55,7 @@
 
   <dialog id="import-dialog" aria-labelledby="import-title">
     <div class="dialog-top"><h2 id="import-title">Import Markdown</h2><button type="button" class="icon-button" data-close="import-dialog" aria-label="Close import"><span data-icon="x"></span></button></div>
-    <p class="import-hint">Choose a file or paste a checklist. Use headings Later, This Week, Today, and Done to place tasks. Exact duplicates are skipped.</p>
+    <p class="import-hint">Connect to preview a file or pasted checklist. Imports then save on this device. Use headings Later, This Week, Today, and Done to place tasks. Exact duplicates are skipped.</p>
     <label class="field">Markdown file<input id="markdown-file" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain"></label>
     <label class="field">Markdown text<textarea id="markdown-text" rows="7" spellcheck="false" placeholder="## This Week&#10;- [ ] Write the first draft&#10;  - Due: 2026-09-10"></textarea></label>
     <p class="schedule-hint">Up to 500 tasks / 256 KB. Existing tasks are kept. Imported Today and This Week tasks use the current day and week.</p>

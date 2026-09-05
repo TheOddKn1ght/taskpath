@@ -1,3 +1,4 @@
+import { offlineRequest, sync, localState, signOut } from './offline.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -150,17 +151,16 @@ function showError(error) {
   connection('Connection interrupted', true);
 }
 async function request(path, method = 'GET', body, format = 'json') {
-  const response = await fetch(path, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000) });
-  if (response.status === 401) {
-    location.replace('/login');
-    throw new Error('Your session has expired. Sign in again.');
-  }
-  if (!response.ok) {
-    let message = 'Could not save your change. Please try again.';
-    try { message = (await response.json()).error || message; } catch { /* Keep the readable fallback. */ }
-    throw new Error(message);
-  }
-  return format === 'text' ? response.text() : response.json();
+  return offlineRequest(path, method, body);
+}
+async function syncStatus() {
+  const local = await localState();
+  if (local.locked) { location.replace('/login'); return; }
+  const count = local.pending.length;
+  const text = local.authRequired ? `Sign in to sync · ${count} pending` : local.error ? `Sync paused · ${count} pending` : count ? `${count} ${count === 1 ? 'change' : 'changes'} saved on this device` : local.online ? 'All changes synced' : 'Offline · Saved on this device';
+  connection(text, !local.online || Boolean(local.authRequired || local.error));
+  $('#sign-in-again').hidden = !local.authRequired;
+  if (local.error) { $('#error-text').textContent = local.error; $('#error-banner').hidden = false; }
 }
 
 async function authControls() {
@@ -178,8 +178,13 @@ async function refresh({ quiet = false } = {}) {
     const board = await request('/api/board');
     applyBoard(board);
     $('#error-banner').hidden = true;
-    connection('All changes saved');
+    await syncStatus();
   } catch (error) {
+    if (error.status === 401 && !(await localState()).board) {
+      state.tasks = []; $('#board').replaceChildren(); $('#reminder-panel').replaceChildren();
+      $$('dialog[open]').forEach(dialog => dialog.close());
+      location.replace('/login'); return;
+    }
     showError(error);
     if (!quiet && !state.ready) $('#board').innerHTML = '<p class="loading-message">Your workspace couldn’t be opened. Try reconnecting above.</p>';
   } finally { state.loading = false; $('#board').setAttribute('aria-busy', 'false'); }
@@ -194,16 +199,16 @@ function applyBoard(board) {
   if (previousDay && previousDay !== board.day) notify('Your tasks have rolled over to the new day.');
 }
 
-// Serialize writes; only update the visible board after the server confirms persistence.
+// Show edits only after the device transaction commits. Sync runs independently.
 async function mutate(path, method, body, message) {
   if (state.busy || state.loading) throw new Error('Your workspace is syncing. Please try again in a moment.');
   state.busy = true;
   connection('Saving…');
   try {
     const result = await request(path, method, body);
-    // A failed read-back must not disguise an already-committed write as a failed save.
-    try { applyBoard(await request('/api/board')); $('#error-banner').hidden = true; connection('All changes saved'); }
-    catch (error) { showError(new Error('Your change was saved, but the board could not refresh. Try reconnecting.')); }
+    // A failed redraw must not disguise an already-committed local write as a failed save.
+    try { applyBoard(await request('/api/board')); $('#error-banner').hidden = true; await syncStatus(); }
+    catch (error) { showError(new Error('Your change was saved on this device, but the board could not refresh.')); }
     if (message) notify(message);
     return result;
   } catch (error) {
@@ -322,10 +327,10 @@ $('#logout').addEventListener('click', async () => {
   $('.app-menu').open = false;
   $('#logout').disabled = true;
   try {
-    await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-  } finally {
+    await signOut();
     location.replace('/login');
-  }
+  } catch (error) { notify(error.message); }
+  finally { $('#logout').disabled = false; }
 });
 async function downloadTasks(markdown = false) {
   $('.app-menu').open = false;
@@ -379,7 +384,7 @@ $('#preview-markdown').addEventListener('click', async () => {
     if (new TextEncoder().encode(source).length > 256 * 1024) throw new Error('Markdown must be 256 KB or smaller.');
     const result = await request('/api/import/preview', 'POST', { markdown: source });
     if (revision !== importRevision) return;
-    importSource = source;
+    importSource = result.tasks;
     $('#import-summary').textContent = `${result.tasks.length} tasks to add · ${result.skipped} duplicates skipped`;
     const warnings = [];
     if (result.ignoredBlocks) warnings.push(`${result.ignoredBlocks} blocks outside task lists were ignored.`);
@@ -399,13 +404,13 @@ $('#confirm-import').addEventListener('click', async () => {
   const controls = $$('button,input,textarea', $('#import-dialog'));
   controls.forEach(control => { control.disabled = true; });
   try {
-    const result = await mutate('/api/import/markdown', 'POST', { markdown: importSource });
+    const result = await mutate('/api/import/markdown', 'POST', { tasks: importSource });
     $('#import-dialog').close();
     notify(`${result.imported} tasks imported${result.skipped ? ` · ${result.skipped} duplicates skipped` : ''}.`);
   } catch (error) { importError(error); }
   finally { importBusy = false; controls.forEach(control => { control.disabled = false; }); }
 });
-$('#retry').addEventListener('click', () => refresh());
+$('#retry').addEventListener('click', () => { void sync().catch(() => {}); void refresh(); });
 $('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); });
 $('#toast-action').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); toastAction?.(); });
 $('#category-filter').addEventListener('change', event => { state.category = event.target.value; if (state.ready) render(); });
@@ -694,8 +699,13 @@ if (context?.registerTool) {
 
 notificationControls();
 void authControls();
+window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); });
+window.addEventListener('online', () => { void sync().catch(() => {}); });
+window.addEventListener('offline', () => { void localState(r => { r.online = false; }).then(() => syncStatus()); });
 await refresh();
-window.addEventListener('focus', () => refresh({ quiet: true }));
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh({ quiet: true }); });
-// Also poll in background tabs; browsers may throttle timers while asleep.
-setInterval(() => refresh({ quiet: true }), 15000);
+void sync().catch(() => {});
+window.addEventListener('focus', () => { void refresh({ quiet: true }); void sync().catch(() => {}); });
+window.addEventListener('pageshow', event => { if (event.persisted) { void refresh({ quiet: true }); void sync().catch(() => {}); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh({ quiet: true }); void sync().catch(() => {}); } });
+// iOS resumes syncing here when reopened; supporting browsers also use Background Sync.
+setInterval(() => { void refresh({ quiet: true }); void sync().catch(() => {}); }, 15000);

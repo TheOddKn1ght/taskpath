@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { AuthManager, type AuthConfig } from "./auth";
 import { InputError, Store, object } from "./store";
 import { exportMarkdown, parseMarkdown } from "./markdown";
@@ -12,8 +13,20 @@ const assets = new Map<string, [string, string]>([
   ["/theme.js", ["theme.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
+  ["/offline-shell", ["index.html", "text/html; charset=utf-8"]],
+  ["/login-shell", ["login.html", "text/html; charset=utf-8"]],
+  ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],
+  ["/offline.js", ["offline.js", "text/javascript; charset=utf-8"]],
+  ["/offline-model.js", ["offline-model.js", "text/javascript; charset=utf-8"]],
+  ["/export-markdown.js", ["export-markdown.js", "text/javascript; charset=utf-8"]],
+  ["/pwa.js", ["pwa.js", "text/javascript; charset=utf-8"]],
+  ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
+  ["/icon-192.png", ["icon-192.png", "image/png"]],
+  ["/icon-512.png", ["icon-512.png", "image/png"]],
+  ["/apple-touch-icon.png", ["apple-touch-icon.png", "image/png"]],
 ]);
-const publicAssets = new Set(["/login", "/login.js", "/theme.js", "/style.css", "/favicon.svg"]);
+// Static shells contain no task data. API data always requires authentication.
+const publicAssets = new Set([...assets.keys()].filter(path => path !== '/'));
 
 export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigin?: string) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
@@ -23,11 +36,13 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
     throw new Error("TASKPATH_SESSION_DAYS must be a whole number from 1 to 365.");
   }
   const auth = authConfig ? new AuthManager(store.db, authConfig) : null;
+  const workspaceId = store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'workspaceId'").get()!.value;
+  const workspaceKey = createHash('sha256').update(JSON.stringify([workspaceId, authConfig?.username || 'local'])).digest('hex');
   const headers = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
   const json = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...headers, ...extra } });
   const asset = (pathname: string, method: string) => {
@@ -50,7 +65,7 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
         if (request.method !== "DELETE" && request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new InputError("Use application/json.", 415);
       };
       const body = async () => {
-        const limit = ["/api/import/markdown", "/api/import/preview"].includes(url.pathname) ? 2 * 1024 * 1024 : 32768;
+        const limit = ["/api/import/markdown", "/api/import/preview", "/api/sync"].includes(url.pathname) ? 2 * 1024 * 1024 : 32768;
         if (Number(request.headers.get("content-length")) > limit) throw new InputError("Request is too large.", 413);
         let size = 0;
         const reader = request.body?.getReader();
@@ -109,6 +124,12 @@ export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigi
       }
 
       validateMutation();
+      if (url.pathname === '/api/sync' && request.method === 'GET') return json({ ...store.syncBoard(), workspaceKey });
+      if (url.pathname === '/api/sync' && request.method === 'POST') {
+        const input = object(await body());
+        if (input.workspaceKey !== workspaceKey) throw new InputError('This server has a different workspace. Export pending changes before switching.', 409);
+        return json({ ...store.sync(input), workspaceKey });
+      }
       if (url.pathname === "/api/board" && request.method === "GET") return json(store.board());
       if (url.pathname === "/api/export" && request.method === "GET") {
         if (url.searchParams.get("format") === "markdown") return new Response(exportMarkdown(store.board().tasks), {

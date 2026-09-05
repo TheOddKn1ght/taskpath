@@ -150,3 +150,8 @@ dialog { width:460px; max-width:calc(100vw - 28px); max-height:calc(100dvh - 28p
 @media (hover:none) { .task-actions { opacity:1; }.task-actions .icon-button { width:30px; height:30px; }.complete-button { width:20px; height:20px; margin-top:1px; } }
 @media (max-width:480px) { #new-task { font-size:0; width:32px; padding:0; flex:none; gap:0; }.app-menu { flex:none; } }
 @media (prefers-reduced-motion:reduce) { * { transition:none!important; } }
+
+/* Standalone phone layout avoids the notch, home indicator, and input zoom. */
+@media (display-mode:standalone) { body { padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); } main { padding-left:max(16px,env(safe-area-inset-left)); padding-right:max(16px,env(safe-area-inset-right)); } }
+@media (max-width:600px) { .field input,.field textarea,.field select,.quick-add input,.search input { font-size:16px; } .board-footer { flex-wrap:wrap; } }
+#sign-in-again { color:var(--accent); }

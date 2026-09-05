@@ -24,6 +24,24 @@ Keyboard shortcuts: **N** opens a task, **/** focuses search, and **Esc** closes
 
 The sun/moon button switches between light and dark themes. Taskpath follows your system appearance until you choose a theme, then remembers that choice in this browser and syncs it across open tabs.
 
+## Offline use and phone installation
+
+Sign in and open the board online once. Taskpath keeps a device copy in IndexedDB and caches the app shell with a service worker. Create, edit, move, complete, delete, undo, set dates, and dismiss or snooze reminders offline. Every edit commits to device storage before it appears as saved; the footer distinguishes pending device changes from changes synced to the server. JSON and Markdown exports use the current device copy, including pending edits. Markdown preview requires a connection to Bun's parser; once previewed, importing tasks uses the offline queue too.
+
+Sync retries after edits, when connectivity returns, on focus/reopen, and every 15 seconds while the page runs. Background Sync is also used where supported. iPhone/iPad do not guarantee syncing while the app is closed: reopen Taskpath with a connection to finish syncing. Desktop notifications still require an open app and a connection for the existing cross-device reminder claim; in-app due reminders work offline.
+
+Conflicts use **the most recent edit of the whole task**, including its column, order, dates, and deleted state. Edit time is captured when the edit is saved, adjusted by the last known server clock offset; it is not the time the queue arrives. Equal timestamps use the operation ID as a stable tie-break. A newer deletion beats an older edit; a newer edit can restore a previously deleted task. Repeated delivery is safe. Automatic day/week rollover does not count as a new user edit. Keep device clocks on automatic time.
+
+Expired login sessions pause syncing and show **Sign in to sync**. Pending changes remain on the device. Explicit **Sign out** requires all pending changes to sync and then removes the local task copy. Offline storage is available to anyone with access to this browser profile until sign-out; clearing browser/site data removes unsynced edits. SQLite remains the server backup source. Device storage is subject to browser quotas and eviction, so sync regularly; exports also work offline.
+
+- **iPhone/iPad:** open the HTTPS site in Safari, sign in, then **Share → Add to Home Screen**. Open the new home-screen app online once before taking it offline (it may have a separate login/storage context).
+- **Android:** use **Install Taskpath** in the workspace menu when offered, or the browser's **Install app / Add to Home screen** menu.
+- The installed app uses a standalone window, phone icons, safe-area spacing, and inputs sized to prevent automatic zoom.
+
+For upgrades, close all Taskpath tabs/windows and reopen to activate a downloaded service-worker update. Developers: bump the shell cache version in `public/sw.js` when releasing changed cached assets. Update the deployed Nginx template too: `/api/sync` permits a bounded 2 MB request body, and the burst allowance covers initial PWA asset downloads. All sync endpoints remain authenticated; only static shells/assets are public. No task data or credentials are stored in the service-worker cache.
+
+Browser references: [offline/background operation](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation), [iOS home-screen web apps](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
 ## Dates and reminders
 
 Open a task and expand **Date & reminder**. Both fields are optional and independent. Due dates appear on cards, with Today, Tomorrow, and overdue labels. Dates stay attached when tasks move or roll over; they do not automatically move tasks into Today.
@@ -75,7 +93,7 @@ The app is a single shared workspace, not a multi-user account system. Both auth
 
 ### Nginx reverse proxy
 
-Use [`deploy/nginx/taskpath.conf.example`](deploy/nginx/taskpath.conf.example) when Nginx runs directly on the VPS host. It proxies to Taskpath's existing loopback port, redirects HTTP to HTTPS, preserves session cookies and origin checks, and limits each client IP to 2 requests/second with a burst of 20. Excess requests receive HTTP 429. Taskpath also blocks a client for 15 minutes after five failed sign-in attempts.
+Use [`deploy/nginx/taskpath.conf.example`](deploy/nginx/taskpath.conf.example) when Nginx runs directly on the VPS host. It proxies to Taskpath's existing loopback port, redirects HTTP to HTTPS, preserves session cookies and origin checks, and limits each client IP to 2 requests/second with a burst of 60. Excess requests receive HTTP 429. Taskpath also blocks a client for 15 minutes after five failed sign-in attempts.
 
 1. Point your domain's DNS to the VPS. Set `TASKPATH_USERNAME`, `TASKPATH_PASSWORD_HASH`, and `TASKPATH_ORIGIN=https://your-domain` in `.env`, then restart Taskpath to load them. Keep port 3000 bound to `127.0.0.1`; allow public traffic only to Nginx's ports 80/443, plus your administration access.
 2. Replace **every** `tasks.example.com` in the template with your domain. If you changed `PORT`, also change `proxy_pass` to that port. The certificate paths assume Let's Encrypt; adjust them for your certificate provider.
@@ -122,7 +140,7 @@ Category defaults to Personal. Dates use `YYYY-MM-DD`; reminder timestamps requi
 
 Exact duplicates are skipped within the file and against the board, comparing title, notes, category, column, due date, reminder time, and whether the reminder is dismissed. Import does not update or merge edited tasks with existing ones. Imported tasks receive new IDs; Today and This Week apply to the current planning day/week. Original creation/completion timestamps and desktop notification delivery history are not restored. Past active reminders appear immediately after import.
 
-Imports are limited to **500 tasks and 256 KB of Markdown** per file/paste; split larger exports by task if needed. The Nginx template allows a larger JSON request body only for `/api/import/`, while other writes retain the 32 KB limit. Update an existing deployed Nginx configuration when adding this feature.
+Imports are limited to **500 tasks and 256 KB of Markdown** per file/paste; split larger exports by task if needed. The Nginx template allows larger JSON request bodies for `/api/import/` and `/api/sync`, while other writes retain the 32 KB limit. Update an existing deployed Nginx configuration when adding this feature.
 
 For a full backup, stop the local process and copy the entire `data/` directory, including any SQLite WAL sidecar files. Restore by placing that directory back before starting. For Docker, stop the service before backing up or restoring its named volume. Do not use `docker compose down -v` when you want to keep tasks: it removes the volume.
 

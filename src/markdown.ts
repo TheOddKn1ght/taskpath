@@ -2,27 +2,7 @@ import { InputError, type Task, type Status } from './store';
 
 export const markdownLimit = 256 * 1024;
 const columns: Record<Status, string> = { later: 'Later', week: 'This Week', today: 'Today', done: 'Done' };
-const escapeText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/[\\`*~_{}\[\]()#+.!|\-]/g, '\\$&').replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
-export function exportMarkdown(tasks: Task[]) {
-  const lines = ['# Taskpath', ''];
-  for (const [status, heading] of Object.entries(columns)) {
-    lines.push(`## ${heading}`, '');
-    for (const task of tasks.filter(t => t.status === status)) {
-      lines.push(`- [${status === 'done' ? 'x' : ' '}] ${escapeText(task.title)}`);
-      lines.push(`  - Category: ${task.category === 'work' ? 'Work' : 'Personal'}`);
-      if (task.dueDate) lines.push(`  - Due: ${task.dueDate}`);
-      if (task.reminderAt) lines.push(`  - Reminder: ${task.reminderAt}`);
-      if (task.reminderDismissedAt) lines.push(`  - Reminder dismissed: ${task.reminderDismissedAt}`);
-      if (task.notes) {
-        const fence = '`'.repeat(Math.max(3, ...[...task.notes.matchAll(/`+/g)].map(match => match[0].length + 1)));
-        lines.push(`  ${fence}text`, ...task.notes.split('\n').map(line => `  ${line}`), `  ${fence}`);
-      }
-      lines.push('');
-    }
-  }
-  return lines.join('\n');
-}
+export { exportMarkdown } from '../public/export-markdown.js';
 
 type MarkdownNode = { type: string; text?: string; children?: MarkdownNode[]; meta?: Record<string, unknown> };
 

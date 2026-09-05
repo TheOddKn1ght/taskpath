@@ -49,7 +49,8 @@ server {
     send_timeout 30s;
     keepalive_timeout 30s;
 
-    limit_req zone=taskpath_per_ip burst=20 nodelay;
+    # Allow the initial app + offline-shell asset download in one burst.
+    limit_req zone=taskpath_per_ip burst=60 nodelay;
     limit_req_status 429;
     limit_req_log_level warn;
 
@@ -76,6 +77,11 @@ server {
     }
 
     # Markdown imports have a larger, separately bounded JSON request body.
+    location = /api/sync {
+        client_max_body_size 2m;
+        proxy_pass http://127.0.0.1:3000;
+    }
+
     location /api/import/ {
         client_max_body_size 2m;
         proxy_pass http://127.0.0.1:3000;

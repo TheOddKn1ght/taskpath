@@ -211,7 +211,7 @@ The production template:
 - redirects HTTP to HTTPS while preserving the ACME renewal path;
 - supports TLS 1.2 and 1.3 and sends HSTS for this hostname;
 - passes the browser's session cookie and Origin header to Taskpath;
-- limits each client IP to two requests per second with a burst of 20;
+- limits each client IP to two requests per second with a burst of 60;
 - keeps ordinary request bodies at 32 KB and permits up to 2 MB for the bounded Markdown import endpoints;
 - proxies only to the host's loopback port.
 
@@ -303,6 +303,14 @@ sudo systemctl reload nginx
 ```
 
 Opening the site now shows Taskpath's own sign-in page instead of the browser credential dialog. Your existing SQLite tasks are unchanged.
+
+## Enable offline use and phone installation
+
+Deploy the updated application files/image and the updated Nginx template. The template includes `location = /api/sync` with `client_max_body_size 2m` and increases the request burst to 60 so initial PWA downloads do not hit the general rate limit. Keep HTTPS, cookie forwarding, and Origin checks enabled. Restart the app and validate/reload Nginx as above.
+
+Sign in online once and let the board load. On iPhone, use Safari's **Share → Add to Home Screen**; on Android use the browser's **Install app** action or Taskpath's install menu item. Open the installed app online once. To verify: disconnect the phone, add a task, close/reopen the app, confirm it is still there, reconnect and reopen, then check for **All changes synced** and confirm the task appears on another device.
+
+The latest edit wins for each whole task, including deletions. Pending edits survive session expiry; sign in again to sync them. Signing out requires syncing first and clears device data. iOS may suspend background work, so reopen the app online to sync. Markdown preview and cross-device notification claims still require a connection. See the README for detailed offline and conflict behavior.
 
 ## Migrate an existing local workspace
 
