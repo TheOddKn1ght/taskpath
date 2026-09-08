@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { Store, statuses, type Task } from '../src/store';
-import { exportMarkdown, parseMarkdown } from '../src/markdown';
-import { createHandler } from '../src/server';
-import { login, testAuth } from './auth-helpers';
+import { ClientStore as Store, statuses, type Task } from './client-helpers';
+import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
 
 let store: Store;
 beforeEach(() => { store = new Store(':memory:', () => new Date('2026-09-03T10:00:00Z'), 'Europe/Moscow'); });
@@ -29,7 +27,7 @@ test('Markdown round trip preserves content, order, dates, categories, and dismi
   } finally { copy.close(); }
 });
 
-test('Bun parses headings, nested task lists, entities, links, and completed tasks', () => {
+test('Marked parses headings, nested task lists, entities, links, and completed tasks', () => {
   const { tasks } = parseMarkdown('\uFEFF## This Week\r\n\r\n* [ ] **Draft** &amp; review\r\n  - Category: Work\r\n  - Due: 2026-09-10\r\n  > Keep these notes\r\n\r\n- [X] Finished\n  - [ ] Nested task\n\nToday\n=====\n\n1. [ ] [Read](https://example.com)\n\n## Other heading\n- [ ] Inbox item');
   expect(tasks).toHaveLength(5);
   expect(tasks[0]).toMatchObject({ title: 'Draft & review', category: 'work', status: 'week', dueDate: '2026-09-10', notes: 'Keep these notes' });
@@ -71,39 +69,3 @@ test('invalid metadata and oversized imports fail without partial writes', () =>
   expect(store.board().tasks.map(task => task.id)).toEqual([existing.id]);
 });
 
-test('a storage failure rolls back every inserted task', () => {
-  store.db.exec("CREATE TRIGGER reject_bad_task BEFORE INSERT ON tasks WHEN NEW.title = 'Fail here' BEGIN SELECT RAISE(ABORT, 'test failure'); END;");
-  expect(() => store.importTasks(parseMarkdown('- [ ] First\n- [ ] Fail here').tasks)).toThrow();
-  expect(store.board().tasks).toEqual([]);
-});
-
-test('Markdown endpoints require authentication and same-origin JSON requests', async () => {
-  const handle = createHandler(store, testAuth, 'https://tasks.example.com');
-  const { cookie } = await login(handle);
-  const post = (path: string, origin = 'https://tasks.example.com', session = cookie, markdown = '- [ ] Imported', type = 'application/json') => handle(new Request(`http://localhost:3000${path}`, {
-    method: 'POST', headers: { 'Content-Type': type, origin, cookie: session }, body: JSON.stringify({ markdown }),
-  }));
-  expect((await handle(new Request('http://localhost:3000/api/export?format=markdown'))).status).toBe(401);
-  for (const path of ['/api/import/preview', '/api/import/markdown']) {
-    expect((await post(path, 'https://tasks.example.com', '')).status).toBe(401);
-    expect((await post(path, 'https://evil.example')).status).toBe(403);
-    expect((await post(path, undefined, undefined, undefined, 'text/plain')).status).toBe(415);
-  }
-  expect((await post('/api/import/preview')).status).toBe(200);
-  expect(store.board().tasks).toEqual([]);
-  expect((await post('/api/import/markdown')).status).toBe(201);
-  const exported = await handle(new Request('http://localhost:3000/api/export?format=markdown', { headers: { cookie } }));
-  expect(exported.headers.get('content-type')).toContain('text/markdown');
-  expect(exported.headers.get('content-disposition')).toContain('.md');
-  expect(await exported.text()).toContain('- [ ] Imported');
-});
-
-test('imports accept files above the normal API limit while ordinary writes stay bounded', async () => {
-  const handle = createHandler(store);
-  const post = (path: string, body: object) => handle(new Request(`http://localhost:3000${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
-  const markdown = Array.from({ length: 100 }, (_, i) => `- [ ] Task ${i}\n  > ${'Notes '.repeat(100)}\n`).join('\n');
-  expect(Buffer.byteLength(markdown)).toBeGreaterThan(32768);
-  expect((await post('/api/import/markdown', { markdown })).status).toBe(201);
-  expect(store.board().tasks).toHaveLength(100);
-  expect((await post('/api/tasks', { title: 'Too large', notes: 'x'.repeat(40000) })).status).toBe(413);
-});

@@ -1,15 +1,18 @@
-import type { Server } from "bun";
-import { Realtime, type RealtimeData } from "./realtime";
-import { resolve } from "node:path";
-import { createHash } from "node:crypto";
-import { AuthManager, type AuthConfig } from "./auth";
-import { InputError, Store, object } from "./store";
-import { exportMarkdown, parseMarkdown } from "./markdown";
-
+import type { Server } from 'bun';
+import { Realtime, type RealtimeData } from './realtime';
+import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { AuthManager } from './auth';
+import { InputError, Store, object } from './store';
+export const ASSET_VERSION = 'e2ee-v3';
 const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
-  ["/login", ["login.html", "text/html; charset=utf-8"]],
-  ["/login.js", ["login.js", "text/javascript; charset=utf-8"]],
+  ["/login", ["index.html", "text/html; charset=utf-8"]],
+  ["/vault-ui.js", ["vault-ui.js", "text/javascript; charset=utf-8"]],
+  ["/crypto.js", ["crypto.js", "text/javascript; charset=utf-8"]],
+  ["/persistence.js", ["persistence.js", "text/javascript; charset=utf-8"]],
+  ["/markdown.js", ["markdown.js", "text/javascript; charset=utf-8"]],
+  ["/vendor/marked.js", ["vendor/marked.js", "text/javascript; charset=utf-8"]],
   ["/tags.js", ["tags.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/dates.js", ["dates.js", "text/javascript; charset=utf-8"]],
@@ -17,7 +20,7 @@ const assets = new Map<string, [string, string]>([
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],
   ["/offline-shell", ["index.html", "text/html; charset=utf-8"]],
-  ["/login-shell", ["login.html", "text/html; charset=utf-8"]],
+  ["/login-shell", ["index.html", "text/html; charset=utf-8"]],
   ["/sw.js", ["sw.js", "text/javascript; charset=utf-8"]],
   ["/offline.js", ["offline.js", "text/javascript; charset=utf-8"]],
   ["/offline-model.js", ["offline-model.js", "text/javascript; charset=utf-8"]],
@@ -29,188 +32,114 @@ const assets = new Map<string, [string, string]>([
   ["/icon-512.png", ["icon-512.png", "image/png"]],
   ["/apple-touch-icon.png", ["apple-touch-icon.png", "image/png"]],
 ]);
-// Static shells contain no task data. API data always requires authentication.
-const publicAssets = new Set([...assets.keys()].filter(path => path !== '/'));
 
-export function createHandler(store: Store, authConfig?: AuthConfig, publicOrigin?: string, realtime?: Realtime) {
+export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public')) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
-  if (trustedOrigin && !["http:", "https:"].includes(trustedOrigin.protocol)) throw new Error("TASKPATH_ORIGIN must be an HTTP or HTTPS URL.");
-  if (authConfig && !/^\$argon2id\$v=19\$/.test(authConfig.passwordHash)) throw new Error("TASKPATH_PASSWORD_HASH must be a Bun Argon2id password hash.");
-  if (authConfig?.sessionDays !== undefined && (!Number.isInteger(authConfig.sessionDays) || authConfig.sessionDays < 1 || authConfig.sessionDays > 365)) {
-    throw new Error("TASKPATH_SESSION_DAYS must be a whole number from 1 to 365.");
-  }
-  const auth = authConfig ? new AuthManager(store.db, authConfig) : null;
-  const workspaceId = store.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'workspaceId'").get()!.value;
-  const workspaceKey = createHash('sha256').update(JSON.stringify([workspaceId, authConfig?.username || 'local'])).digest('hex');
+  if (trustedOrigin && (!['http:', 'https:'].includes(trustedOrigin.protocol) || trustedOrigin.pathname !== '/' || trustedOrigin.search || trustedOrigin.hash || trustedOrigin.username || trustedOrigin.password)) throw new Error('TASKPATH_ORIGIN must be an HTTP(S) origin.');
   const headers = {
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
-  const json = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...headers, ...extra } });
-  const mutation = <T>(write: () => T) => {
-    const changes = () => store.db.query<{ count: number }, []>('SELECT total_changes() AS count').get()!.count;
-    const before = changes();
-    const result = write();
-    if (changes() !== before) realtime?.notify();
-    return result;
-  };
-  const asset = (pathname: string, method: string, requestUrl: string) => {
-    const [filename, contentType] = assets.get(pathname)!;
-    const socketOrigin = new URL(trustedOrigin?.origin || requestUrl);
-    socketOrigin.protocol = socketOrigin.protocol === 'https:' ? 'wss:' : 'ws:';
-    const csp = headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin.origin}`);
-    return new Response(method === "HEAD" ? null : Bun.file(resolve(import.meta.dir, "../public", filename)), { headers: { ...headers, "Content-Security-Policy": csp, "Content-Type": contentType } });
-  };
-
-  return async (request: Request, server?: Pick<Server<RealtimeData>, "upgrade">) => {
+  const json = (value: unknown, status = 200, extra = {}) => Response.json(value, { status, headers: { ...headers, ...extra } });
+  return async (request: Request, server?: Pick<Server<RealtimeData>, 'upgrade'>) => {
     try {
-      const url = new URL(request.url);
-      const secureCookie = (trustedOrigin?.protocol || url.protocol) === "https:";
-      const isRead = ["GET", "HEAD"].includes(request.method);
-      const validateMutation = () => {
-        if (isRead) return;
-        const origin = request.headers.get("origin");
-        const expected = trustedOrigin?.origin || url.origin;
-        if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== expected) || ((auth || trustedOrigin) && !origin)) {
-          throw new InputError("Cross-origin requests are not allowed.", 403);
-        }
-        if (request.method !== "DELETE" && request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new InputError("Use application/json.", 415);
-      };
+      const url = new URL(request.url), path = url.pathname;
+      const origin = trustedOrigin?.origin || url.origin;
+      const secure = origin.startsWith('https:');
+      const read = ['GET', 'HEAD'].includes(request.method);
+      if (!read && (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site')) throw new InputError('Cross-origin requests are not allowed.', 403);
+      if (!read && request.headers.get('content-type')?.split(';')[0] !== 'application/json') throw new InputError('Use application/json.', 415);
       const body = async () => {
-        const limit = ["/api/import/markdown", "/api/import/preview", "/api/sync"].includes(url.pathname) ? 2 * 1024 * 1024 : 32768;
-        if (Number(request.headers.get("content-length")) > limit) throw new InputError("Request is too large.", 413);
-        let size = 0;
+        const limit = path === '/api/sync' ? 2 * 1024 * 1024 : 32768;
+        if (Number(request.headers.get('content-length')) > limit) throw new InputError('Request is too large.', 413);
+        const chunks: Uint8Array[] = []; let size = 0;
         const reader = request.body?.getReader();
-        const chunks: Uint8Array[] = [];
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            size += value.byteLength;
-            if (size > limit) { await reader.cancel(); throw new InputError("Request is too large.", 413); }
-            chunks.push(value);
-          }
+        if (reader) while (true) {
+          const { value, done } = await reader.read(); if (done) break;
+          size += value.byteLength;
+          if (size > limit) { await reader.cancel(); throw new InputError('Request is too large.', 413); }
+          chunks.push(value);
         }
-        try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new InputError("Invalid JSON."); }
+        try { return object(JSON.parse(Buffer.concat(chunks).toString())); } catch (error) { if (error instanceof InputError) throw error; throw new InputError('Invalid JSON.'); }
       };
-
-      if (url.pathname === "/healthz" && request.method === "GET") return json({ ok: true });
-      if (url.pathname === "/api/auth/status" && request.method === "GET") {
-        return json({ enabled: Boolean(auth), authenticated: !auth || auth.isAuthenticated(request) });
+      const client = trustedOrigin ? (request.headers.get('x-real-ip') || 'direct-client').slice(0, 100) : 'direct-client';
+      if (path === '/healthz' && read) return json({ ok: true });
+      if (path === '/api/auth/config' && read) return json({ config: auth.configuration() });
+      if (path === '/api/auth/status' && read) return json({ enabled: true, authenticated: auth.isAuthenticated(request) });
+      if (path === '/api/auth/setup' && request.method === 'POST') {
+        const data = await body();
+        if (Object.keys(data).some(k => !['token', 'config', 'credential'].includes(k))) throw new InputError('Unsupported setup payload.');
+        await auth.setup(data.token, data.config, data.credential);
+        const session = await auth.login(client, data.credential, 1);
+        return json({ ok: true }, 201, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
-
-      if (url.pathname === "/api/auth/login" && request.method === "POST") {
-        if (!auth) return json({ error: "Authentication is not enabled." }, 404);
-        validateMutation();
-        const data = object(await body());
-        if (Object.keys(data).some(key => !["username", "password"].includes(key)) || typeof data.username !== "string" || !data.username || data.username.length > 254 || typeof data.password !== "string" || !data.password || data.password.length > 1024) {
-          throw new InputError("Enter your username and password.");
-        }
-        const forwardedClient = trustedOrigin ? request.headers.get("x-real-ip") : null;
-        const client = forwardedClient && forwardedClient.length <= 100 ? forwardedClient : "direct-client";
-        const result = await auth.login(client, data.username, data.password);
-        if (!result.ok) return json(
-          { error: result.status === 429 ? "Too many attempts. Wait 15 minutes and try again." : "Username or password is incorrect." },
-          result.status,
-          result.retryAfter ? { "Retry-After": String(result.retryAfter) } : {},
-        );
-        return json({ ok: true }, 200, { "Set-Cookie": auth.cookie(result.token, result.maxAge, secureCookie) });
+      if (path === '/api/auth/login' && request.method === 'POST') {
+        const data = await body();
+        if (Object.keys(data).some(k => !['credential', 'revision'].includes(k))) throw new InputError('Use the encrypted login protocol.');
+        const session = await auth.login(client, data.credential, data.revision);
+        return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
-
-      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
-        if (!auth) return json({ ok: true });
-        validateMutation();
-        auth.logout(request);
+      // Every shell is public and contains no task data. Unlock happens in the page.
+      const assetPath = path.startsWith(`/assets/${ASSET_VERSION}/`) ? path.slice(`/assets/${ASSET_VERSION}`.length) : path;
+      const shell = ['/', '/login', '/offline-shell', '/login-shell'].includes(path);
+      if (read && assets.has(assetPath) && (shell || path === '/sw.js' || path.startsWith(`/assets/${ASSET_VERSION}/`))) {
+        const [file, type] = assets.get(assetPath)!;
+        const socketOrigin = origin.replace(/^http/, 'ws');
+        return new Response(request.method === 'HEAD' ? null : Bun.file(resolve(assetDirectory, file)), { headers: { ...headers, 'Content-Type': type,
+          'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
+      }
+      if (!auth.isAuthenticated(request)) return json({ error: 'Sign in to sync. Encrypted pending changes remain on this device.' }, 401);
+      if (path === '/api/auth/logout' && request.method === 'POST') {
+        auth.logout(request); realtime?.checkSessions();
+        return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
+      }
+      if (path === '/api/auth/password' && request.method === 'POST') {
+        const data = await body();
+        if (Object.keys(data).some(k => !['revision', 'config', 'currentCredential', 'credential'].includes(k))) throw new InputError('Unsupported password-change payload.');
+        await auth.changePassword(client, request, data.currentCredential, data.credential, data.config, data.revision);
         realtime?.checkSessions();
-        return json({ ok: true }, 200, { "Set-Cookie": auth.clearCookie(secureCookie) });
+        return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
       }
-
-      const authenticated = !auth || auth.isAuthenticated(request);
-      if (url.pathname === "/login" && isRead) {
-        if (authenticated) return new Response(null, { status: 303, headers: { ...headers, Location: "/" } });
-        return asset(url.pathname, request.method, request.url);
-      }
-      if (isRead && publicAssets.has(url.pathname)) return asset(url.pathname, request.method, request.url);
-      if (!authenticated) {
-        if (url.pathname.startsWith("/api/")) return json({ error: "Your session has expired. Sign in again." }, 401);
-        return new Response(null, { status: 303, headers: { ...headers, Location: "/login" } });
-      }
-
-      if (url.pathname === '/api/events') {
-        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405);
-        if (request.headers.get('origin') !== (trustedOrigin?.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
-          throw new InputError('Cross-origin requests are not allowed.', 403);
-        }
-        if (!realtime || !server || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-          return json({ error: 'WebSocket upgrade required.' }, 426);
-        }
-        if (server.upgrade(request, { data: { authorized: () => !auth || auth.isAuthenticated(request) } })) return;
+      if (path === '/api/events' && request.method === 'GET') {
+        if (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site') throw new InputError('Cross-origin requests are not allowed.', 403);
+        if (!realtime || !server || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'WebSocket upgrade required.' }, 426);
+        if (server.upgrade(request, { data: { authorized: () => auth.isAuthenticated(request) } })) return;
         return json({ error: 'WebSocket upgrade failed.' }, 400);
       }
-
-      validateMutation();
-      if (url.pathname === '/api/sync' && request.method === 'GET') return json({ ...store.syncBoard(), workspaceKey });
-      if (url.pathname === '/api/sync' && request.method === 'POST') {
-        const input = object(await body());
-        if (input.workspaceKey !== workspaceKey) throw new InputError('This server has a different workspace. Export pending changes before switching.', 409);
-        return json({ ...mutation(() => store.sync(input)), workspaceKey });
+      if (path === '/api/sync' && request.method === 'GET') return json(store.syncBoard());
+      if (path === '/api/sync' && request.method === 'POST') {
+        const result = store.sync(await body());
+        if (result.changed) realtime?.notify();
+        const { changed, ...response } = result;
+        return json(response);
       }
-      if (url.pathname === "/api/board" && request.method === "GET") return json(store.board());
-      if (url.pathname === "/api/export" && request.method === "GET") {
-        if (url.searchParams.get("format") === "markdown") return new Response(exportMarkdown(store.board().tasks), {
-          headers: { ...headers, "Content-Type": "text/markdown; charset=utf-8", "Content-Disposition": 'attachment; filename="taskpath-export.md"' },
-        });
-        return new Response(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), ...store.board() }, null, 2), {
-          headers: { ...headers, "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="taskpath-export.json"' },
-        });
+      if (path === '/api/reminders/claim' && request.method === 'POST') {
+        const data = await body();
+        if (Object.keys(data).some(k => k !== 'tokens')) throw new InputError('Use opaque reminder tokens.');
+        return json(store.claim(data.tokens));
       }
-      if (["/api/import/preview", "/api/import/markdown"].includes(url.pathname) && request.method === "POST") {
-        const input = await body();
-        const parsed = parseMarkdown(input?.markdown);
-        if (url.pathname === "/api/import/preview") return json({ ...store.previewImport(parsed.tasks), ignoredBlocks: parsed.ignoredBlocks });
-        return json(mutation(() => store.importTasks(parsed.tasks)), 201);
-      }
-      if (url.pathname === "/api/tasks" && request.method === "POST") { const input = await body(); return json({ task: mutation(() => store.create(input)) }, 201); }
-      if (url.pathname === "/api/reminders/claim" && request.method === "POST") return json({ tasks: mutation(() => store.claimReminders()) });
-      const reminderMatch = url.pathname.match(/^\/api\/tasks\/([\w-]+)\/reminder$/);
-      if (reminderMatch && request.method === "POST") { const input = await body(); return json({ task: mutation(() => store.actOnReminder(reminderMatch[1]!, input)) }); }
-      const match = url.pathname.match(/^\/api\/tasks\/([\w-]+)(\/restore)?$/);
-      if (match) {
-        const id = match[1]!;
-        if (match[2] && request.method === "POST") return json({ task: mutation(() => store.restore(id)) });
-        if (!match[2] && request.method === "PATCH") { const input = await body(); return json({ task: mutation(() => store.update(id, input)) }); }
-        if (!match[2] && request.method === "DELETE") { mutation(() => store.remove(id)); return json({ ok: true }); }
-      }
-      if (isRead && assets.has(url.pathname)) return asset(url.pathname, request.method, request.url);
-      return json({ error: "Not found." }, 404);
+      return json({ error: 'Endpoint unavailable. Task operations and readable exports run in the unlocked browser.' }, 404);
     } catch (error) {
-      if (error instanceof InputError) return json({ error: error.message }, error.status);
-      console.error(error);
-      return json({ error: "Something went wrong while saving. Please try again." }, 500);
+      if (error instanceof InputError) return json({ error: error.message }, error.status, error.status === 429 ? { 'Retry-After': '900' } : {});
+      // Never log request bodies, credentials, or encryption material.
+      console.error('Taskpath request failed.');
+      return json({ error: 'Could not complete the request. Please try again.' }, 500);
     }
   };
 }
-
 if (import.meta.main) {
-  if (process.env.TASKPATH_PASSWORD) throw new Error("TASKPATH_PASSWORD is no longer supported. Set TASKPATH_PASSWORD_HASH to an Argon2id hash instead.");
-  const username = process.env.TASKPATH_USERNAME;
-  const passwordHash = process.env.TASKPATH_PASSWORD_HASH;
-  if (Boolean(username) !== Boolean(passwordHash)) throw new Error("Set both TASKPATH_USERNAME and TASKPATH_PASSWORD_HASH, or neither.");
-  const sessionDays = Number(process.env.TASKPATH_SESSION_DAYS || "30");
-  const authConfig = username && passwordHash ? { username, passwordHash, sessionDays } : undefined;
-  const store = new Store(process.env.DATABASE_PATH || "./data/taskpath.sqlite", undefined, process.env.TASKPATH_TIMEZONE);
+  if (process.env.NODE_ENV === 'production' && !existsSync(resolve(import.meta.dir, '../dist/public/index.html'))) throw new Error('Client build missing. Run bun run build before starting production.');
+  if (process.env.TASKPATH_PASSWORD || process.env.TASKPATH_PASSWORD_HASH || process.env.TASKPATH_USERNAME) throw new Error('Remove legacy authentication environment variables. This version uses browser-based encrypted setup and a fresh database.');
+  const store = new Store(process.env.DATABASE_PATH || './data/taskpath.sqlite', undefined, process.env.TASKPATH_TIMEZONE);
+  const auth = new AuthManager(store.db, Number(process.env.TASKPATH_SESSION_DAYS || 30));
   const realtime = new Realtime();
-  const server = Bun.serve({
-    hostname: process.env.HOST || "127.0.0.1",
-    port: Number(process.env.PORT || 3000),
-    maxRequestBodySize: 2 * 1024 * 1024,
-    fetch: createHandler(store, authConfig, process.env.TASKPATH_ORIGIN, realtime),
-    websocket: realtime.websocket,
-  });
-  console.log(`Taskpath is ready at ${server.url} (planning timezone: ${store.timezone}; authentication: ${authConfig ? "enabled" : "disabled"})`);
+  const server = Bun.serve({ hostname: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000), maxRequestBodySize: 2 * 1024 * 1024,
+    fetch: createHandler(store, auth, process.env.TASKPATH_ORIGIN, realtime), websocket: realtime.websocket });
+  const launchURL = new URL('/', process.env.TASKPATH_ORIGIN || server.url);
+  if (!process.env.TASKPATH_ORIGIN && ['0.0.0.0', '[::]'].includes(launchURL.hostname)) launchURL.hostname = 'localhost';
+  console.log(`Taskpath is ready at ${launchURL}`);
+  const token = auth.issueSetupToken();
+  if (token) { launchURL.hash = `setup=${token}`; console.log(`One-use setup link (expires in 30 minutes; restart for a new link): ${launchURL}`); }
   const shutdown = async () => { realtime.close(); await server.stop(); store.close(); process.exit(0); };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 }

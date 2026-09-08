@@ -174,3 +174,12 @@ dialog { width:460px; max-width:calc(100vw - 28px); max-height:calc(100dvh - 28p
   #category-filter,#tag-filter { max-width:calc(50% - 5px); flex:1 1 40%; font-size:13px; min-height:36px; }
 }
 @media (hover:none) { .tag-chip { min-height:36px; padding:7px 10px; } }
+
+/* The locked shell contains no visible task data, including BFCache snapshots. */
+body.vault-locked #main, body.vault-locked .skip-link, body.vault-locked #toast,
+body.vault-locked #task-context-menu { display: none !important; }
+#unlock-screen { margin: max(24px, 8vh) auto; padding: 20px; width: min(100%, 480px); }
+#unlock-screen[hidden] { display: none; }
+.remember-option { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.remember-option input { width: 18px; height: 18px; }
+#password-form { display: grid; gap: 14px; }

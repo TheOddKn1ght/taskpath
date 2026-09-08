@@ -3,22 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/e2ee-v3/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/e2ee-v3/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <script src="/theme.js"></script>
-  <link rel="stylesheet" href="/style.css">
-  <script src="/pwa.js" type="module"></script>
-  <script src="/app.js" type="module"></script>
+  <link rel="icon" href="/assets/e2ee-v3/favicon.svg" type="image/svg+xml">
+  <script src="/assets/e2ee-v3/theme.js"></script>
+  <link rel="stylesheet" href="/assets/e2ee-v3/style.css">
+  <script src="/assets/e2ee-v3/pwa.js" type="module"></script>
+  <script src="/assets/e2ee-v3/app.js" type="module"></script>
 </head>
-<body>
+<body class="vault-locked">
+
+  <section id="unlock-screen" class="auth-shell" aria-labelledby="unlock-title">
+    <header class="auth-header"><h1>taskpath<span>.</span></h1><button type="button" id="unlock-theme" class="secondary-button">Switch theme</button></header>
+    <div class="auth-card">
+      <h2 id="unlock-title">Unlock Taskpath</h2>
+      <p id="unlock-description">One password opens your encrypted workspace.</p>
+      <form id="unlock-form">
+        <label class="field">Password<input id="unlock-password" type="password" required maxlength="2048" autocomplete="current-password"></label>
+        <label class="field" id="unlock-confirm-field" hidden>Confirm password<input id="unlock-confirm" type="password" maxlength="2048" autocomplete="new-password"></label>
+        <label class="remember-option"><input id="unlock-remember" type="checkbox"> Remember this device</label>
+        <p class="schedule-hint">Anyone using this browser profile may access your tasks when remembered. Otherwise, closing or reloading locks the workspace.</p>
+        <p id="unlock-error" class="form-error" role="alert" hidden></p>
+        <button id="unlock-submit" type="submit" class="primary-button auth-submit">Unlock</button>
+      </form>
+    </div>
+    <p class="auth-note">Use 15–1,024 characters. A password manager is recommended. Forgotten passwords cannot be recovered by the server.</p>
+  </section>
+  <dialog id="password-dialog" aria-labelledby="password-title">
+    <form id="password-form">
+      <div class="dialog-top"><h2 id="password-title">Change password</h2><button type="button" class="secondary-button" data-close="password-dialog">Close</button></div>
+      <label class="field">Current password<input id="current-password" type="password" required autocomplete="current-password" maxlength="2048"></label>
+      <label class="field">New password<input id="new-password" type="password" required autocomplete="new-password" maxlength="2048"></label>
+      <label class="field">Confirm new password<input id="confirm-password" type="password" required autocomplete="new-password" maxlength="2048"></label>
+      <p class="schedule-hint">Use 15–1,024 characters. Other devices will need to sign in to sync again. Previously saved decryption keys still work. There is no password reset.</p>
+      <p id="password-error" class="form-error" role="alert" hidden></p>
+      <button id="password-save" class="primary-button" type="submit">Change password</button>
+    </form>
+  </dialog>
   <a class="skip-link" href="#main">Skip to your tasks</a>
-  <main id="main">
+  <main id="main" inert>
     <header class="app-header">
       <div class="app-heading"><h1>taskpath<span>.</span></h1><span id="week-label" class="week-label">This week</span></div>
       <div class="toolbar">
@@ -27,7 +55,7 @@
         <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
-        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="logout" hidden>Sign out</button></div></details>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
       </div>
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
@@ -63,7 +91,7 @@
 
   <dialog id="import-dialog" aria-labelledby="import-title">
     <div class="dialog-top"><h2 id="import-title">Import Markdown</h2><button type="button" class="icon-button" data-close="import-dialog" aria-label="Close import"><span data-icon="x"></span></button></div>
-    <p class="import-hint">Connect to preview a file or pasted checklist. Imports then save on this device. Use headings Later, This Week, Today, and Done to place tasks. Exact duplicates are skipped.</p>
+    <p class="import-hint">Preview a file or pasted checklist, even offline. Imports are encrypted on this device. Use headings Later, This Week, Today, and Done to place tasks. Exact duplicates are skipped.</p>
     <label class="field">Markdown file<input id="markdown-file" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain"></label>
     <label class="field">Markdown text<textarea id="markdown-text" rows="7" spellcheck="false" placeholder="## This Week&#10;- [ ] Write the first draft&#10;  - Due: 2026-09-10"></textarea></label>
     <p class="schedule-hint">Up to 500 tasks / 256 KB. Existing tasks are kept. Imported Today and This Week tasks use the current day and week.</p>

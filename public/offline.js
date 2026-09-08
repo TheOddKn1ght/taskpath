@@ -1,162 +1,187 @@
 import { importTaskKey } from './tags.js';
-import { project, queueChange, acceptSync } from './offline-model.js';
+import { project, queueChange, validate } from './offline-model.js';
 import { exportMarkdown } from './export-markdown.js';
-const DB_NAME = 'taskpath-offline-v1';
-let database;
-const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('taskpath-offline') : null;
-const empty = () => ({ board: null, pending: [], offset: 0, lastEdit: 0, locked: false });
-function db() {
-  if (!database) database = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore('state');
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(new Error('Device storage is unavailable. Enable browser storage to save tasks.'));
-  });
-  return database;
+import { parseMarkdown } from './markdown.js';
+import { decryptEnvelope, encryptChange, validateConfig, validateEnvelope } from './crypto.js';
+import { localState, commit, rememberedKey, saveUnlock, forgetKeys } from './persistence.js';
+export { localState } from './persistence.js';
+let vaultKey = null, epoch = -1, generation = 0;
+const page = typeof window !== 'undefined';
+const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('taskpath-encrypted-v1') : null;
+const emit = name => { if (page) window.dispatchEvent(new Event(name)); };
+function changed() { channel?.postMessage('changed'); emit('taskpath-storage'); }
+export const isUnlocked = () => Boolean(vaultKey);
+export function clearMemory() { vaultKey = null; generation++; emit('taskpath-locked'); }
+if (page && channel) channel.onmessage = async event => {
+  if (event.data === 'lock') clearMemory();
+  const record = await localState();
+  if (vaultKey && epoch !== record.lockEpoch) clearMemory();
+  emit('taskpath-storage');
+};
+export async function lock() {
+  clearMemory();
+  try { await forgetKeys(); }
+  catch (error) { if (page) window.dispatchEvent(new CustomEvent('taskpath-lock-error', { detail: 'The page is locked, but this browser could not remove its remembered key. Do not rely on reload locking until browser storage is available.' })); throw error; }
+  finally { channel?.postMessage('lock'); }
 }
-export async function localState(update) {
-  const database = await db();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('state', update ? 'readwrite' : 'readonly');
-    const store = tx.objectStore('state');
-    let value, problem;
-    const request = store.get('workspace');
-    request.onsuccess = () => {
-      value = request.result || empty();
-      try { if (update) { update(value); store.put(value, 'workspace'); } }
-      catch (error) { problem = error; tx.abort(); }
-    };
-    tx.oncomplete = () => resolve(value);
-    tx.onabort = tx.onerror = () => reject(problem || tx.error || new Error('Could not save to this device. Storage may be full.'));
-  });
+if (page) {
+  window.addEventListener('pagehide', clearMemory);
+  window.addEventListener('pageshow', event => { if (event.persisted) clearMemory(); });
 }
-function changed() {
-  channel?.postMessage('changed');
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('taskpath-storage'));
+export async function activate(config, key, remember, expectedEpoch) {
+  const started = generation;
+  validateConfig(config);
+  await saveUnlock(config, key, remember, expectedEpoch);
+  // A lock in another tab between the commit and here must win.
+  const record = await localState();
+  if (started !== generation || record.lockEpoch !== expectedEpoch) throw new Error('Workspace was locked. Try again.');
+  vaultKey = key; epoch = expectedEpoch; generation++;
+  emit('taskpath-unlocked');
 }
-if (typeof window !== 'undefined' && channel) channel.onmessage = () => window.dispatchEvent(new Event('taskpath-storage'));
+export async function restoreRemembered() {
+  const before = generation, record = await localState(), remembered = await rememberedKey();
+  const current = await localState();
+  if (current.lockEpoch !== record.lockEpoch || before !== generation || !remembered || remembered.lockEpoch !== record.lockEpoch || remembered.vaultId !== record.config?.vaultId || remembered.key.extractable) return false;
+  vaultKey = remembered.key; epoch = record.lockEpoch; generation++;
+  return true;
+}
+function assertUnlocked(record, token = generation) {
+  if (!vaultKey || token !== generation || epoch !== record.lockEpoch) {
+    const error = new Error('Unlock your workspace to continue.'); error.status = 423; throw error;
+  }
+}
 export async function network(path, method = 'GET', body) {
-  const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store',
-    headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+  const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000) });
   if (!response.ok) {
-    let message = response.status === 401 ? 'Sign in to sync. Your changes are saved on this device.' : 'Sync is paused. Your changes are saved on this device.';
-    try { message = (await response.json()).error || message; } catch { /* Proxy errors may be HTML. */ }
+    let message = response.status === 401 ? 'Sign in to sync. Encrypted changes are saved on this device.' : 'Could not complete the request. Your encrypted changes are safe on this device.';
+    try { message = (await response.json()).error || message; } catch { /* Proxy error. */ }
     const error = new Error(message); error.status = response.status; throw error;
   }
   return response.json();
 }
-let syncing;
-export async function syncAfterCurrent() {
-  // A socket notice may describe a commit made after an in-flight HTTP snapshot.
-  // Wait for that response, then fetch again instead of reusing its promise.
-  if (syncing) { try { await syncing; } catch { /* Retry through the normal path. */ } }
-  return sync();
+const newer = (a, b) => !b || a.editedAt > b.editedAt || (a.editedAt === b.editedAt && a.changeId > b.changeId);
+export function acceptEncrypted(record, response, now = Date.now()) {
+  if (response.format !== 1 || !Array.isArray(response.rows) || response.workspaceKey !== record.config?.vaultId) {
+    const error = new Error('This server has a different or unsupported workspace. Local encrypted changes were kept.'); error.status = 409; throw error;
+  }
+  new Intl.DateTimeFormat('en', { timeZone: response.timezone });
+  if (!Number.isFinite(Date.parse(response.serverTime))) throw new Error('Invalid server time.');
+  for (const e of response.rows) validateEnvelope(e, record.config.vaultId);
+  const rows = new Map((record.board?.rows || []).map(e => [e.taskId, e]));
+  for (const e of response.rows) if (newer(e, rows.get(e.taskId))) rows.set(e.taskId, e);
+  const ack = new Set(response.acknowledged || []);
+  record.pending = record.pending.filter(e => !ack.has(e.changeId));
+  record.board = { format: 1, workspaceKey: response.workspaceKey, timezone: response.timezone, serverTime: response.serverTime, rows: [...rows.values()] };
+  record.offset = Date.parse(response.serverTime) - now;
+  record.lastEdit = Math.max(record.lastEdit || 0, ...response.rows.map(e => Date.parse(e.editedAt)));
+  record.online = true; record.authRequired = false; record.error = null; record.conflicts = response.conflicts || 0;
 }
+let syncing;
+export async function syncAfterCurrent() { if (syncing) try { await syncing; } catch {} return sync(); }
 export function sync() {
   if (syncing) return syncing;
   const run = async () => {
-    let before = await localState();
-    if (before.locked) return;
+    if (!(await localState()).config) return;
     try {
-      // Each batch is acknowledged by immutable operation ID. New edits made during
-      // the request survive the response, including edits from another tab.
       for (let batch = 0; batch < 20; batch++) {
-        before = await localState();
-        if (before.locked) return;
-        const changes = [];
-        let bytes = 0;
-        for (const change of before.pending.slice(0, 50)) {
+        const record = await localState(), changes = []; let bytes = 0;
+        for (const change of record.pending.slice(0, 50)) {
           const size = new TextEncoder().encode(JSON.stringify(change)).length;
           if (changes.length && bytes + size > 1024 * 1024) break;
           changes.push(change); bytes += size;
         }
-        const response = await network('/api/sync', changes.length ? 'POST' : 'GET', changes.length ? { workspaceKey: before.board.workspaceKey, changes } : undefined);
-        await localState(record => {
-          if (record.locked) return;
-          acceptSync(record, response);
-          record.online = true; record.error = null; record.conflicts = response.conflicts || 0;
-        });
+        const response = await network('/api/sync', changes.length ? 'POST' : 'GET', changes.length ? { workspaceKey: record.config.vaultId, changes } : undefined);
+        await localState(current => acceptEncrypted(current, response));
         changed();
         if (!changes.length || !(await localState()).pending.length) return;
       }
     } catch (error) {
-      await localState(record => {
-        if (record.locked) return;
-        record.online = Boolean(error.status);
-        record.authRequired = error.status === 401;
-        record.error = error.status && error.status !== 401 ? error.message : null;
-      });
-      changed();
-      throw error;
+      await localState(record => { record.online = Boolean(error.status); record.authRequired = error.status === 401; record.error = error.status && error.status !== 401 ? error.message : null; });
+      changed(); throw error;
     }
   };
-  syncing = (navigator.locks ? navigator.locks.request('taskpath-network-sync', run) : run()).finally(() => { syncing = null; });
+  syncing = (globalThis.navigator?.locks ? navigator.locks.request('taskpath-encrypted-sync', run) : run()).finally(() => { syncing = null; });
   return syncing;
 }
-export async function readBoard() {
-  let record = await localState();
-  if (record.locked) {
-    const error = new Error('Sign in to open this workspace.');
-    error.status = 401;
-    throw error;
-  }
-  if (!record.board) { await sync(); record = await localState(); }
-  return project(record);
+async function plaintext(record, token) {
+  assertUnlocked(record, token);
+  const key = vaultKey, vaultId = record.config.vaultId;
+  const rows = await Promise.all((record.board?.rows || []).map(e => decryptEnvelope(key, vaultId, e)));
+  const pending = await Promise.all(record.pending.map(async e => ({ task: await decryptEnvelope(key, vaultId, e), changeId: e.changeId, editedAt: e.editedAt })));
+  for (const task of [...rows, ...pending.map(c => c.task)]) validate(task);
+  assertUnlocked(await localState(), token);
+  return { ...record, board: { ...record.board, rows }, pending, locked: false };
 }
-async function scheduleSync() {
-  if (typeof window === 'undefined') return;
-  try {
-    const registration = await navigator.serviceWorker?.getRegistration();
-    if (registration?.sync) await registration.sync.register('taskpath-sync');
-  } catch { /* Foreground retries work when Background Sync is unavailable. */ }
-  void sync().catch(() => {});
+export async function readBoard() {
+  const token = generation; let record = await localState(); assertUnlocked(record, token);
+  if (!record.board) { await sync(); record = await localState(); }
+  if (!record.board) throw new Error('Connect once to download this workspace.');
+  return project(await plaintext(record, token));
+}
+let writing = Promise.resolve();
+async function write(operation) {
+  const token = generation;
+  const run = async () => {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const current = await localState(); assertUnlocked(current, token);
+      if (!current.board) throw new Error('Connect once to download your workspace.');
+      const decoded = await plaintext(current, token), count = decoded.pending.length;
+      const result = operation(decoded);
+      const pending = [...current.pending];
+      for (const change of decoded.pending.slice(count)) pending.push(await encryptChange(vaultKey, current.config.vaultId, change));
+      assertUnlocked(await localState(), token);
+      if (await commit(current.revision, { ...current, pending, lastEdit: decoded.lastEdit })) { changed(); return result; }
+    }
+    throw new Error('Another tab is updating. Please try again.');
+  };
+  const next = writing.catch(() => {}).then(() => globalThis.navigator?.locks ? navigator.locks.request('taskpath-encrypted-edit', run) : run());
+  writing = next.then(() => {}, () => {});
+  const result = await next;
+  if (page) {
+    try { const registration = await navigator.serviceWorker?.getRegistration(); await registration?.sync?.register('taskpath-encrypted-sync'); } catch {}
+    void sync().catch(() => {});
+  }
+  return result;
+}
+export function previewImport(tasks, record, now = Date.now()) {
+  if (!Array.isArray(tasks) || tasks.length > 500) throw new Error('Import up to 500 tasks at a time.');
+  const copy = structuredClone(record), seen = new Set(project(copy, now).tasks.map(importTaskKey));
+  const result = []; let skipped = 0;
+  for (const input of tasks) {
+    const task = queueChange(copy, '/api/tasks', 'POST', input, now).task;
+    const key = importTaskKey(task);
+    if (seen.has(key)) skipped++; else { seen.add(key); result.push(task); }
+  }
+  return { tasks: result, skipped };
 }
 export async function offlineRequest(path, method = 'GET', body) {
+  const token = generation; assertUnlocked(await localState(), token);
   if (path === '/api/board' && method === 'GET') return readBoard();
   if (path.startsWith('/api/export')) {
     const board = await readBoard();
-    return path.includes('format=markdown') ? exportMarkdown(board.tasks) : { version: 1, exportedAt: new Date().toISOString(), ...board, rows: undefined, workspaceKey: undefined, pendingChanges: (await localState()).pending };
+    return path.includes('format=markdown') ? exportMarkdown(board.tasks) : { version: 2, exportedAt: new Date().toISOString(), timezone: board.timezone, tasks: board.tasks };
   }
   if (path === '/api/import/preview') {
-    try { return await network(path, method, body); }
-    catch (error) { if (!error.status) throw new Error('Connect to preview Markdown. Task edits and exports work offline.'); throw error; }
+    const parsed = parseMarkdown(body.markdown), record = await plaintext(await localState(), token);
+    return { ...previewImport(parsed.tasks, record), ignoredBlocks: parsed.ignoredBlocks };
   }
   if (path === '/api/reminders/claim') {
     if ((await localState()).pending.length) return { tasks: [] };
-    try { return await network(path, method, body); } catch { return { tasks: [] }; }
+    const board = await readBoard();
+    const due = board.reminders.filter(t => t.reminderToken).slice(0, 100);
+    try {
+      const claimed = await network(path, 'POST', { tokens: due.map(t => t.reminderToken) });
+      assertUnlocked(await localState(), token);
+      return { tasks: due.filter(t => claimed.tokens.includes(t.reminderToken)) };
+    } catch { return { tasks: [] }; }
   }
-  if (method === 'GET') return network(path, method, body);
-  let result;
-  await localState(record => {
+  if (method === 'GET') throw new Error('Unsupported task operation.');
+  return write(record => {
     if (path === '/api/import/markdown') {
-      if (!Array.isArray(body.tasks)) throw new Error('Preview this import first.');
-      const key = importTaskKey;
-      const seen = new Set(project(record).tasks.map(key));
-      let imported = 0, skipped = 0;
-      for (const task of body.tasks) {
-        if (seen.has(key(task))) { skipped++; continue; }
-        seen.add(key(task)); queueChange(record, '/api/tasks', 'POST', task); imported++;
-      }
-      result = { imported, skipped };
-    } else result = queueChange(record, path, method, body);
+      const preview = previewImport(body.tasks, record);
+      for (const task of preview.tasks) queueChange(record, '/api/tasks', 'POST', task);
+      return { imported: preview.tasks.length, skipped: preview.skipped };
+    }
+    return queueChange(record, path, method, body);
   });
-  changed();
-  void scheduleSync();
-  return result;
-}
-export async function signOut() {
-  // Mark locked in the same transaction as the pending check. Other tabs cannot
-  // enqueue work or repopulate the local data while logout is in flight.
-  await localState(record => {
-    if (record.pending.length) throw new Error('Sync your pending changes before signing out.');
-    record.locked = true;
-  });
-  try { await network('/api/auth/logout', 'POST', {}); }
-  catch (error) { await localState(record => { record.locked = false; }); throw error; }
-  await localState(record => Object.assign(record, empty(), { locked: true }));
-  changed();
-}
-export async function unlockAfterLogin() {
-  await localState(record => { record.locked = false; });
 }

@@ -7,13 +7,11 @@ services:
     environment:
       TASKPATH_TIMEZONE: ${TASKPATH_TIMEZONE:-UTC}
       TASKPATH_ORIGIN: ${TASKPATH_ORIGIN:-}
-      TASKPATH_USERNAME: ${TASKPATH_USERNAME:-}
-      TASKPATH_PASSWORD_HASH: ${TASKPATH_PASSWORD_HASH:-}
       TASKPATH_SESSION_DAYS: ${TASKPATH_SESSION_DAYS:-30}
     volumes:
-      - taskpath-data:/app/data
+      - taskpath-encrypted-data:/app/data
     restart: unless-stopped
     init: true
 
 volumes:
-  taskpath-data:
+  taskpath-encrypted-data:

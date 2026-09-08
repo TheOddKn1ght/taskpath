@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "description": "A little space to plan your week and focus your day.",
-  "engines": { "bun": ">=1.4.0" },
+  "engines": {
+    "bun": ">=1.4.2"
+  },
   "scripts": {
-    "start": "bun run src/server.ts",
-    "start:smol": "bun --smol run src/server.ts",
-    "dev": "bun --watch src/server.ts",
-    "dev:smol": "bun --smol --watch src/server.ts",
-    "hash-password": "bun run src/hash-password.ts",
-    "test": "bun test"
+    "start": "NODE_ENV=production bun run src/server.ts",
+    "start:smol": "NODE_ENV=production bun --smol run src/server.ts",
+    "dev": "NODE_ENV=development bun --watch src/server.ts",
+    "dev:smol": "NODE_ENV=development bun --smol --watch src/server.ts",
+    "test": "bun test",
+    "build": "bun run scripts/build.ts"
   }
 }

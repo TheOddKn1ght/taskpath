@@ -1,7 +1,10 @@
 import { normalizeTags } from './tags.js';
-import { offlineRequest, sync, syncAfterCurrent, localState, signOut } from './offline.js';
+import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked } from './offline.js';
+import { startVault } from './vault-ui.js';
 import { createRealtime } from './realtime.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
+
+await startVault();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -112,14 +115,14 @@ function renderReminders(board) {
 }
 
 async function deliverNotifications() {
-  if (!notificationsEnabled() || notificationBusy) return;
+  if (!isUnlocked() || !notificationsEnabled() || notificationBusy) return;
   notificationBusy = true;
   try {
     const { tasks } = await request('/api/reminders/claim', 'POST', {});
-    if (!tasks.length) return;
+    if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
     const notification = new Notification(single ? 'Taskpath reminder' : `${tasks.length} Taskpath reminders`, {
-      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/favicon.svg',
+      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/e2ee-v3/favicon.svg',
     });
     notification.onclick = () => {
       window.focus(); notification.close();
@@ -133,12 +136,13 @@ async function deliverNotifications() {
 
 // Task content is always escaped before it is inserted into markup.
 function escape(value) { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]); }
-function announce(message) { $('#announcer').textContent = message; }
+function announce(message) { if (isUnlocked()) $('#announcer').textContent = message; }
 function connection(text, offline = false) {
   $('#save-status').innerHTML = `<span class="status-dot"></span>${escape(text)}`;
   $('#save-status').classList.toggle('offline', offline);
 }
 function notify(message, action, label = 'Undo') {
+  if (!isUnlocked()) return;
   clearTimeout(toastTimer);
   $('#toast-message').textContent = message;
   $('#toast-action').hidden = !action;
@@ -148,6 +152,7 @@ function notify(message, action, label = 'Undo') {
   toastTimer = setTimeout(() => { $('#toast').hidden = true; }, action ? 15000 : 5000);
 }
 function showError(error) {
+  if (!isUnlocked()) return;
   $('#error-text').textContent = error.message || 'Could not reach your workspace. Please try again.';
   $('#error-banner').hidden = false;
   connection('Connection interrupted', true);
@@ -157,7 +162,7 @@ async function request(path, method = 'GET', body, format = 'json') {
 }
 async function syncStatus() {
   const local = await localState();
-  if (local.locked) { location.replace('/login'); return; }
+  if (!isUnlocked()) return;
   const count = local.pending.length;
   const text = local.authRequired ? `Sign in to sync · ${count} pending` : local.error ? `Sync paused · ${count} pending` : count ? `${count} ${count === 1 ? 'change' : 'changes'} saved on this device` : local.online ? 'All changes synced' : 'Offline · Saved on this device';
   connection(text, !local.online || Boolean(local.authRequired || local.error));
@@ -165,16 +170,8 @@ async function syncStatus() {
   if (local.error) { $('#error-text').textContent = local.error; $('#error-banner').hidden = false; }
 }
 
-async function authControls() {
-  try {
-    const response = await fetch('/api/auth/status', { signal: AbortSignal.timeout(12000) });
-    const status = await response.json();
-    $('#logout').hidden = !status.enabled;
-  } catch { /* The normal board request reports connection errors. */ }
-}
-
 async function refresh({ quiet = false } = {}) {
-  if (state.loading || state.busy || dragId) return;
+  if (!isUnlocked() || state.loading || state.busy || dragId) return;
   state.loading = true;
   try {
     const board = await request('/api/board');
@@ -182,17 +179,14 @@ async function refresh({ quiet = false } = {}) {
     $('#error-banner').hidden = true;
     await syncStatus();
   } catch (error) {
-    if (error.status === 401 && !(await localState()).board) {
-      state.tasks = []; $('#board').replaceChildren(); $('#reminder-panel').replaceChildren();
-      $$('dialog[open]').forEach(dialog => dialog.close());
-      location.replace('/login'); return;
-    }
+    if (!isUnlocked()) return;
     showError(error);
     if (!quiet && !state.ready) $('#board').innerHTML = '<p class="loading-message">Your workspace couldn’t be opened. Try reconnecting above.</p>';
   } finally { state.loading = false; $('#board').setAttribute('aria-busy', 'false'); }
 }
 
 function applyBoard(board) {
+  if (!isUnlocked()) return;
   const changed = JSON.stringify(state.tasks) !== JSON.stringify(board.tasks) || state.day !== board.day;
   const previousDay = state.day;
   Object.assign(state, board, { ready: true });
@@ -211,6 +205,7 @@ async function mutate(path, method, body, message) {
     // A failed redraw must not disguise an already-committed local write as a failed save.
     try { applyBoard(await request('/api/board')); $('#error-banner').hidden = true; await syncStatus(); }
     catch (error) { showError(new Error('Your change was saved on this device, but the board could not refresh.')); }
+    if (!isUnlocked()) throw new Error('Workspace locked. Encrypted changes remain saved.');
     if (message) notify(message);
     return result;
   } catch (error) {
@@ -328,6 +323,7 @@ function render() {
 }
 
 function openTask(status = 'later', task = null) {
+  if (!isUnlocked()) return;
   closeTaskContextMenu();
   state.editing = task?.id || null;
   $('#task-form').reset();
@@ -390,8 +386,7 @@ $('#logout').addEventListener('click', async () => {
   $('.app-menu').open = false;
   $('#logout').disabled = true;
   try {
-    await signOut();
-    location.replace('/login');
+    await lock();
   } catch (error) { notify(error.message); }
   finally { $('#logout').disabled = false; }
 });
@@ -473,6 +468,7 @@ $('#confirm-import').addEventListener('click', async () => {
   } catch (error) { importError(error); }
   finally { importBusy = false; controls.forEach(control => { control.disabled = false; }); }
 });
+$('#sign-in-again').addEventListener('click', event => { event.preventDefault(); void lock(); });
 $('#retry').addEventListener('click', () => { void sync().catch(() => {}); void refresh(); });
 $('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); });
 $('#toast-action').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); toastAction?.(); });
@@ -658,6 +654,7 @@ $('#board').addEventListener('change', async event => {
 
 document.addEventListener('click', event => { $$('.task-menu[open], .app-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.open = false; }); });
 document.addEventListener('keydown', event => {
+  if (!isUnlocked()) return;
   if (!$('#task-context-menu').hidden) return;
   if (event.key === 'Escape') { $$('.task-menu[open], .app-menu[open]').forEach(menu => { menu.open = false; $('summary', menu).focus(); }); clearDrag(); }
   if (event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[contenteditable="true"]') || $('dialog[open]')) return;
@@ -755,18 +752,38 @@ $('#board').addEventListener('pointercancel', event => {
 
 // Optional agent controls share the exact same persistence path as the interface.
 const context = document.modelContext;
-if (context?.registerTool) {
-  const lifecycle = new AbortController();
+let toolsLifecycle;
+function registerTools() {
+if (context?.registerTool && isUnlocked()) {
+  toolsLifecycle?.abort();
+  const lifecycle = toolsLifecycle = new AbortController();
   const register = tool => { try { Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } };
   register({ name: 'list_tasks', description: 'Read the tasks in this Taskpath workspace.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute: async () => { const board = await request('/api/board'); if (!state.busy && !state.loading && !dragId) applyBoard(board); return { tasks: board.tasks }; } });
   register({ name: 'create_task', description: 'Create a task and save it to the selected Taskpath column.', inputSchema: { type: 'object', properties: { title: { type: 'string', maxLength: 240 }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['title', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { const result = await mutate('/api/tasks', 'POST', input); return { task: result.task }; } });
   register({ name: 'move_task', description: 'Move a saved Taskpath task into Later, This Week, Today, or Done.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['id', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { if (!input || typeof input.id !== 'string' || !/^[\w-]+$/.test(input.id) || !Object.hasOwn(columns, input.status)) throw new Error('Invalid task or column.'); await moveTask(input.id, input.status); return { id: input.id, status: input.status }; } });
-  window.addEventListener('pagehide', () => lifecycle.abort(), { once: true });
 }
+}
+registerTools();
 
 const realtime = createRealtime({ sync: syncAfterCurrent, localState, url: location.href });
 notificationControls();
-void authControls();
+
+window.addEventListener('taskpath-password-changed', () => notify('Password changed. Other devices must sign in to sync again.'));
+window.addEventListener('taskpath-locked', () => {
+  toolsLifecycle?.abort();
+  for (const name of ['list_tasks', 'create_task', 'move_task']) { try { context?.unregisterTool?.(name); } catch {} }
+  realtime.pause(); clearTimeout(reminderTimer); clearTimeout(toastTimer); clearDrag();
+  for (const key of Object.keys(state)) { if (Array.isArray(state[key])) state[key] = []; }
+  Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, ready: false, query: '', tag: '', loading: false });
+  editingTags = []; editingReminder = null; importSource = null; importRevision++; toastAction = null; contextTaskId = null; contextReturnFocus = null;
+  for (const selector of ['#board', '#reminder-panel', '#task-context-menu', '#task-tags', '#tag-suggestions', '#import-tasks']) $(selector).replaceChildren();
+  for (const input of $$('input, textarea')) if (!['checkbox', 'file'].includes(input.type)) input.value = '';
+  $('#task-form').reset(); $('#password-form').reset();
+  for (const selector of ['#toast-message', '#announcer', '#error-text', '#form-error', '#import-error', '#import-summary', '#import-warning']) $(selector).textContent = '';
+  $('#error-banner').hidden = true; $('#toast').hidden = true;
+  $('#tag-filter').innerHTML = '<option value="">All tags</option>';
+});
+window.addEventListener('taskpath-unlocked', () => { registerTools(); void refresh(); realtime.resume(); });
 window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });
 window.addEventListener('online', () => realtime.resume());
 window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()); });

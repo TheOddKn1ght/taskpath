@@ -1,13 +1,7 @@
 import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Store } from '../src/store';
+import { ClientStore as Store } from './client-helpers';
 import { normalizeTags, importTaskKey } from '../public/tags.js';
-import { project, queueChange, acceptSync } from '../public/offline-model.js';
-import { exportMarkdown, parseMarkdown } from '../src/markdown';
-import { createHandler } from '../src/server';
+import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
 
 const time = '2026-09-08T12:00:00.000Z';
 const makeStore = () => new Store(':memory:', () => new Date(time), 'UTC');
@@ -21,93 +15,18 @@ test('shared tag normalization handles Unicode, duplicates, limits and invalid i
   expect(normalizeTags(Array(20).fill('home'))).toEqual(['home']);
 });
 
-test('v2 migration preserves data and tags survive reopening SQLite', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'taskpath-tags-'));
-  const path = join(directory, 'tasks.sqlite');
-  let store = new Store(path);
-  try {
-    const task = store.create({ title: 'Existing', category: 'work', status: 'later', notes: 'Keep', dueDate: '2026-10-01' });
-    const original = { ...task }; delete (original as any).tags;
-    store.close();
-    const old = new Database(path);
-    old.exec('ALTER TABLE tasks DROP COLUMN tags; PRAGMA user_version = 2;');
-    old.close();
-    store = new Store(path);
-    expect(store.board().tasks[0]).toEqual({ ...original, tags: [] });
-    expect(store.db.query('PRAGMA user_version').get()).toEqual({ user_version: 3 });
-    store.update(task.id, { tags: ['Home', ' Errands '] });
-    store.close();
-    store = new Store(path);
-    expect(store.board().tasks[0].tags).toEqual(['errands', 'home']);
-  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
-});
-
-test('HTTP task writes expose arrays, preserve omitted tags, clear explicit empty tags and reject invalid ones', async () => {
-  const store = makeStore();
-  try {
-    const handle = createHandler(store);
-    const request = async (path: string, method: string, input: unknown) => handle(new Request(`http://localhost${path}`, {
-      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
-    }));
-    const created = await request('/api/tasks', 'POST', { title: 'Tagged', tags: ['HOME'] });
-    expect(created!.status).toBe(201);
-    const { task } = await created!.json() as any;
-    expect(task.tags).toEqual(['home']);
-    expect((await (await request(`/api/tasks/${task.id}`, 'PATCH', { status: 'today' }))!.json() as any).task.tags).toEqual(['home']);
-    expect((await request(`/api/tasks/${task.id}`, 'PATCH', { tags: null }))!.status).toBe(400);
-    expect((await (await request(`/api/tasks/${task.id}`, 'PATCH', { tags: [] }))!.json() as any).task.tags).toEqual([]);
-  } finally { store.close(); }
-});
-
 test('tags survive task lifecycle, reminders and calendar rollover', () => {
   const store = makeStore();
   try {
     const task = store.create({ title: 'Tagged', tags: ['home'], status: 'today', reminderAt: time });
-    expect(store.claimReminders()[0].tags).toEqual(['home']);
+    expect(store.board().reminders[0].tags).toEqual(['home']);
     expect(store.actOnReminder(task.id, { action: 'snooze', reminderAt: time }).tags).toEqual(['home']);
     store.update(task.id, { status: 'done' });
     store.remove(task.id);
     expect(store.restore(task.id).tags).toEqual(['home']);
     store.update(task.id, { status: 'today' });
-    store.db.query("UPDATE tasks SET plannedWeek = '2026-08-31'").run();
+    store.record.pending.at(-1).task.plannedWeek = '2026-08-31';
     expect(store.board().tasks[0]).toMatchObject({ status: 'later', tags: ['home'] });
-  } finally { store.close(); }
-});
-
-test('legacy pending changes preserve server tags without rewriting operation IDs or timestamps', () => {
-  const store = makeStore();
-  try {
-    const task = store.create({ title: 'Existing', tags: ['home'] });
-    const oldTask: any = { ...task, title: 'Offline legacy edit' }; delete oldTask.tags;
-    const editedAt = '2026-09-08T12:01:00.000Z';
-    const change = { task: oldTask, changeId: 'legacy', editedAt };
-    const record = { board: store.syncBoard(), pending: [change], offset: 0 };
-    const before = JSON.stringify(record.pending);
-    expect(project(record).tasks[0].tags).toEqual(['home']);
-    expect(JSON.stringify(record.pending)).toBe(before);
-    expect(store.sync({ changes: [change] }).tasks[0]).toMatchObject({ title: 'Offline legacy edit', tags: ['home'] });
-    expect(store.sync({ changes: [{ ...change, changeId: 'clear', editedAt: '2026-09-08T12:02:00.000Z', task: { ...oldTask, tags: [] } }] }).tasks[0].tags).toEqual([]);
-    expect(store.sync({ changes: [change] }).tasks[0].tags).toEqual([]);
-  } finally { store.close(); }
-});
-
-test('offline tag edits survive queued moves and deletion/undo, round-trip, and resolve whole-task conflicts', () => {
-  const store = makeStore();
-  try {
-    const record: any = { board: { ...store.syncBoard(), workspaceKey: 'test' }, pending: [], offset: 0, lastEdit: 0 };
-    const { task } = queueChange(record, '/api/tasks', 'POST', { title: 'Offline', tags: ['HOME'] }, Date.parse(time));
-    queueChange(record, `/api/tasks/${task.id}`, 'PATCH', { tags: ['Errands', 'home'], status: 'week' }, Date.parse(time) + 1);
-    queueChange(record, `/api/tasks/${task.id}`, 'DELETE', {}, Date.parse(time) + 2);
-    queueChange(record, `/api/tasks/${task.id}/restore`, 'POST', {}, Date.parse(time) + 3);
-    expect(project(record).tasks[0].tags).toEqual(['errands', 'home']);
-    const response = store.sync({ changes: record.pending });
-    acceptSync(record, { ...response, workspaceKey: 'test' });
-    expect(record.pending).toEqual([]);
-    expect(project(record).tasks[0].tags).toEqual(['errands', 'home']);
-    const latest = { task: { ...response.tasks[0], title: 'Newer', tags: ['new'] }, changeId: 'newer', editedAt: '2026-09-08T12:02:00.000Z' };
-    store.sync({ changes: [latest] });
-    const older = { ...latest, task: { ...latest.task, tags: ['old'] }, changeId: 'older', editedAt: '2026-09-08T12:01:00.000Z' };
-    expect(store.sync({ changes: [older] }).tasks[0]).toMatchObject({ title: 'Newer', tags: ['new'] });
   } finally { store.close(); }
 });
 

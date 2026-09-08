@@ -1,106 +1,52 @@
 import { test, expect } from 'bun:test';
-import { Store } from '../src/store';
-import { createHandler } from '../src/server';
 import { Realtime } from '../src/realtime';
+import { createHandler } from '../src/server';
 import { createRealtime } from '../public/realtime.js';
-import { login, testAuth } from './auth-helpers';
-
-async function until(check: () => boolean) {
-  const deadline = Date.now() + 2000;
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error('Timed out waiting for realtime event');
-    await Bun.sleep(5);
-  }
-}
-
-test('WebSocket upgrades require a valid session and exact Origin, including local mode', async () => {
-  const store = new Store(':memory:');
-  const hub = new Realtime();
+import { fixture, testVault } from './auth-helpers';
+import { ClientStore } from './client-helpers';
+import { encryptChange, decryptEnvelope } from '../public/crypto.js';
+const until = async (condition: () => boolean, timeout = 4000) => {
+  const end = Date.now() + timeout;
+  while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await Bun.sleep(10); }
+};
+test('real WebSockets propagate encrypted edits between devices, enforce Origin, and close revoked sessions', async () => {
+  const { store, auth } = await fixture(); const hub = new Realtime(50);
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: hub.websocket, fetch: createHandler(store, auth, undefined, hub) });
+  const origin = server.url.origin, sockets: WebSocket[] = [];
+  const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   try {
-    const handle = createHandler(store, testAuth, 'https://tasks.example.com', hub);
-    const { cookie } = await login(handle);
-    let upgraded = 0;
-    const server = { upgrade: () => { upgraded++; return true; } } as any;
-    const request = (headers: Record<string, string>) => new Request('http://127.0.0.1:3000/api/events', { headers: { Upgrade: 'websocket', ...headers } });
-    expect((await handle(request({ Origin: 'https://tasks.example.com' }), server))!.status).toBe(401);
-    for (const origin of ['', 'https://attacker.example', 'null']) {
-      expect((await handle(request({ Cookie: cookie, Origin: origin }), server))!.status).toBe(403);
+    expect((await fetch(origin + '/api/events', { headers: { origin } })).status).toBe(401);
+    const session = async () => (await post('/api/auth/login', { credential: testVault.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
+    const a = await session(), b = await session();
+    expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin: 'https://evil.example' } })).status).toBe(403);
+    expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(426);
+    const messages: string[][] = [[], []]; const closed: number[] = [];
+    for (const [i, cookie] of [a, b].entries()) {
+      const socket = new WebSocket(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
+      socket.onmessage = event => messages[i].push(String(event.data));
+      socket.onclose = event => { closed[i] = event.code; }; sockets.push(socket);
     }
-    expect((await handle(request({ Cookie: cookie, Origin: 'https://tasks.example.com', 'Sec-Fetch-Site': 'cross-site' }), server))!.status).toBe(403);
-    expect(upgraded).toBe(0);
-    expect(await handle(request({ Cookie: cookie, Origin: 'https://tasks.example.com' }), server)).toBeUndefined();
-    expect(upgraded).toBe(1);
-    const local = createHandler(store, undefined, undefined, hub);
-    expect((await local(request({ Origin: 'https://attacker.example' }), server))!.status).toBe(403);
-    expect(await local(request({ Origin: 'http://127.0.0.1:3000' }), server)).toBeUndefined();
-    const shell = await handle(new Request('http://127.0.0.1:3000/offline-shell'));
-    expect(shell!.headers.get('Content-Security-Policy')).toContain("connect-src 'self' wss://tasks.example.com;");
-  } finally { hub.close(); store.close(); }
+    await until(() => messages.every(list => list.some(m => JSON.parse(m).type === 'ready')));
+    const device = new ClientStore(), task = device.create({ title: 'PRIVATE_WEBSOCKET_CONTENT', tags: ['laptop'] });
+    const encrypted = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[0]);
+    const send = (row: any, cookie: string) => post('/api/sync', { workspaceKey: testVault.config.vaultId, changes: [row] }, cookie);
+    expect((await send(encrypted, a)).status).toBe(200);
+    await until(() => messages.every(list => list.some(m => JSON.parse(m).type === 'changed')));
+    const response = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();
+    expect(JSON.stringify(response)).not.toContain(task.title);
+    expect(await decryptEnvelope(testVault.key, testVault.config.vaultId, response.rows[0])).toMatchObject({ title: task.title, tags: ['laptop'] });
+    device.update(task.id, { tags: ['phone', 'shared'] });
+    const second = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[1]);
+    await send(second, b);
+    await until(() => messages.every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
+    await send(second, b); await Bun.sleep(100);
+    expect(messages.every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
+    expect(JSON.stringify(messages)).not.toContain(task.title);
+    await post('/api/auth/logout', {}, a); await until(() => closed[0] === 4401);
+    expect(closed[1]).toBeUndefined();
+    store.db.exec('UPDATE auth_sessions SET expiresAt=0'); await until(() => closed[1] === 4401);
+  } finally { sockets.forEach(s => s.close()); hub.close(); await server.stop(true); store.close(); }
 });
-
-test('real sockets notify both devices after commits; reads/retries do not loop; logout and expiry close sockets', async () => {
-  const store = new Store(':memory:');
-  const hub = new Realtime(25);
-  const handle = createHandler(store, testAuth, undefined, hub);
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: handle, websocket: hub.websocket });
-  const origin = server.url.origin;
-  const sockets: WebSocket[] = [];
-  try {
-    const signIn = async () => {
-      const response = await fetch(new URL('/api/auth/login', origin), {
-        method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: testAuth.username, password: 'secret' }),
-      });
-      expect(response.status).toBe(200);
-      return response.headers.get('set-cookie')!.split(';', 1)[0];
-    };
-    const cookieA = await signIn();
-    const cookieB = await signIn();
-    const connect = (cookie: string) => {
-      const messages: string[] = [];
-      const socket = new WebSocket(`${origin.replace('http:', 'ws:')}/api/events`, { headers: { Origin: origin, Cookie: cookie } });
-      socket.onmessage = event => messages.push(JSON.parse(String(event.data)).type);
-      sockets.push(socket);
-      return { socket, messages };
-    };
-    const a = connect(cookieA), b = connect(cookieB);
-    await until(() => a.messages.includes('ready') && b.messages.includes('ready'));
-    const api = async (path: string, method = 'GET', body?: unknown, cookie = cookieA) => {
-      const response = await fetch(new URL(path, origin), { method, headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-      expect(response.status).toBeLessThan(300);
-      return response.json() as Promise<any>;
-    };
-    const { task } = await api('/api/tasks', 'POST', { title: 'From laptop', tags: ['laptop'] });
-    await until(() => a.messages.includes('changed') && b.messages.includes('changed'));
-    expect((await api('/api/sync', 'GET', undefined, cookieB)).tasks[0].title).toBe('From laptop');
-    const board = await api('/api/sync');
-    const editedAt = new Date(Date.now() + 1000).toISOString();
-    const change = { changeId: 'phone-edit', editedAt, task: { ...task, title: 'From phone', tags: ['phone', 'shared'], updatedAt: editedAt } };
-    const payload = { workspaceKey: board.workspaceKey, changes: [change] };
-    await api('/api/sync', 'POST', payload, cookieB);
-    await until(() => a.messages.filter(x => x === 'changed').length === 2);
-    expect((await api('/api/sync')).tasks[0]).toMatchObject({ title: 'From phone', tags: ['phone', 'shared'] });
-    await api('/api/sync', 'POST', payload, cookieB);
-    await api('/api/sync', 'POST', { workspaceKey: board.workspaceKey, changes: [] });
-    await Bun.sleep(40);
-    expect(a.messages.filter(x => x === 'changed')).toHaveLength(2);
-    expect(b.messages.filter(x => x === 'changed')).toHaveLength(2);
-    expect(a.messages.includes('heartbeat')).toBe(true);
-    await api('/api/auth/logout', 'POST', {});
-    await until(() => a.socket.readyState === WebSocket.CLOSED);
-    expect(b.socket.readyState).toBe(WebSocket.OPEN);
-    store.db.query('UPDATE auth_sessions SET expiresAt = 0').run();
-    await until(() => b.socket.readyState === WebSocket.CLOSED);
-    const unauthorized = await fetch(new URL('/api/sync', origin), { headers: { Cookie: cookieB } });
-    expect(unauthorized.status).toBe(401);
-  } finally {
-    for (const socket of sockets) socket.close();
-    hub.close();
-    await server.stop(true);
-    store.close();
-  }
-});
-
 class FakeSocket {
   static instances: FakeSocket[] = [];
   readyState = 0;

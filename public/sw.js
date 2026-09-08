@@ -1,18 +1,19 @@
-import { localState, sync } from './offline.js';
-const CACHE = 'taskpath-shell-v4';
-const FILES = ['/offline-shell', '/login', '/style.css', '/app.js', '/dates.js', '/theme.js', '/login.js',
-  '/tags.js', '/realtime.js', '/offline.js', '/offline-model.js', '/export-markdown.js', '/pwa.js', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+import { sync } from '/assets/e2ee-v3/offline.js';
+const CACHE = 'taskpath-shell-e2ee-v3';
+const ROOT = '/assets/e2ee-v3/';
+const FILES = ['style.css', 'app.js', 'dates.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
+  'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
-  // /login may redirect when already signed in; cache the public static login shell.
-  await Promise.all(FILES.map(async path => {
-    const response = await fetch(path === '/login' ? '/login-shell' : path, { cache: 'reload' });
-    if (!response.ok || response.redirected) throw new Error('Incomplete offline shell');
+  await Promise.all(['/offline-shell', ...FILES].map(async path => {
+    const response = await fetch(path, { cache: 'reload' });
+    if (!response.ok || response.redirected) throw new Error('Incomplete encrypted shell');
     await cache.put(path, response);
   }));
+  // Waiting until every old window closes avoids mixing app generations.
 })()));
 self.addEventListener('activate', event => event.waitUntil((async () => {
-  for (const name of await caches.keys()) if (name.startsWith('taskpath-shell-') && name !== CACHE) await caches.delete(name);
+  for (const name of await caches.keys()) if (name.startsWith('taskpath-shell-e2ee-') && name !== CACHE) await caches.delete(name);
   await self.clients.claim();
 })()));
 self.addEventListener('fetch', event => {
@@ -21,16 +22,10 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate' && ['/', '/login'].includes(url.pathname)) {
     event.respondWith((async () => {
       try { return await fetch(event.request, { signal: AbortSignal.timeout(4000) }); }
-      catch {
-        const record = await localState();
-        const path = url.pathname === '/' && record.board && !record.locked ? '/offline-shell' : '/login';
-        return await caches.match(path) || Response.error();
-      }
+      catch { return await (await caches.open(CACHE)).match('/offline-shell') || Response.error(); }
     })());
   } else if (FILES.includes(url.pathname)) {
-    event.respondWith(caches.match(url.pathname).then(cached => cached || fetch(event.request)));
+    event.respondWith((async () => await (await caches.open(CACHE)).match(url.pathname) || fetch(event.request))());
   }
 });
-self.addEventListener('sync', event => {
-  if (event.tag === 'taskpath-sync') event.waitUntil(sync());
-});
+self.addEventListener('sync', event => { if (event.tag === 'taskpath-encrypted-sync') event.waitUntil(sync()); });

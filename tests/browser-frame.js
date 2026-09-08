@@ -1,0 +1,16 @@
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/e2ee-v3/offline.js';
+import { unlockVault } from '/assets/e2ee-v3/crypto.js';
+window.addEventListener('message', async event => {
+  if (event.origin !== location.origin) return;
+  try {
+    if (event.data === 'edit') {
+      const record = await localState(), unlocked = await unlockVault('browser harness password 2026', record.config);
+      await activate(record.config, unlocked.key, false, record.lockEpoch);
+      await Promise.all(Array.from({ length: 4 }, (_, i) => offlineRequest('/api/tasks', 'POST', { title: `FRAME_PRIVATE_${i}` })));
+      parent.postMessage('edited', location.origin);
+    }
+    if (event.data === 'check-lock') parent.postMessage(isUnlocked() ? 'unlocked' : 'locked', location.origin);
+  } catch (error) { parent.postMessage({ error: error.message }, location.origin); }
+});
+window.addEventListener('taskpath-locked', () => parent.postMessage('locked', location.origin));
+parent.postMessage('ready', location.origin);

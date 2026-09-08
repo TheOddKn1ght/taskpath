@@ -2,8 +2,8 @@
 # Replace every tasks.example.com and adjust the upstream port if needed.
 # Install as /etc/nginx/conf.d/taskpath.conf, included inside nginx.conf's http {}.
 # Obtain the certificate before enabling the HTTPS server below.
-# Taskpath must have TASKPATH_USERNAME, TASKPATH_PASSWORD_HASH, and
-# TASKPATH_ORIGIN=https://tasks.example.com set before public access.
+# Set TASKPATH_ORIGIN=https://tasks.example.com before public access.
+# Finish encrypted setup using the one-use link printed by Taskpath.
 
 # Per-client request limit, including requests with incorrect passwords.
 # This is a general limit, not failed-login lockout or distributed attack protection.

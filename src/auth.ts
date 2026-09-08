@@ -1,122 +1,88 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { Database } from "bun:sqlite";
-
-export type AuthConfig = {
-  username: string;
-  passwordHash: string;
-  sessionDays?: number;
-};
-
-type Attempt = { failures: number; firstFailureAt: number; blockedUntil: number };
-type LoginResult = { ok: true; token: string; maxAge: number } | { ok: false; status: 401 | 429; retryAfter?: number };
-
-export const sessionCookieName = "taskpath_session";
-export const secureSessionCookieName = "__Host-taskpath_session";
-const attemptWindowMs = 10 * 60 * 1000;
-const blockMs = 15 * 60 * 1000;
-const maxFailures = 5;
-
-function digest(value: string) {
-  return createHash("sha256").update(value).digest("hex");
+import { createHash, randomBytes } from 'node:crypto';
+import type { Database } from 'bun:sqlite';
+import { InputError } from './store';
+import { validateConfig, unbase64 } from '../public/crypto.js';
+const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+export const sessionCookieName = 'taskpath_session';
+export const secureSessionCookieName = '__Host-taskpath_session';
+function cookieValue(request: Request) {
+  const parts = (request.headers.get('cookie') || '').split(';').map(p => p.trim().split('='));
+  return parts.find(p => p[0] === secureSessionCookieName)?.[1] || parts.find(p => p[0] === sessionCookieName)?.[1];
 }
-
-function equal(left: string, right: string) {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-function cookieValue(request: Request, name: string) {
-  for (const part of (request.headers.get("cookie") || "").split(";")) {
-    const separator = part.indexOf("=");
-    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
-    return part.slice(separator + 1).trim();
-  }
-  return null;
-}
-
 export class AuthManager {
-  private fingerprint: string;
+  private attempts = new Map<string, { failures: number; at: number; until: number }>();
   private sessionSeconds: number;
-  private attempts = new Map<string, Attempt>();
-
-  constructor(private db: Database, private config: AuthConfig, private now = () => Date.now()) {
-    this.fingerprint = digest(config.passwordHash);
-    this.sessionSeconds = Math.round((config.sessionDays ?? 30) * 24 * 60 * 60);
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS auth_sessions (
-        tokenHash TEXT PRIMARY KEY,
-        credentialFingerprint TEXT NOT NULL,
-        createdAt INTEGER NOT NULL,
-        expiresAt INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expiresAt);
-    `);
-    this.removeExpired();
+  constructor(private db: Database, sessionDays = 30, private now = () => Date.now()) {
+    if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 365) throw new Error('TASKPATH_SESSION_DAYS must be from 1 to 365.');
+    this.sessionSeconds = sessionDays * 86400;
+    db.exec('CREATE TABLE IF NOT EXISTS auth_sessions (tokenHash TEXT PRIMARY KEY, revision INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
   }
-
-  get username() { return this.config.username; }
-
+  private row() { return this.db.query<{ revision: number; config: string; verifier: string }, []>('SELECT * FROM vault WHERE id=1').get(); }
+  configuration() { const row = this.row(); return row ? JSON.parse(row.config) : null; }
+  issueSetupToken() {
+    if (this.row()) return null;
+    const token = randomBytes(32).toString('base64url');
+    this.db.query('INSERT OR REPLACE INTO setup VALUES (1, ?, ?)').run(digest(token), this.now() + 1800000);
+    return token;
+  }
+  private validSetup(token: unknown) {
+    return typeof token === 'string' && token.length === 43 && Boolean(this.db.query('SELECT id FROM setup WHERE id=1 AND tokenHash=? AND expiresAt>?').get(digest(token), this.now()));
+  }
+  private validateCredential(credential: unknown) {
+    try { unbase64(credential, 32); } catch { throw new InputError('Invalid authentication credential.'); }
+  }
+  async setup(token: unknown, config: any, credential: string) {
+    if (!this.validSetup(token) || this.row()) throw new InputError('Setup link is invalid or expired. Restart the server for a new link before setup.', 403);
+    try { validateConfig(config); } catch { throw new InputError('Invalid vault configuration.'); }
+    if (config.revision !== 1) throw new InputError('Invalid initial revision.');
+    this.validateCredential(credential);
+    const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });
+    this.db.transaction(() => {
+      if (!this.validSetup(token) || this.row()) throw new InputError('Setup link has already been used or expired.', 409);
+      this.db.query('INSERT INTO vault VALUES (1, 1, ?, ?)').run(JSON.stringify(config), verifier);
+      this.db.exec('DELETE FROM setup');
+    })();
+  }
   isAuthenticated(request: Request) {
-    const token = cookieValue(request, secureSessionCookieName) || cookieValue(request, sessionCookieName);
-    if (!token || token.length > 128) return false;
+    const token = cookieValue(request);
+    return Boolean(token && token.length <= 128 && this.db.query('SELECT tokenHash FROM auth_sessions WHERE tokenHash=? AND revision=(SELECT revision FROM vault WHERE id=1) AND expiresAt>?').get(digest(token), this.now()));
+  }
+  private async verify(client: string, credential: string) {
     const now = this.now();
-    const session = this.db.query<{ expiresAt: number }, [string, string, number]>(
-      "SELECT expiresAt FROM auth_sessions WHERE tokenHash = ? AND credentialFingerprint = ? AND expiresAt > ?",
-    ).get(digest(token), this.fingerprint, now);
-    return Boolean(session);
-  }
-
-  async login(client: string, username: string, password: string): Promise<LoginResult> {
-    const now = this.now();
-    this.pruneAttempts(now);
-    const previous = this.attempts.get(client);
-    if (previous?.blockedUntil && previous.blockedUntil > now) {
-      return { ok: false, status: 429, retryAfter: Math.ceil((previous.blockedUntil - now) / 1000) };
-    }
-    if (previous && now - previous.firstFailureAt >= attemptWindowMs) this.attempts.delete(client);
-
-    // Verify the hash even for an unknown username so the two failures take similar time.
-    const passwordMatches = await Bun.password.verify(password, this.config.passwordHash).catch(() => false);
-    if (!equal(username, this.config.username) || !passwordMatches) {
-      const current = this.attempts.get(client);
-      const failures = (current?.failures || 0) + 1;
-      const firstFailureAt = current?.firstFailureAt || now;
-      const blockedUntil = failures >= maxFailures ? now + blockMs : 0;
-      this.attempts.set(client, { failures, firstFailureAt, blockedUntil });
-      return blockedUntil ? { ok: false, status: 429, retryAfter: Math.ceil(blockMs / 1000) } : { ok: false, status: 401 };
-    }
-
-    this.attempts.delete(client);
-    this.removeExpired();
-    const token = randomBytes(32).toString("base64url");
-    this.db.query("INSERT INTO auth_sessions (tokenHash, credentialFingerprint, createdAt, expiresAt) VALUES (?, ?, ?, ?)")
-      .run(digest(token), this.fingerprint, now, now + this.sessionSeconds * 1000);
-    return { ok: true, token, maxAge: this.sessionSeconds };
-  }
-
-  logout(request: Request) {
-    const token = cookieValue(request, secureSessionCookieName) || cookieValue(request, sessionCookieName);
-    if (token && token.length <= 128) this.db.query("DELETE FROM auth_sessions WHERE tokenHash = ?").run(digest(token));
-  }
-
-  cookie(token: string, maxAge: number, secure: boolean) {
-    const name = secure ? secureSessionCookieName : sessionCookieName;
-    return `${name}=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
-  }
-
-  clearCookie(secure: boolean) {
-    return this.cookie("", 0, secure);
-  }
-
-  private removeExpired() {
-    this.db.query("DELETE FROM auth_sessions WHERE expiresAt <= ? OR credentialFingerprint != ?").run(this.now(), this.fingerprint);
-  }
-
-  private pruneAttempts(now: number) {
-    for (const [client, attempt] of this.attempts) {
-      if (attempt.blockedUntil <= now && now - attempt.firstFailureAt >= attemptWindowMs) this.attempts.delete(client);
-    }
+    for (const [key, a] of this.attempts) if (a.until <= now && now - a.at >= 600000) this.attempts.delete(key);
     while (this.attempts.size > 5000) this.attempts.delete(this.attempts.keys().next().value!);
+    if ((this.attempts.get(client)?.until || 0) > now) throw new InputError('Too many attempts. Wait 15 minutes and try again.', 429);
+    this.validateCredential(credential);
+    const row = this.row();
+    if (!row || !await Bun.password.verify(credential, row.verifier).catch(() => false)) {
+      const before = this.attempts.get(client);
+      const failures = (before?.failures || 0) + 1;
+      this.attempts.set(client, { failures, at: before?.at || now, until: failures >= 5 ? now + 900000 : 0 });
+      throw new InputError(failures >= 5 ? 'Too many attempts. Wait 15 minutes and try again.' : 'Password is incorrect.', failures >= 5 ? 429 : 401);
+    }
+    this.attempts.delete(client);
+    return row;
   }
+  async login(client: string, credential: string, revision: number) {
+    const row = await this.verify(client, credential);
+    if (revision !== row.revision || this.row()?.revision !== row.revision) throw new InputError('Password changed. Try again.', 409);
+    const token = randomBytes(32).toString('base64url');
+    this.db.query('DELETE FROM auth_sessions WHERE expiresAt<=?').run(this.now());
+    this.db.query('INSERT INTO auth_sessions VALUES (?, ?, ?)').run(digest(token), row.revision, this.now() + this.sessionSeconds * 1000);
+    return { token, maxAge: this.sessionSeconds };
+  }
+  async changePassword(client: string, request: Request, currentCredential: string, credential: string, config: any, revision: number) {
+    const row = await this.verify(client, currentCredential);
+    try { validateConfig(config); } catch { throw new InputError('Invalid vault configuration.'); }
+    this.validateCredential(credential);
+    if (revision !== row.revision || config.revision !== revision + 1 || config.vaultId !== JSON.parse(row.config).vaultId || config.kdf.salt === JSON.parse(row.config).kdf.salt) throw new InputError('Credential revision changed. Try again.', 409);
+    const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });
+    this.db.transaction(() => {
+      if (!this.isAuthenticated(request) || this.row()?.revision !== revision) throw new InputError('Credential revision changed. Sign in again.', 409);
+      this.db.query('UPDATE vault SET revision=?, config=?, verifier=? WHERE id=1').run(config.revision, JSON.stringify(config), verifier);
+      this.db.exec('DELETE FROM auth_sessions');
+    })();
+  }
+  logout(request: Request) { const token = cookieValue(request); if (token) this.db.query('DELETE FROM auth_sessions WHERE tokenHash=?').run(digest(token)); }
+  cookie(token: string, age: number, secure: boolean) { return `${secure ? secureSessionCookieName : sessionCookieName}=${token}; Path=/; Max-Age=${age}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`; }
 }

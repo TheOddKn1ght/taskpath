@@ -1,15 +1,21 @@
-export const testPassword = "secret";
-export const testAuth = {
-  username: "test",
-  passwordHash: "$argon2id$v=19$m=8192,t=1,p=1$PY6mescJ5z3OEiqGBRjc5qNmHl59ee/F0Q1DoYK/yAo$h6sPwee33mUAao5T3wXNii7qMUpL8I9kcoXfw1pSLNg",
-  sessionDays: 30,
-};
-
-export async function login(handle: (request: Request) => Promise<Response>, origin = "https://tasks.example.com", username = testAuth.username, password = testPassword) {
-  const response = await handle(new Request("http://127.0.0.1:3000/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Origin: origin, "X-Real-IP": "192.0.2.10" },
-    body: JSON.stringify({ username, password }),
-  }));
-  return { response, cookie: response.headers.get("set-cookie")?.split(";", 1)[0] || "" };
+import { AuthManager } from '../src/auth';
+import { Store } from '../src/store';
+import { createHandler } from '../src/server';
+import { createVault } from '../public/crypto.js';
+export const testPassword = 'correct horse battery staple';
+export const origin = 'https://tasks.example.com';
+export const testVault = await createVault(testPassword);
+export async function fixture(path = ':memory:', now = () => new Date()) {
+  const store = new Store(path, now, 'UTC'), auth = new AuthManager(store.db);
+  const config = { ...testVault.config, vaultId: testVault.config.vaultId };
+  await auth.setup(auth.issueSetupToken(), config, testVault.credential);
+  const handle = createHandler(store, auth, origin);
+  return { store, auth, handle, vault: testVault };
+}
+export async function login(handle: any, credential = testVault.credential, revision = 1, site = origin) {
+  const response = await handle(new Request(`${origin}/api/auth/login`, { method: 'POST', headers: { origin: site, 'content-type': 'application/json' }, body: JSON.stringify({ credential, revision }) }));
+  return { response, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
+}
+export function request(handle: any, cookie: string, path: string, body?: any, site = origin) {
+  return handle(new Request(`${origin}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { cookie, origin: site, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
 }

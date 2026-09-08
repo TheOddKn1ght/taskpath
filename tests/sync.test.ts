@@ -1,98 +1,130 @@
-import { beforeEach, afterEach, test, expect } from 'bun:test';
+import { test, expect } from 'bun:test';
+import { Database } from 'bun:sqlite';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Store } from '../src/store';
-import { createHandler } from '../src/server';
-import { login, testAuth } from './auth-helpers';
-import { project, queueChange, acceptSync } from '../public/offline-model.js';
-let now: Date, store: Store;
-beforeEach(() => { now = new Date('2026-09-05T12:00:00Z'); store = new Store(':memory:', () => now, 'Europe/Moscow'); });
-afterEach(() => store.close());
-const snapshot = () => ({ ...store.syncBoard(), workspaceKey: 'test-workspace' });
-const device = () => ({ board: snapshot(), pending: [] as any[], offset: 0, lastEdit: 0 });
-const edit = (task: any, title: string, time: string, changeId = crypto.randomUUID()) => ({ task: { ...task, title, updatedAt: time }, editedAt: time, changeId });
+import { fixture, testVault, login, request } from './auth-helpers';
+import { encryptChange, decryptEnvelope } from '../public/crypto.js';
+import { acceptEncrypted } from '../public/offline.js';
+import { ClientStore } from './client-helpers';
+const time = new Date('2026-09-08T12:00:00Z');
+const client = () => new ClientStore(':memory:', () => time);
+const encrypt = (change: any) => encryptChange(testVault.key, testVault.config.vaultId, change);
+const decode = (row: any) => decryptEnvelope(testVault.key, testVault.config.vaultId, row);
+const input = (changes: any[]) => ({ workspaceKey: testVault.config.vaultId, changes });
 
-test('newer offline edit wins regardless of arrival order, equal times have a stable tie-break', () => {
-  const task = store.create({ title: 'Initial' });
-  now = new Date('2026-09-05T12:05:00Z');
-  const newer = edit(task, 'Newest', '2026-09-05T12:04:00Z');
-  store.sync({ changes: [newer] });
-  expect(store.sync({ changes: [edit(task, 'Old', '2026-09-05T12:02:00Z')] }).conflicts).toBe(1);
-  expect(store.board().tasks[0].title).toBe('Newest');
-  store.sync({ changes: [edit(task, 'Tie Z', '2026-09-05T12:04:30Z', 'z')] });
-  store.sync({ changes: [edit(task, 'Tie A', '2026-09-05T12:04:30Z', 'a')] });
-  expect(store.board().tasks[0].title).toBe('Tie Z');
+test('encrypted edits, tags, moves, completion, deletion/undo, and immutable retries persist across reopen', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'taskpath-e2ee-')); const path = join(directory, 'vault.sqlite');
+  let store: Store | undefined;
+  try {
+    ({ store } = await fixture(path, () => time));
+    const device = client();
+    const a = device.create({ title: 'DISTINCTIVE_PRIVATE_TASK', notes: 'DISTINCTIVE_SECRET_NOTE', tags: ['HOME'], status: 'week' });
+    const b = device.create({ title: 'Second', status: 'week' });
+    device.update(b.id, { beforeId: a.id }); device.update(a.id, { status: 'done', tags: ['Home', 'errands'] }); device.remove(a.id); device.restore(a.id);
+    const encrypted = await Promise.all(device.record.pending.map(encrypt));
+    const snapshot = JSON.stringify(encrypted);
+    const response = store.sync(input(encrypted));
+    expect(response.acknowledged).toHaveLength(encrypted.length);
+    expect(store.sync(input(encrypted)).changed).toBe(false);
+    expect(JSON.stringify(encrypted)).toBe(snapshot);
+    expect(JSON.stringify(response)).not.toContain(a.title);
+    expect(await decode(response.rows.find((e: any) => e.taskId === a.id))).toMatchObject({ title: a.title, tags: ['errands', 'home'], deletedAt: null, status: 'done' });
+    store.close(); store = new Store(path, () => time);
+    expect(store.syncBoard().rows).toHaveLength(2);
+    const bytes = readFileSync(path).toString();
+    for (const secret of [a.title, a.notes, testVault.credential, 'correct horse battery staple']) expect(bytes).not.toContain(secret);
+    expect(store.db.query("SELECT name FROM sqlite_master WHERE name='tasks'").get()).toBeNull();
+  } finally { store?.close(); rmSync(directory, { recursive: true, force: true }); }
 });
-test('tombstones suppress stale edits and newer edits can restore a task', () => {
-  const task = store.create({ title: 'Initial' });
-  now = new Date('2026-09-05T12:05:00Z');
-  store.sync({ changes: [{ ...edit(task, 'Initial', '2026-09-05T12:03:00Z'), task: { ...task, deletedAt: '2026-09-05T12:03:00Z' } }] });
-  store.sync({ changes: [edit(task, 'Old', '2026-09-05T12:02:00Z')] });
-  expect(store.board().tasks).toHaveLength(0);
-  expect(store.syncBoard().rows).toHaveLength(1);
-  store.sync({ changes: [edit(task, 'New', '2026-09-05T12:04:00Z')] });
-  expect(store.board().tasks[0].title).toBe('New');
+test('whole-task latest edit wins; equal timestamps use operation IDs; encrypted tombstones reject stale edits', async () => {
+  const { store } = await fixture(':memory:', () => time);
+  try {
+    const device = client(), task = device.create({ title: 'Original', tags: ['old'] });
+    const base = device.record.pending[0];
+    const change = async (title: string, editedAt: string, changeId: string, extra = {}) => encrypt({ ...base, changeId, editedAt, task: { ...task, title, tags: [title.toLowerCase()], ...extra, updatedAt: editedAt } });
+    const newer = await change('New', '2026-09-08T12:01:00.000Z', 'z');
+    const older = await change('Old', '2026-09-08T12:00:30.000Z', 'x');
+    store.sync(input([newer])); expect(store.sync(input([older])).conflicts).toBe(1);
+    const tie = await change('Tie', newer.editedAt, 'a'); store.sync(input([tie]));
+    expect(await decode(store.syncBoard().rows[0])).toMatchObject({ title: 'New', tags: ['new'] });
+    const tombstone = await change('Deleted', '2026-09-08T12:02:00.000Z', 'delete', { deletedAt: '2026-09-08T12:02:00.000Z' });
+    store.sync(input([tombstone])); store.sync(input([newer]));
+    expect((await decode(store.syncBoard().rows[0])).deletedAt).not.toBeNull();
+  } finally { store.close(); }
 });
-test('create retry after a lost response is idempotent; invalid batches roll back', () => {
-  const local = device(); queueChange(local, '/api/tasks', 'POST', { title: 'Offline' }, now.getTime());
-  const operation = local.pending[0];
-  store.sync({ changes: [operation] }); store.sync({ changes: [operation] });
-  expect(store.board().tasks).toHaveLength(1);
-  expect(() => store.sync({ changes: [edit(operation.task, 'Changed', '2026-09-05T12:01:00Z'), { ...operation, task: { ...operation.task, title: '' } }] })).toThrow();
-  expect(store.board().tasks[0].title).toBe('Offline');
+test('acknowledgements preserve concurrent new edits and late snapshots cannot roll back accepted ciphertext', async () => {
+  const { store } = await fixture(':memory:', () => time);
+  try {
+    const device = client(), task = device.create({ title: 'First' });
+    const first = await encrypt(device.record.pending[0]);
+    const local: any = { config: testVault.config, pending: [first], board: null, lastEdit: 0 };
+    const response = store.sync(input([first]));
+    device.update(task.id, { title: 'Second' });
+    const second = await encrypt(device.record.pending[1]); local.pending.push(second);
+    acceptEncrypted(local, response, time.getTime());
+    expect(local.pending).toEqual([second]);
+    acceptEncrypted(local, store.sync(input([second])), time.getTime());
+    acceptEncrypted(local, response, time.getTime());
+    expect(local.pending).toEqual([]);
+    expect((await decode(local.board.rows[0])).title).toBe('Second');
+    const before = JSON.stringify(local);
+    expect(() => acceptEncrypted(local, { ...response, workspaceKey: 'another' })).toThrow();
+    expect(JSON.stringify(local)).toBe(before);
+  } finally { store.close(); }
 });
-test('acknowledgements never discard an edit queued while a request is in flight', () => {
-  const task = store.create({ title: 'Initial' }); const local = device();
-  queueChange(local, `/api/tasks/${task.id}`, 'PATCH', { title: 'First' }, now.getTime() + 1000);
-  const response = { ...store.sync({ changes: [...local.pending] }), workspaceKey: 'test-workspace' };
-  queueChange(local, `/api/tasks/${task.id}`, 'PATCH', { title: 'Second' }, now.getTime() + 2000);
-  acceptSync(local, response, now.getTime());
-  expect(local.pending).toHaveLength(1);
-  expect(project(local, now.getTime()).tasks[0].title).toBe('Second');
+test('invalid envelopes, legacy plaintext, oversized batches, future clocks and workspace mismatch fail atomically', async () => {
+  const { store, handle } = await fixture(':memory:', () => time);
+  try {
+    const device = client(); device.create({ title: 'Keep' }); const encrypted = await encrypt(device.record.pending[0]);
+    for (const changes of [[encrypted, device.record.pending[0]], Array(51).fill(encrypted), [{ ...encrypted, nonce: 'bad' }], [{ ...encrypted, editedAt: '2099-01-01T00:00:00.000Z' }]]) expect(() => store.sync(input(changes))).toThrow();
+    expect(store.syncBoard().rows).toEqual([]);
+    const { cookie } = await login(handle);
+    expect((await request(handle, cookie, '/api/sync', { ...input([]), workspaceKey: 'other' })).status).toBe(409);
+    expect((await request(handle, cookie, '/api/sync', input([encrypted]), 'https://evil.example')).status).toBe(403);
+    expect((await request(handle, cookie, '/api/sync', input([encrypted]))).status).toBe(200);
+  } finally { store.close(); }
 });
-test('rollover does not override offline edit timestamps or replan old Today tasks', () => {
-  const task = store.create({ title: 'Daily', status: 'today' }); const local = device();
-  queueChange(local, `/api/tasks/${task.id}`, 'PATCH', { title: 'Edited Saturday' }, now.getTime() + 1000);
-  now = new Date('2026-09-07T12:00:00Z');
-  const response = store.sync({ changes: local.pending });
-  expect(response.tasks[0]).toMatchObject({ title: 'Edited Saturday', status: 'later', updatedAt: '2026-09-05T12:00:01.000Z' });
+test('legacy databases of every plaintext schema version are rejected without changing any bytes', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'taskpath-legacy-'));
+  try {
+    for (const version of [1, 2, 3]) {
+      const path = join(directory, `legacy-${version}.sqlite`), legacy = new Database(path);
+      legacy.exec(`CREATE TABLE tasks (id TEXT, title TEXT); INSERT INTO tasks VALUES ('id', 'keep my plaintext'); PRAGMA user_version=${version};`);
+      legacy.close(); const before = readFileSync(path);
+      expect(() => new Store(path)).toThrow('Legacy');
+      expect(readFileSync(path)).toEqual(before);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
-test('offline creation, move, date changes, deletion and undo round-trip to SQLite', () => {
-  const local = device(); const time = now.getTime();
-  const a = queueChange(local, '/api/tasks', 'POST', { title: 'A', status: 'week' }, time).task;
-  const b = queueChange(local, '/api/tasks', 'POST', { title: 'B', status: 'week' }, time).task;
-  queueChange(local, `/api/tasks/${b.id}`, 'PATCH', { beforeId: a.id, dueDate: '2026-09-10', reminderAt: '2026-09-06T09:00:00Z' }, time);
-  queueChange(local, `/api/tasks/${a.id}`, 'DELETE', {}, time);
-  expect(project(local, time).tasks).toHaveLength(1);
-  queueChange(local, `/api/tasks/${a.id}/restore`, 'POST', {}, time);
-  expect(store.sync({ changes: local.pending }).tasks.map(t => t.title)).toEqual(['B', 'A']);
-  expect(store.board().tasks[0].dueDate).toBe('2026-09-10');
+test('opaque reminder claims are atomic across devices and reveal no schedule or content', async () => {
+  const { store, handle } = await fixture();
+  try {
+    const { cookie } = await login(handle); const token = crypto.randomUUID();
+    const results = await Promise.all([request(handle, cookie, '/api/reminders/claim', { tokens: [token] }), request(handle, cookie, '/api/reminders/claim', { tokens: [token] })]);
+    const claims = await Promise.all(results.map(r => r.json()));
+    expect(claims.flatMap(r => r.tokens)).toEqual([token]);
+    expect((await request(handle, '', '/api/reminders/claim', { tokens: [token] })).status).toBe(401);
+    expect((await request(handle, cookie, '/api/reminders/claim', { tokens: [token] }, 'https://evil.example')).status).toBe(403);
+    expect((await request(handle, cookie, '/api/reminders/claim', { taskId: 'plaintext' })).status).toBe(400);
+    expect(store.db.query('SELECT * FROM reminder_claims').all()).toEqual([{ token }]);
+  } finally { store.close(); }
 });
-test('sync routes require a session, same-origin writes, and matching workspace identity', async () => {
-  const handle = createHandler(store, testAuth, 'https://tasks.example.com');
-  expect((await handle(new Request('http://localhost/api/sync'))).status).toBe(401);
-  const { cookie } = await login(handle);
-  const response = await handle(new Request('http://localhost/api/sync', { headers: { cookie } }));
-  const board = await response.json();
-  const post = (origin: string, workspaceKey: string) => handle(new Request('http://localhost/api/sync', { method: 'POST', headers: { cookie, origin, 'content-type': 'application/json' }, body: JSON.stringify({ changes: [], workspaceKey }) }));
-  expect((await post('https://evil.example', board.workspaceKey)).status).toBe(403);
-  expect((await post('https://tasks.example.com', 'wrong')).status).toBe(409);
-  expect((await post('https://tasks.example.com', board.workspaceKey)).status).toBe(200);
+test('client reminder tokens persist for unrelated edits; snooze and rescheduling rearm while stale actions fail', () => {
+  const device = client(), task = device.create({ title: 'Reminder', reminderAt: '2026-09-08T11:59:00Z', tags: ['home'] });
+  const edited = device.update(task.id, { notes: 'Same schedule', reminderAt: task.reminderAt });
+  expect(edited.reminderToken).toBe(task.reminderToken);
+  const snoozed = device.actOnReminder(task.id, { action: 'snooze', reminderAt: task.reminderAt });
+  expect(snoozed.reminderToken).not.toBe(task.reminderToken); expect(snoozed.tags).toEqual(['home']);
+  expect(() => device.actOnReminder(task.id, { action: 'dismiss', reminderAt: task.reminderAt })).toThrow();
+  device.actOnReminder(task.id, { action: 'dismiss', reminderAt: snoozed.reminderAt });
+  expect(device.board().reminders).toEqual([]);
+  expect(device.update(task.id, { reminderAt: '2026-09-08T12:15:00Z' }).reminderDismissedAt).toBeNull();
 });
-test('workspace mismatch preserves the queue and future clocks are rejected', () => {
-  const local = device(); queueChange(local, '/api/tasks', 'POST', { title: 'Safe' }, now.getTime());
-  expect(() => acceptSync(local, { ...snapshot(), workspaceKey: 'other' })).toThrow();
-  expect(local.pending).toHaveLength(1);
-  expect(() => store.sync({ changes: [{ ...local.pending[0], editedAt: '2099-01-01T00:00:00Z' }] })).toThrow();
-  expect(store.board().tasks).toHaveLength(0);
-});
-
-test('reordering still works between equal ranks from concurrent offline inserts', () => {
-  const a = store.create({ title: 'A', status: 'week' });
-  const b = store.create({ title: 'B', status: 'week' });
-  const c = store.create({ title: 'C', status: 'week' });
-  // Equal ranks are ordered by creation date, then ID; keep the intended anchor stable.
-  store.db.query('UPDATE tasks SET position = 0, createdAt = ? WHERE id = ?').run('2026-09-05T12:00:00.001Z', b.id);
-  const local = device();
-  queueChange(local, `/api/tasks/${c.id}`, 'PATCH', { beforeId: b.id }, now.getTime() + 1000);
-  expect(project(local, now.getTime()).tasks.map(t => t.title)).toEqual(['A', 'C', 'B']);
-  expect(store.sync({ changes: local.pending }).tasks.map(t => t.title)).toEqual(['A', 'C', 'B']);
+test('omitted tags preserve existing values and explicit empty arrays clear them in offline edits', () => {
+  const device = client(), task = device.create({ title: 'Tagged', tags: ['HOME'] });
+  expect(device.update(task.id, { status: 'today' }).tags).toEqual(['home']);
+  expect(() => device.update(task.id, { tags: null })).toThrow();
+  expect(device.update(task.id, { tags: [] }).tags).toEqual([]);
 });
