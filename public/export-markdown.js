@@ -8,6 +8,7 @@ export function exportMarkdown(tasks) {
     for (const task of tasks.filter(t => t.status === status)) {
       lines.push(`- [${status === 'done' ? 'x' : ' '}] ${escapeText(task.title)}`);
       lines.push(`  - Category: ${task.category === 'work' ? 'Work' : 'Personal'}`);
+      if (task.tags?.length) lines.push(`  - Tags: ${escapeText(JSON.stringify(task.tags))}`);
       if (task.dueDate) lines.push(`  - Due: ${task.dueDate}`);
       if (task.reminderAt) lines.push(`  - Reminder: ${task.reminderAt}`);
       if (task.reminderDismissedAt) lines.push(`  - Reminder dismissed: ${task.reminderDismissedAt}`);

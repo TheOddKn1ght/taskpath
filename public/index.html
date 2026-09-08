@@ -24,6 +24,7 @@
       <div class="toolbar">
         <label class="search"><span data-icon="search"></span><input type="search" id="search" placeholder="Search" aria-label="Search tasks"></label>
         <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
+        <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
         <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="logout" hidden>Sign out</button></div></details>
@@ -40,6 +41,13 @@
       
       <label class="field">Task<input id="task-title" name="title" required maxlength="240" placeholder="What needs doing?" autocomplete="off"></label>
       <label class="field">Notes <span class="optional">optional</span><textarea id="task-notes" name="notes" maxlength="10000" rows="3" placeholder="Details or a link"></textarea></label>
+      <div class="field tag-field">
+        <label for="task-tag-input">Tags <span class="optional">optional</span></label>
+        <div id="task-tags" class="tag-chips" aria-label="Selected tags"></div>
+        <div class="tag-entry"><input id="task-tag-input" autocomplete="off" placeholder="Add a tag" aria-describedby="tag-hint"><button type="button" id="add-tag" class="secondary-button">Add</button></div>
+        <div id="tag-suggestions" class="tag-suggestions" role="group" aria-label="Suggested tags" hidden></div>
+        <small id="tag-hint">Press Enter to add · up to 10 tags</small>
+      </div>
       <div class="field-row"><label class="field">Column<select id="task-status" name="status"><option value="later">Later</option><option value="week">This Week</option><option value="today">Today</option><option value="done">Done</option></select></label><label class="field">Category<select id="task-category" name="category"><option value="personal">Personal</option><option value="work">Work</option></select></label></div>
       <details id="task-schedule" class="task-schedule"><summary>Date &amp; reminder <span>optional</span></summary>
         <div class="field-row schedule-fields"><label class="field">Due date<input type="date" id="task-due-date" name="dueDate" min="0001-01-01" max="9999-12-31"></label><label class="field">Remind me<input type="datetime-local" id="task-reminder" min="0001-01-01T00:00" max="9999-12-31T23:59" step="60"></label></div>

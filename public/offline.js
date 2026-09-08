@@ -1,3 +1,4 @@
+import { importTaskKey } from './tags.js';
 import { project, queueChange, acceptSync } from './offline-model.js';
 import { exportMarkdown } from './export-markdown.js';
 const DB_NAME = 'taskpath-offline-v1';
@@ -130,7 +131,7 @@ export async function offlineRequest(path, method = 'GET', body) {
   await localState(record => {
     if (path === '/api/import/markdown') {
       if (!Array.isArray(body.tasks)) throw new Error('Preview this import first.');
-      const key = t => JSON.stringify([t.title, t.notes || '', t.category || 'personal', t.status || 'later', t.dueDate || null, t.reminderAt || null, Boolean(t.reminderDismissedAt)]);
+      const key = importTaskKey;
       const seen = new Set(project(record).tasks.map(key));
       let imported = 0, skipped = 0;
       for (const task of body.tasks) {

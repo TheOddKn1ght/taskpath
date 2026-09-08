@@ -46,6 +46,16 @@ Implementation references: [Bun WebSockets](https://bun.com/docs/runtime/http/we
 
 Browser references: [offline/background operation](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation), [iOS home-screen web apps](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
 
+## Tags
+
+Tags sit alongside Work/Personal. Add them in the task editor by typing a name and pressing Enter or tapping **Add**. Existing workspace tags appear as suggestions. Remove a tag with its × button. Names are lowercase, support spaces and Unicode, and are limited to 32 characters and 10 tags per task.
+
+Cards show two subtle labels; **+N** opens the editor to see the rest. Click a label or use **All tags** to filter by one tag. Tags combine with category and text search, and quick-add/new tasks inherit the selected tag. Choose **All tags** to clear the filter. Suggestions come from non-deleted local tasks and work offline.
+
+Tags sync with the whole task using the existing latest-edit-wins rule. They survive moves, reminders, deletion/undo, and offline edits. Markdown exports include a nested `Tags: ["errands", "home"]` metadata line; imports and JSON exports preserve tags too. Existing tasks and older Markdown files start with no tags. Older clients that omit the field preserve tags already on the server; an explicit empty array clears them.
+
+The database migrates automatically. After updating, open Taskpath online, close all Taskpath tabs and installed-app windows, then reopen to activate the new offline shell. No Nginx changes are needed for tags.
+
 ## Dates and reminders
 
 Open a task and expand **Date & reminder**. Both fields are optional and independent. Due dates appear on cards, with Today, Tomorrow, and overdue labels. Dates stay attached when tasks move or roll over; they do not automatically move tasks into Today.
@@ -157,5 +167,11 @@ bun test
 ```
 
 Tests use isolated databases to verify durable ordering, rollover, DST/year boundaries, deletion recovery, validation, and API authentication. They do not read your workspace database.
+
+### GitHub CI
+
+The [Tests workflow](.github/workflows/tests.yml) runs `bun test` on pushes and pull requests, and can be started manually from GitHub's Actions tab. It uses Ubuntu 24.04 and Bun 1.4.0, matching the Docker image and minimum supported version. New runs cancel older runs for the same branch or pull request, and each job has a five-minute timeout.
+
+The full suite includes SQLite migrations, authentication, tags, Markdown, offline sync, and real localhost WebSocket connections. To reproduce CI locally, use Bun 1.4.0 and run `bun test`. No dependency installation, secrets, build, or deployment steps are required.
 
 The frontend optionally exposes `list_tasks`, `create_task`, and `move_task` to browsers that support WebMCP. Ordinary browsers use the same interface without it.

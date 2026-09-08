@@ -1,3 +1,4 @@
+import { normalizeTags } from './tags.js';
 import { offlineRequest, sync, syncAfterCurrent, localState, signOut } from './offline.js';
 import { createRealtime } from './realtime.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
@@ -38,7 +39,7 @@ const columns = {
   today: { title: 'Today' },
   done: { title: 'Done' },
 };
-const state = { tasks: [], category: 'all', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
+const state = { tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
 let dragId = null;
 let dropTarget = null;
 let toastTimer;
@@ -218,6 +219,62 @@ async function mutate(path, method, body, message) {
   } finally { state.busy = false; }
 }
 
+let editingTags = [];
+function knownTags() { return [...new Set(state.tasks.flatMap(task => task.tags || []))].sort(); }
+function renderTagSuggestions() {
+  const query = $('#task-tag-input').value.trim().normalize('NFC').toLowerCase();
+  const matches = query ? knownTags().filter(tag => !editingTags.includes(tag) && tag.includes(query)).slice(0, 6) : [];
+  $('#tag-suggestions').innerHTML = matches.map(tag => `<button type="button" class="tag-chip" data-suggest-tag="${escape(tag)}" aria-label="Add tag ${escape(tag)}">${escape(tag)}</button>`).join('');
+  $('#tag-suggestions').hidden = !matches.length;
+}
+function renderTagEditor() {
+  $('#task-tags').innerHTML = editingTags.map((tag, index) => `<button type="button" class="tag-chip" data-remove-tag="${index}" aria-label="Remove tag ${escape(tag)}">${escape(tag)}<span aria-hidden="true">×</span></button>`).join('');
+  renderTagSuggestions();
+}
+function addEditorTag() {
+  const input = $('#task-tag-input');
+  if (!input.value.trim()) return;
+  editingTags = normalizeTags([...editingTags, input.value]);
+  input.value = '';
+  $('#form-error').hidden = true;
+  renderTagEditor();
+}
+function addTagFromControl() {
+  try { addEditorTag(); }
+  catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+  $('#task-tag-input').focus();
+}
+$('#add-tag').addEventListener('click', addTagFromControl);
+$('#task-tag-input').addEventListener('input', renderTagSuggestions);
+$('#tag-suggestions').addEventListener('click', event => {
+  const button = event.target.closest('[data-suggest-tag]');
+  if (!button) return;
+  $('#task-tag-input').value = button.dataset.suggestTag;
+  addTagFromControl();
+});
+$('#task-tag-input').addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown' && !$('#tag-suggestions').hidden) {
+    event.preventDefault(); $('#tag-suggestions button')?.focus();
+  }
+  if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); addTagFromControl(); }
+});
+$('#task-tags').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove-tag]');
+  if (!button) return;
+  editingTags.splice(Number(button.dataset.removeTag), 1);
+  renderTagEditor();
+  $('#task-tag-input').focus();
+});
+function renderTagFilter() {
+  const tags = knownTags();
+  // Keep a selected tag available when its last task is deleted or edited away.
+  if (state.tag && !tags.includes(state.tag)) tags.push(state.tag);
+  const options = '<option value="">All tags</option>' + tags.sort().map(tag => `<option value="${escape(tag)}">${escape(tag)}</option>`).join('');
+  if ($('#tag-filter').innerHTML !== options) $('#tag-filter').innerHTML = options;
+  $('#tag-filter').value = state.tag;
+  if (document.activeElement === $('#task-tag-input')) renderTagSuggestions();
+}
+
 function taskMarkup(task, index, total) {
   const title = escape(task.title);
   const options = Object.entries(columns).map(([key, value]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${value.title}</option>`).join('');
@@ -225,6 +282,7 @@ function taskMarkup(task, index, total) {
     <div class="task-main"><button class="complete-button" data-action="complete" aria-label="${task.status === 'done' ? 'Reopen' : 'Complete'} ${title}" title="${task.status === 'done' ? 'Move back to Today' : 'Mark as done'}">${task.status === 'done' ? icon('check') : ''}</button><button class="task-title" data-action="edit">${title}</button></div>
     ${task.notes ? `<p class="task-notes">${escape(task.notes)}</p>` : ''}
     ${taskDates(task)}
+    ${task.tags?.length ? `<div class="card-tags">${task.tags.slice(0, 2).map(tag => `<button type="button" class="tag-chip" data-action="tag" data-tag="${escape(tag)}" aria-label="Filter by tag ${escape(tag)}">${escape(tag)}</button>`).join('')}${task.tags.length > 2 ? `<button type="button" class="tag-chip" data-action="edit" aria-label="View all ${task.tags.length} tags">+${task.tags.length - 2}</button>` : ''}</div>` : ''}
     <div class="task-bottom"><div class="task-actions">
       <span class="move-control icon-button" title="Move task"><span>${icon('move')}</span><select class="move-select" aria-label="Move ${title} to a column">${options}</select></span>
       <button class="icon-button drag-handle" title="Drag to move; use the adjacent move control for keyboard movement" aria-label="Drag ${title}" tabindex="-1">${icon('grip')}</button>
@@ -239,16 +297,18 @@ function render() {
   const focusedId = focus?.id;
   const focusedTask = focus?.closest('[data-id]')?.dataset.id;
   const focusedAction = focus?.dataset.action;
+  const focusedTag = focus?.dataset.tag;
   const quickStatus = focus?.closest('.quick-add')?.dataset.status;
   const quickValues = new Map($$('.quick-add').map(form => [form.dataset.status, $('input', form).value]));
   const selection = focus instanceof HTMLInputElement ? [focus.selectionStart, focus.selectionEnd] : null;
-  const query = state.query.trim().toLocaleLowerCase();
-  const filtered = state.tasks.filter(task => (state.category === 'all' || task.category === state.category) && (!query || `${task.title} ${task.notes}`.toLocaleLowerCase().includes(query)));
+  renderTagFilter();
+  const query = state.query.trim().normalize('NFC').toLocaleLowerCase();
+  const filtered = state.tasks.filter(task => (state.category === 'all' || task.category === state.category) && (!state.tag || task.tags?.includes(state.tag)) && (!query || `${task.title} ${task.notes} ${(task.tags || []).join(' ')}`.normalize('NFC').toLocaleLowerCase().includes(query)));
   const board = $('#board');
   board.innerHTML = Object.keys(columns).map(status => {
     const column = columns[status];
     const tasks = filtered.filter(t => t.status === status);
-    const isFiltered = !!query || state.category !== 'all';
+    const isFiltered = !!query || state.category !== 'all' || !!state.tag;
     return `<section class="column ${status}" data-status="${status}" aria-labelledby="column-${status}"><header class="column-header"><div class="column-title"><h2 id="column-${status}">${column.title}</h2><span class="column-count">${tasks.length}</span></div></header><div class="task-list">${tasks.length ? tasks.map((task, index) => taskMarkup(task, index, tasks.length)).join('') : `<div class="empty-state">${isFiltered ? 'No matching tasks' : 'Drop tasks here'}</div>`}</div><form class="quick-add" data-status="${status}">${icon('plus')}<input aria-label="Quick add task to ${column.title}" placeholder="Add task" required maxlength="240" autocomplete="off"><button type="submit" aria-label="Save task to ${column.title}" title="Add task">${icon('arrow-right')}</button></form></section>`;
   }).join('');
   $$('.quick-add').forEach(form => { $('input', form).value = quickValues.get(form.dataset.status) || ''; });
@@ -263,7 +323,7 @@ function render() {
     if (input && selection && selection[0] !== null) input.setSelectionRange(...selection);
   } else if (focusedTask) {
     const card = $(`[data-id="${focusedTask}"]`);
-    (focusedAction ? $(`[data-action="${focusedAction}"]`, card || board) : card)?.focus({ preventScroll: true });
+    (focusedTag ? $$('[data-tag]', card || board).find(button => button.dataset.tag === focusedTag) : focusedAction ? $(`[data-action="${focusedAction}"]`, card || board) : card)?.focus({ preventScroll: true });
   } else if (focusedId && document.activeElement !== focus) document.getElementById(focusedId)?.focus({ preventScroll: true });
 }
 
@@ -274,6 +334,8 @@ function openTask(status = 'later', task = null) {
   $('#form-error').hidden = true;
   $('#task-title').value = task?.title || '';
   $('#task-notes').value = task?.notes || '';
+  editingTags = [...(task ? task.tags || [] : state.tag ? [state.tag] : [])];
+  renderTagEditor();
   $('#task-status').value = task?.status || status;
   $('#task-category').value = task?.category || (state.category === 'work' ? 'work' : 'personal');
   $('#task-due-date').value = task?.dueDate || '';
@@ -392,7 +454,7 @@ $('#preview-markdown').addEventListener('click', async () => {
     if (result.tasks.some(task => task.reminderAt && !task.reminderDismissedAt && task.status !== 'done' && Date.parse(task.reminderAt) <= Date.now())) warnings.push('Past reminders will appear immediately.');
     $('#import-warning').textContent = warnings.join(' ');
     $('#import-warning').hidden = !warnings.length;
-    $('#import-tasks').innerHTML = result.tasks.map(task => `<li><strong>${escape(task.title)}</strong><small>${escape(columns[task.status].title)} · ${escape(task.category)}${task.dueDate ? ` · Due ${escape(task.dueDate)}` : ''}${task.reminderAt ? ` · Reminder ${escape(reminderLabel(task.reminderAt))}${task.reminderDismissedAt ? ' (dismissed)' : ''}` : ''}</small>${task.notes ? `<small>${escape(task.notes)}</small>` : ''}</li>`).join('');
+    $('#import-tasks').innerHTML = result.tasks.map(task => `<li><strong>${escape(task.title)}</strong><small>${escape(columns[task.status].title)} · ${escape(task.category)}${task.tags?.length ? ` · Tags: ${escape(task.tags.join(', '))}` : ''}${task.dueDate ? ` · Due ${escape(task.dueDate)}` : ''}${task.reminderAt ? ` · Reminder ${escape(reminderLabel(task.reminderAt))}${task.reminderDismissedAt ? ' (dismissed)' : ''}` : ''}</small>${task.notes ? `<small>${escape(task.notes)}</small>` : ''}</li>`).join('');
     $('#import-preview').hidden = false;
     $('#confirm-import').textContent = `Import ${result.tasks.length} tasks`;
     $('#confirm-import').hidden = !result.tasks.length;
@@ -414,6 +476,7 @@ $('#confirm-import').addEventListener('click', async () => {
 $('#retry').addEventListener('click', () => { void sync().catch(() => {}); void refresh(); });
 $('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); });
 $('#toast-action').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); toastAction?.(); });
+$('#tag-filter').addEventListener('change', event => { state.tag = event.target.value; if (state.ready) render(); });
 $('#category-filter').addEventListener('change', event => { state.category = event.target.value; if (state.ready) render(); });
 $('#search').addEventListener('input', event => { state.query = event.target.value; if (state.ready) render(); });
 
@@ -424,6 +487,8 @@ $('#task-form').addEventListener('submit', async event => {
   $('#form-error').hidden = true;
   try {
     const input = Object.fromEntries(new FormData(event.currentTarget));
+    addEditorTag();
+    input.tags = [...editingTags];
     input.dueDate = input.dueDate || null;
     const reminderValue = $('#task-reminder').value;
     // Preserve seconds and an ambiguous DST instant when only other fields change.
@@ -450,7 +515,7 @@ $('#board').addEventListener('submit', async event => {
   const status = form.dataset.status;
   input.disabled = true;
   try {
-    await mutate('/api/tasks', 'POST', { title, status, category: state.category === 'work' ? 'work' : 'personal' });
+    await mutate('/api/tasks', 'POST', { title, status, category: state.category === 'work' ? 'work' : 'personal', tags: state.tag ? [state.tag] : [] });
     const current = $(`.quick-add[data-status="${status}"] input`);
     if (current) { current.value = ''; current.focus(); }
     announce(`Task added to ${columns[status].title}.`);
@@ -495,6 +560,7 @@ async function runTaskAction(id, action) {
 $('#board').addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
+  if (button.dataset.action === 'tag') { state.tag = button.dataset.tag; render(); return; }
   const id = button.closest('[data-id]').dataset.id;
   button.disabled = true;
   try { await runTaskAction(id, button.dataset.action); }

@@ -1,3 +1,4 @@
+import { normalizeTags, importTaskKey } from "../public/tags.js";
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -5,12 +6,16 @@ import { dirname } from "node:path";
 export const statuses = ["later", "week", "today", "done"] as const;
 export type Status = (typeof statuses)[number];
 export type Task = {
-  id: string; title: string; notes: string; category: string; status: Status;
+  id: string; title: string; notes: string; category: string; status: Status; tags: string[];
   position: number; plannedDay: string | null; plannedWeek: string | null;
   completedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null;
   dueDate: string | null; reminderAt: string | null;
   reminderDismissedAt: string | null; reminderNotifiedAt: string | null;
 };
+
+type TaskRow = Omit<Task, 'tags'> & { tags: string };
+type TaskInput = Partial<Pick<Task, 'title' | 'notes' | 'category' | 'status' | 'dueDate' | 'reminderAt' | 'tags' | 'reminderDismissedAt'>>;
+const decodeTask = (row: TaskRow): Task => ({ ...row, tags: JSON.parse(row.tags) });
 
 export class InputError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -90,6 +95,9 @@ export class Store {
           PRAGMA user_version = 2;
         `);
       }
+      if (version < 3) {
+        this.db.exec("ALTER TABLE tasks ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'; PRAGMA user_version = 3;");
+      }
     })();
     const saved = this.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'timezone'").get();
     this.timezone = timezone || saved?.value || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -99,13 +107,13 @@ export class Store {
   }
 
   private rows() {
-    return this.db.query<Task, []>("SELECT * FROM tasks WHERE deletedAt IS NULL ORDER BY position, createdAt, id").all();
+    return this.db.query<TaskRow, []>("SELECT * FROM tasks WHERE deletedAt IS NULL ORDER BY position, createdAt, id").all().map(decodeTask);
   }
 
   private get(id: string, deleted = false) {
-    const task = this.db.query<Task, [string]>("SELECT * FROM tasks WHERE id = ?").get(id);
+    const task = this.db.query<TaskRow, [string]>("SELECT * FROM tasks WHERE id = ?").get(id);
     if (!task || (!deleted && task.deletedAt)) throw new InputError("That task no longer exists.", 404);
-    return task;
+    return decodeTask(task);
   }
 
   private next(status: Status) {
@@ -135,8 +143,8 @@ export class Store {
   }
 
   private pendingReminders() {
-    return this.db.query<Task, [string]>(`SELECT * FROM tasks WHERE deletedAt IS NULL AND status != 'done'
-      AND reminderDismissedAt IS NULL AND reminderAt <= ? ORDER BY reminderAt, id`).all(this.now().toISOString());
+    return this.db.query<TaskRow, [string]>(`SELECT * FROM tasks WHERE deletedAt IS NULL AND status != 'done'
+      AND reminderDismissedAt IS NULL AND reminderAt <= ? ORDER BY reminderAt, id`).all(this.now().toISOString()).map(decodeTask);
   }
 
   // Claim once across tabs/devices; the in-app reminder stays until dismissed.
@@ -168,7 +176,7 @@ export class Store {
 
   private validate(input: unknown, partial = false) {
     const data = object(input);
-    const result: Record<string, string | null> = {};
+    const result: TaskInput = {};
     if (!partial || "title" in data) result.title = string(data.title, "Title", 240);
     if ("notes" in data) result.notes = string(data.notes, "Notes", 10000, true);
     if ("category" in data) {
@@ -177,11 +185,15 @@ export class Store {
     }
     if ("status" in data) {
       if (!statuses.includes(data.status as Status)) throw new InputError("Choose a valid column.");
-      result.status = data.status as string;
+      result.status = data.status as Status;
     }
     if ("dueDate" in data) result.dueDate = dateOnly(data.dueDate);
     if ("reminderAt" in data) result.reminderAt = reminderTime(data.reminderAt);
-    const allowed = ["title", "notes", "category", "status", "dueDate", "reminderAt", ...(partial ? ["beforeId"] : [])];
+    if ("tags" in data) {
+      try { result.tags = normalizeTags(data.tags); }
+      catch (error) { throw new InputError((error as Error).message); }
+    }
+    const allowed = ["tags", "title", "notes", "category", "status", "dueDate", "reminderAt", ...(partial ? ["beforeId"] : [])];
     if (Object.keys(data).some(k => !allowed.includes(k))) throw new InputError("Unknown task field.");
     return result;
   }
@@ -192,30 +204,27 @@ export class Store {
     return this.insert(data);
   }
 
-  private insert(data: Record<string, string | null>) {
+  private insert(data: TaskInput) {
     const now = this.now().toISOString();
     const { day, week } = calendar(this.now(), this.timezone);
     const status = (data.status || "later") as Status;
     const id = crypto.randomUUID();
-    this.db.query(`INSERT INTO tasks (id, title, notes, category, status, position, plannedDay, plannedWeek, completedAt, createdAt, updatedAt, dueDate, reminderAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.title!, data.notes || "", data.category || "personal", status,
-        this.next(status), status === "today" ? day : null, ["today", "week"].includes(status) ? week : null, status === "done" ? now : null, now, now, data.dueDate ?? null, data.reminderAt ?? null);
+    this.db.query(`INSERT INTO tasks (id, title, notes, category, status, position, plannedDay, plannedWeek, completedAt, createdAt, updatedAt, dueDate, reminderAt, tags)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, data.title!, data.notes || "", data.category || "personal", status,
+        this.next(status), status === "today" ? day : null, ["today", "week"].includes(status) ? week : null, status === "done" ? now : null, now, now, data.dueDate ?? null, data.reminderAt ?? null, JSON.stringify(data.tags ?? []));
     return this.get(id);
   }
 
   previewImport(inputs: unknown[]) {
     if (!Array.isArray(inputs) || inputs.length > 500) throw new InputError('Import up to 500 tasks at a time.');
-    const key = (task: Record<string, unknown>) => JSON.stringify([
-      task.title, task.notes || '', task.category || 'personal', task.status || 'later',
-      task.dueDate || null, task.reminderAt || null, Boolean(task.reminderDismissedAt),
-    ]);
+    const key = importTaskKey;
     const seen = new Set(this.rows().map(key));
-    const tasks: Record<string, string | null>[] = [];
+    const tasks: TaskInput[] = [];
     let skipped = 0;
     for (const [index, input] of inputs.entries()) {
       try {
         const { reminderDismissedAt, ...fields } = object(input);
-        const data = { notes: '', category: 'personal', status: 'later', dueDate: null, reminderAt: null, ...this.validate(fields) };
+        const data: TaskInput = { notes: '', category: 'personal', status: 'later', dueDate: null, reminderAt: null, tags: [], ...this.validate(fields) };
         const dismissed = reminderDismissedAt == null ? null : reminderTime(reminderDismissedAt);
         if (dismissed && !data.reminderAt) throw new InputError('A dismissed reminder needs a reminder time.');
         const task = { ...data, reminderDismissedAt: dismissed };
@@ -255,12 +264,12 @@ export class Store {
       const reminderAt = "reminderAt" in data ? data.reminderAt : task.reminderAt;
       const changedReminder = reminderAt !== task.reminderAt;
       this.db.query(`UPDATE tasks SET title = ?, notes = ?, category = ?, status = ?, plannedDay = ?, plannedWeek = ?, completedAt = ?, updatedAt = ?,
-        dueDate = ?, reminderAt = ?, reminderDismissedAt = ?, reminderNotifiedAt = ? WHERE id = ?`)
+        dueDate = ?, reminderAt = ?, reminderDismissedAt = ?, reminderNotifiedAt = ?, tags = ? WHERE id = ?`)
         .run(data.title ?? task.title, data.notes ?? task.notes, data.category ?? task.category, status,
           status === "today" ? day : null, ["week", "today"].includes(status) ? week : null,
           status === "done" ? task.completedAt || now : null, now,
           "dueDate" in data ? data.dueDate : task.dueDate, reminderAt,
-          changedReminder ? null : task.reminderDismissedAt, changedReminder ? null : task.reminderNotifiedAt, id);
+          changedReminder ? null : task.reminderDismissedAt, changedReminder ? null : task.reminderNotifiedAt, JSON.stringify(data.tags ?? task.tags), id);
       if (status !== task.status || "beforeId" in raw) {
         const others = this.rows().filter(t => t.status === status && t.id !== id);
         let index = others.length;
@@ -294,7 +303,7 @@ export class Store {
 
   syncBoard() {
     const board = this.board();
-    return { ...board, rows: this.db.query<Task, []>('SELECT * FROM tasks ORDER BY position, createdAt, id').all() };
+    return { ...board, rows: this.db.query<TaskRow, []>('SELECT * FROM tasks ORDER BY position, createdAt, id').all().map(decodeTask) };
   }
 
   // Whole-task LWW with retained tombstones. Retrying the same operation is a no-op.
@@ -311,7 +320,7 @@ export class Store {
         if (!editedAt || Date.parse(editedAt) > this.now().getTime() + 300000) throw new InputError('Your device clock is ahead. Correct it before syncing.');
         const task = object(change.task);
         if (typeof task.id !== 'string' || !/^[\w-]{1,80}$/.test(task.id)) throw new InputError('Invalid task ID.');
-        const fields = this.validate(Object.fromEntries(['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt'].map(key => [key, task[key]])));
+        const fields = this.validate(Object.fromEntries(['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt', ...('tags' in task ? ['tags'] : [])].map(key => [key, task[key]])));
         const plannedDay = dateOnly(task.plannedDay);
         const plannedWeek = dateOnly(task.plannedWeek);
         const deletedAt = reminderTime(task.deletedAt);
@@ -319,7 +328,7 @@ export class Store {
         const dismissedAt = reminderTime(task.reminderDismissedAt);
         const createdAt = reminderTime(task.createdAt);
         if (!createdAt || typeof task.position !== 'number' || !Number.isFinite(task.position) || Math.abs(task.position) > 1e12) throw new InputError('Invalid task position or creation date.');
-        const current = this.db.query<Task, [string]>('SELECT * FROM tasks WHERE id = ?').get(task.id);
+        const current = this.db.query<TaskRow, [string]>('SELECT * FROM tasks WHERE id = ?').get(task.id);
         const version = this.db.query<{ editedAt: string; changeId: string }, [string]>('SELECT * FROM sync_versions WHERE taskId = ?').get(task.id);
         const currentTime = current?.updatedAt || '';
         const currentChange = version?.editedAt === currentTime ? version.changeId : '';
@@ -329,13 +338,13 @@ export class Store {
           continue;
         }
         const notifiedAt = current?.reminderAt === fields.reminderAt ? current.reminderNotifiedAt : null;
-        this.db.query(`INSERT INTO tasks (id,title,notes,category,status,position,plannedDay,plannedWeek,completedAt,createdAt,updatedAt,deletedAt,dueDate,reminderAt,reminderDismissedAt,reminderNotifiedAt)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        this.db.query(`INSERT INTO tasks (id,title,notes,category,status,position,plannedDay,plannedWeek,completedAt,createdAt,updatedAt,deletedAt,dueDate,reminderAt,reminderDismissedAt,reminderNotifiedAt,tags)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
           title=excluded.title,notes=excluded.notes,category=excluded.category,status=excluded.status,position=excluded.position,
           plannedDay=excluded.plannedDay,plannedWeek=excluded.plannedWeek,completedAt=excluded.completedAt,updatedAt=excluded.updatedAt,
-          deletedAt=excluded.deletedAt,dueDate=excluded.dueDate,reminderAt=excluded.reminderAt,reminderDismissedAt=excluded.reminderDismissedAt,reminderNotifiedAt=excluded.reminderNotifiedAt`)
+          deletedAt=excluded.deletedAt,dueDate=excluded.dueDate,reminderAt=excluded.reminderAt,reminderDismissedAt=excluded.reminderDismissedAt,reminderNotifiedAt=excluded.reminderNotifiedAt,tags=excluded.tags`)
           .run(task.id, fields.title!, fields.notes!, fields.category!, fields.status!, task.position as number, plannedDay, plannedWeek,
-            completedAt, createdAt, editedAt, deletedAt, fields.dueDate!, fields.reminderAt!, dismissedAt, notifiedAt);
+            completedAt, createdAt, editedAt, deletedAt, fields.dueDate!, fields.reminderAt!, dismissedAt, notifiedAt, fields.tags === undefined ? current?.tags ?? '[]' : JSON.stringify(fields.tags));
         this.db.query('INSERT OR REPLACE INTO sync_versions VALUES (?,?,?)').run(task.id, editedAt, change.changeId);
         acknowledged.push(change.changeId);
       }

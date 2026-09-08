@@ -10,6 +10,7 @@ const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["login.html", "text/html; charset=utf-8"]],
   ["/login.js", ["login.js", "text/javascript; charset=utf-8"]],
+  ["/tags.js", ["tags.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/dates.js", ["dates.js", "text/javascript; charset=utf-8"]],
   ["/theme.js", ["theme.js", "text/javascript; charset=utf-8"]],

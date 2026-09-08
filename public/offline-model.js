@@ -1,3 +1,4 @@
+import { normalizeTags } from './tags.js';
 // Pure projections shared by the page and service worker. Pending edits stay immutable.
 export function calendarAt(time, timezone) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));
@@ -10,7 +11,11 @@ export function calendarAt(time, timezone) {
 export function project(record, time = Date.now() + (record?.offset || 0)) {
   if (!record?.board) return null;
   const rows = new Map(record.board.rows.map(task => [task.id, { ...task }]));
-  for (const change of record.pending) rows.set(change.task.id, { ...change.task });
+  for (const change of record.pending) {
+    const previous = rows.get(change.task.id);
+    rows.set(change.task.id, { ...change.task, tags: change.task.tags ?? previous?.tags ?? [] });
+  }
+  for (const task of rows.values()) task.tags = [...(task.tags ?? [])];
   const { day, week } = calendarAt(time, record.board.timezone);
   for (const task of rows.values()) {
     if (task.deletedAt || !['today', 'week'].includes(task.status)) continue;
@@ -28,6 +33,7 @@ function validate(task) {
   if (!['later', 'week', 'today', 'done'].includes(task.status) || !['work', 'personal'].includes(task.category)) throw new Error('Invalid column or category.');
   if (task.dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(task.dueDate) || !Number.isFinite(Date.parse(task.dueDate)) || new Date(task.dueDate).toISOString().slice(0, 10) !== task.dueDate)) throw new Error('Choose a valid due date.');
   if (task.reminderAt && !Number.isFinite(Date.parse(task.reminderAt))) throw new Error('Choose a valid reminder time.');
+  task.tags = normalizeTags(task.tags ?? []);
   task.title = task.title.trim(); task.notes = task.notes.trim();
 }
 export function queueChange(record, path, method, input = {}, now = Date.now()) {
@@ -37,7 +43,7 @@ export function queueChange(record, path, method, input = {}, now = Date.now()) 
   const board = project(record, time);
   const match = path.match(/^\/api\/tasks\/([\w-]+)(?:\/(restore|reminder))?$/);
   const creating = path === '/api/tasks' && method === 'POST';
-  let task = creating ? { id: crypto.randomUUID(), title: '', notes: '', category: 'personal', status: 'later', position: 0,
+  let task = creating ? { id: crypto.randomUUID(), title: '', notes: '', tags: [], category: 'personal', status: 'later', position: 0,
     plannedDay: null, plannedWeek: null, completedAt: null, createdAt: editedAt, updatedAt: editedAt, deletedAt: null,
     dueDate: null, reminderAt: null, reminderDismissedAt: null, reminderNotifiedAt: null } : board.rows.find(t => t.id === match?.[1]);
   if (!task) throw new Error('That task no longer exists.');
@@ -52,7 +58,7 @@ export function queueChange(record, path, method, input = {}, now = Date.now()) 
     else throw new Error('Choose Dismiss or Snooze.');
   } else {
     if (task.deletedAt) throw new Error('That task was deleted.');
-    for (const key of ['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt']) if (key in input) task[key] = input[key];
+    for (const key of ['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt', 'tags']) if (key in input) task[key] = input[key];
     if ('reminderAt' in input && task.reminderAt !== board.rows.find(t => t.id === task.id)?.reminderAt) { task.reminderDismissedAt = null; task.reminderNotifiedAt = null; }
     if (creating && input.reminderDismissedAt) task.reminderDismissedAt = input.reminderDismissedAt;
     task.plannedDay = task.status === 'today' ? board.day : null;

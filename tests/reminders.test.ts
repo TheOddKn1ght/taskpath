@@ -35,7 +35,7 @@ test("v1 migration preserves task content and can be reopened safely", () => {
     migrated.close();
     migrated = new Store(path, () => now);
     expect(migrated.board().tasks[0]).toMatchObject({ dueDate: "2026-09-05", reminderAt: "2026-09-04T06:00:00.000Z" });
-    expect(migrated.db.query("PRAGMA user_version").get()).toEqual({ user_version: 2 });
+    expect(migrated.db.query("PRAGMA user_version").get()).toEqual({ user_version: 3 });
   } finally { migrated.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

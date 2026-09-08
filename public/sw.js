@@ -1,7 +1,7 @@
 import { localState, sync } from './offline.js';
-const CACHE = 'taskpath-shell-v2';
+const CACHE = 'taskpath-shell-v4';
 const FILES = ['/offline-shell', '/login', '/style.css', '/app.js', '/dates.js', '/theme.js', '/login.js',
-  '/realtime.js', '/offline.js', '/offline-model.js', '/export-markdown.js', '/pwa.js', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+  '/tags.js', '/realtime.js', '/offline.js', '/offline-model.js', '/export-markdown.js', '/pwa.js', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   // /login may redirect when already signed in; cache the public static login shell.

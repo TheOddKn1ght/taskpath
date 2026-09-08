@@ -1,3 +1,4 @@
+import { normalizeTags } from '../public/tags.js';
 import { InputError, type Task, type Status } from './store';
 
 export const markdownLimit = 256 * 1024;
@@ -45,10 +46,15 @@ export function parseMarkdown(markdown: unknown) {
       for (const item of part.children || []) {
         if (typeof item.meta?.checked === 'boolean') { nested.push(item); continue; }
         const text = plain(item).trim();
-        const metadata = text.match(/^(Category|Due|Reminder|Reminder dismissed):\s*([^\n]*)$/i);
+        const metadata = text.match(/^(Category|Tags|Due|Reminder|Reminder dismissed):\s*([^\n]*)$/i);
         if (!metadata) { notes.push(text + '\n'); continue; }
-        const key = ({ category: 'category', due: 'dueDate', reminder: 'reminderAt', 'reminder dismissed': 'reminderDismissedAt' })[metadata[1]!.toLowerCase()]!;
+        const key = ({ tags: 'tags', category: 'category', due: 'dueDate', reminder: 'reminderAt', 'reminder dismissed': 'reminderDismissedAt' })[metadata[1]!.toLowerCase()]!;
         if (key in task) throw new InputError(`Task ${tasks.length + 1}: duplicate ${metadata[1]} field.`);
+        if (key === 'tags') {
+          try { task.tags = normalizeTags(JSON.parse(metadata[2]!.trim())); }
+          catch { throw new InputError(`Task ${tasks.length + 1}: Tags must be a JSON array of up to 10 valid names.`); }
+          continue;
+        }
         task[key] = key === 'category' ? metadata[2]!.trim().toLowerCase() : metadata[2]!.trim();
       }
     }
