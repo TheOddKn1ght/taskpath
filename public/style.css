@@ -350,6 +350,8 @@ body.vault-locked #main, body.vault-locked .skip-link, body.vault-locked #toast,
 body.vault-locked #task-context-menu { display: none !important; }
 #unlock-screen { margin: max(24px, 8vh) auto; padding: 20px; width: min(100%, 480px); }
 #unlock-screen[hidden] { display: none; }
+#vault-loading { margin:max(24px,8vh) auto; padding:24px; width:min(100%,480px); }
+#vault-loading p { margin-top:18px; color:var(--muted); font-size:13px; }
 .remember-option { display: flex; gap: 10px; align-items: center; min-height: 44px; }
 .remember-option input { width: 18px; height: 18px; }
 #password-form { display: grid; gap: 14px; }

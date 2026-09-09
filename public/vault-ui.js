@@ -9,6 +9,7 @@ let resolveFirst, initialized = false, attempt = 0;
 const configuration = userId => network('/api/auth/config?userId=' + encodeURIComponent(userId));
 function showGate() {
   attempt++;
+  $('#vault-loading').hidden = true;
   document.body.classList.add('vault-locked'); $('#main').inert = true; $('#unlock-screen').hidden = false;
   $('#unlock-form').reset(); $('#unlock-error').hidden = true;
   $('#unlock-user').value = invitedUserId || selectedAccount() || '';
@@ -24,6 +25,7 @@ function showGate() {
   (setup || selectedAccount() ? $('#unlock-password') : $('#unlock-user')).focus();
 }
 function opened() {
+  $('#vault-loading').hidden = true;
   document.body.classList.remove('vault-locked'); $('#main').inert = false; $('#unlock-screen').hidden = true;
   $('#unlock-form').reset(); $('#unlock-error').hidden = true;
   resolveFirst?.(); resolveFirst = null;
@@ -122,8 +124,14 @@ export async function startVault() {
       finally { $('#password-form').querySelectorAll('input').forEach(input => { input.value = ''; }); $('#password-save').disabled = false; }
     });
   }
-  await loadAccount();
   const ready = new Promise(resolve => { resolveFirst = resolve; });
-  if (!setupToken && await restoreRemembered()) opened(); else showGate();
+  try {
+    await loadAccount();
+    if (!setupToken && await restoreRemembered()) opened(); else showGate();
+  } catch {
+    showGate();
+    $('#unlock-error').textContent = 'Could not open device storage. Allow browser storage and reload to unlock your workspace.';
+    $('#unlock-error').hidden = false;
+  }
   return ready;
 }
