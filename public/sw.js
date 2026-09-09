@@ -1,6 +1,6 @@
-import { sync } from '/assets/accounts-v8/offline.js';
-const CACHE = 'taskpath-shell-accounts-v8';
-const ROOT = '/assets/accounts-v8/';
+import { sync } from '/assets/accounts-v10/offline.js';
+const CACHE = 'taskpath-shell-accounts-v10';
+const ROOT = '/assets/accounts-v10/';
 const FILES = ['style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {

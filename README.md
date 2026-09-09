@@ -29,6 +29,10 @@ Open the theme icon in the toolbar, or **Switch theme** on the sign-in screen. C
 
 Each theme has matching tab, notification, and install icons; dark palettes have a crescent detail. Choose your theme before installing the PWA. Already installed home-screen icons may stay unchanged until you reinstall, depending on the browser and OS. Close all Taskpath windows and reopen online to activate this update.
 
+Views, menus, dialogs, the sidebar, and theme colors use brief, subtle transitions. Your system's reduced-motion preference disables them. Locking hides workspace content immediately.
+
+Startup and task loading show a gentle indicator only if loading lasts long enough to need it. Unlocking and vault creation show progress in the button. Background sync keeps the existing board visible; loading never adds an artificial wait.
+
 Palette references: [Gruvbox](https://github.com/morhetz/gruvbox), [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Catppuccin](https://github.com/catppuccin/catppuccin), and [Rosé Pine](https://rosepinetheme.com/palette/). Taskpath icons are original artwork.
 
 ## Archive and navigation

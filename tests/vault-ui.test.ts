@@ -9,7 +9,7 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-function startup(hash = '') {
+function startup(hash = '', overrides = {}) {
   const load = deferred<void>(), restore = deferred<boolean>();
   const nodes = new Map<string, any>(), visibility: boolean[] = [], listeners = new Map<string, Function>();
   const classes = new Set(['vault-locked']);
@@ -21,7 +21,9 @@ function startup(hash = '') {
         get hidden() { return hidden; },
         set hidden(value) { hidden = value; if (id === '#unlock-screen') visibility.push(!value); },
         inert: id === '#main', value: '', textContent: '',
-        addEventListener() {}, reset() {}, focus() {},
+        attributes: new Map(), handlers: new Map(),
+        setAttribute(name: string, value: string) { this.attributes.set(name, value); },
+        addEventListener(name: string, callback: Function) { this.handlers.set(name, callback); }, reset() {}, focus() {},
       });
     }
     return nodes.get(id);
@@ -32,6 +34,7 @@ function startup(hash = '') {
     window: { addEventListener: (name: string, callback: Function) => listeners.set(name, callback) },
     selectedAccount: () => 'u_test', loadAccount: () => load.promise,
     restoreRemembered: () => { restoreCalls++; return restore.promise; },
+    ...overrides,
   };
   const start = runInNewContext(source + '\nstartVault;', context);
   const ready = start();
@@ -55,6 +58,29 @@ test('remembered startup never reveals sign-in while device storage is pending',
   ui.listeners.get('taskpath-locked')!();
   expect(ui.node('#unlock-screen').hidden).toBe(false);
   expect(ui.node('#main').inert).toBe(true);
+});
+
+test('unlock shows progress, ignores repeated submissions, and recovers from a failed attempt', async () => {
+  const config = deferred<any>(); let requests = 0;
+  const ui = startup('', {
+    validUserId: () => true, crypto: { subtle: {} }, localState: async () => ({}),
+    network: () => { requests++; return config.promise; }, validateConfig() {},
+    unlockVault: async () => { throw new Error('Wrong password'); },
+  });
+  ui.load.resolve(); await tick(); ui.restore.resolve(false); await tick();
+  ui.node('#unlock-user').value = 'u_test'; ui.node('#unlock-password').value = 'incorrect test password';
+  const submit = ui.node('#unlock-form').handlers.get('submit');
+  const pending = submit({ preventDefault() {} }); await tick();
+  expect(ui.node('#unlock-submit').disabled).toBe(true);
+  expect(ui.node('#unlock-progress').textContent).toBe('Unlocking your workspace…');
+  expect(ui.node('#main').inert).toBe(true);
+  await submit({ preventDefault() {} }); expect(requests).toBe(1);
+  config.resolve({ config: { vaultId: 'test' } }); await pending;
+  expect(ui.node('#unlock-error').textContent).toBe('User ID or password is incorrect.');
+  expect(ui.node('#unlock-password').value).toBe('');
+  expect(ui.node('#unlock-submit').disabled).toBe(false);
+  expect(ui.node('#unlock-submit').attributes.get('aria-busy')).toBe('false');
+  expect(ui.node('#unlock-progress').textContent).toBe('');
 });
 
 test('a device without a remembered key shows sign-in only after checking storage', async () => {

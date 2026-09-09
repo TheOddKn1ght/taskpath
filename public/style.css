@@ -319,7 +319,7 @@ dialog { width:460px; max-width:calc(100vw - 28px); max-height:calc(100dvh - 28p
 @media (max-width:480px) { main { padding-inline:16px; }.board { grid-template-columns:1fr; gap:18px; }.column { min-height:220px; }.task-list { min-height:86px; }.empty-state { padding:24px 8px; }.toolbar { gap:7px; }.search { min-width:70px; }.primary-button { padding-inline:10px; font-size:11px; }#category-filter, #tag-filter { max-width:86px; font-size:11px; }.app-header { padding-top:23px; }.field-row { gap:10px; }.board-footer { font-size:10px; }.toast { font-size:11px; width:max-content; } }
 @media (hover:none) { .task-actions { opacity:1; }.task-actions .icon-button { width:30px; height:30px; }.complete-button { width:20px; height:20px; margin-top:1px; } }
 @media (max-width:480px) { #new-task { font-size:0; width:32px; padding:0; flex:none; gap:0; }.app-menu { flex:none; } }
-@media (prefers-reduced-motion:reduce) { * { transition:none!important; } }
+@media (prefers-reduced-motion:reduce) { *,::before,::after,::backdrop { transition:none!important; animation:none!important; scroll-behavior:auto!important; } }
 
 /* Standalone phone layout avoids the notch, home indicator, and input zoom. */
 @media (display-mode:standalone) { body { padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); } main { padding-left:max(16px,env(safe-area-inset-left)); padding-right:max(16px,env(safe-area-inset-right)); } }
@@ -352,6 +352,10 @@ body.vault-locked #task-context-menu { display: none !important; }
 #unlock-screen[hidden] { display: none; }
 #vault-loading { margin:max(24px,8vh) auto; padding:24px; width:min(100%,480px); }
 #vault-loading p { margin-top:18px; color:var(--muted); font-size:13px; }
+.loading-status { display:flex; align-items:center; gap:10px; }
+.loading-spinner,#unlock-submit[aria-busy="true"]::before { content:""; display:inline-block; width:15px; height:15px; flex:none; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; }
+.loading-spinner { color:var(--brand); }
+#unlock-submit[aria-busy="true"] { opacity:1; cursor:progress; }
 .remember-option { display: flex; gap: 10px; align-items: center; min-height: 44px; }
 .remember-option input { width: 18px; height: 18px; }
 #password-form { display: grid; gap: 14px; }
@@ -378,7 +382,9 @@ body.vault-locked #task-context-menu { display: none !important; }
 #sidebar nav button:hover,#navigation-dialog nav button:hover { background:var(--hover); color:var(--text); }
 #sidebar [aria-current="page"],#navigation-dialog [aria-current="page"] { background:var(--hover); color:var(--accent); font-weight:600; }
 #main.sidebar-collapsed { grid-template-columns:60px minmax(0,1fr); }
-.sidebar-collapsed #sidebar .nav-label { display:none; }
+#sidebar .nav-label { max-width:110px; overflow:hidden; white-space:nowrap; }
+.sidebar-collapsed #sidebar .nav-label { max-width:0; opacity:0; }
+.sidebar-collapsed #sidebar nav button { gap:0; }
 #sidebar-toggle,#navigation-open,#navigation-close { min-width:44px; min-height:44px; }
 #navigation-open { display:none; }
 #navigation-dialog { margin:0; height:100dvh; max-height:100dvh; width:280px; border-radius:0 12px 12px 0; }
@@ -411,3 +417,28 @@ body.vault-locked #task-context-menu { display: none !important; }
   .archived-card { align-items:flex-start; flex-direction:column; gap:8px; }
   .archive-actions { width:100%; justify-content:flex-end; }
 }
+
+/* Short, quiet motion. Closing and locking remain immediate, with no old content snapshots. */
+@media (prefers-reduced-motion:no-preference) {
+  :root { --motion-ease:cubic-bezier(.2,.8,.2,1); transition:background-color 180ms ease,color 180ms ease; }
+  :where(button,summary,input,textarea,select,.task-card,.column,.quick-add,.tag-chip,.menu-content,.context-menu,dialog,.reminder-panel,#sidebar) {
+    transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,box-shadow 160ms ease;
+  }
+  #main { transition:grid-template-columns 220ms var(--motion-ease); }
+  #sidebar .nav-label { transition:max-width 220ms var(--motion-ease),opacity 140ms ease; }
+  #sidebar nav button { transition:gap 220ms var(--motion-ease),background-color 160ms ease,color 160ms ease; }
+  dialog[open] { animation:surface-enter 180ms var(--motion-ease); }
+  dialog[open]::backdrop { animation:backdrop-enter 180ms ease; }
+  #navigation-dialog[open] { animation:drawer-enter 220ms var(--motion-ease); }
+  details[open]>.menu-content,.context-menu:not([hidden]),.toast:not([hidden]) { animation:surface-enter 140ms var(--motion-ease); }
+  .task-schedule[open] .schedule-fields { animation:surface-enter 160ms var(--motion-ease); }
+  .loading-spinner,#unlock-submit[aria-busy="true"]::before { animation:loading-spin 900ms linear infinite; }
+  #vault-loading,.loading-message.loading-status { animation:loading-reveal 180ms ease 120ms both; }
+  #unlock-screen:not([hidden]),body:not(.vault-locked) #main { animation:surface-enter 180ms var(--motion-ease); }
+  @media (hover:hover) { .task-card:hover { box-shadow:0 3px 10px var(--shadow); } }
+}
+@keyframes surface-enter { from { opacity:0; translate:0 6px; } to { opacity:1; translate:0 0; } }
+@keyframes drawer-enter { from { opacity:0; translate:-18px 0; } to { opacity:1; translate:0 0; } }
+@keyframes backdrop-enter { from { opacity:0; } to { opacity:1; } }
+@keyframes loading-spin { to { rotate:360deg; } }
+@keyframes loading-reveal { from { opacity:0; } to { opacity:1; } }

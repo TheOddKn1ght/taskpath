@@ -3,23 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v8/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v8/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v10/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v10/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v8/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v8/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v8/style.css">
-  <script src="/assets/accounts-v8/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v8/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v10/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v10/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v10/style.css">
+  <script src="/assets/accounts-v10/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v10/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
   <section id="vault-loading" role="status" aria-live="polite">
-    <h1>taskpath<span>.</span></h1><p>Opening your workspace…</p>
+    <h1>taskpath<span>.</span></h1><p class="loading-status"><span class="loading-spinner" aria-hidden="true"></span>Opening your workspace…</p>
   </section>
   <section id="unlock-screen" class="auth-shell" aria-labelledby="unlock-title" hidden>
     <header class="auth-header"><h1>taskpath<span>.</span></h1><button type="button" id="unlock-theme" class="secondary-button" aria-haspopup="dialog" aria-controls="theme-dialog">Switch theme</button></header>
@@ -35,6 +35,7 @@
         <p class="schedule-hint">Anyone using this browser profile may access your tasks when remembered. Otherwise, closing or reloading locks the workspace.</p>
         <p id="unlock-error" class="form-error" role="alert" hidden></p>
         <button id="unlock-submit" type="submit" class="primary-button auth-submit">Unlock</button>
+        <p id="unlock-progress" class="sr-only" role="status" aria-live="polite"></p>
       </form>
     </div>
     <p class="auth-note">Use 15–1,024 characters. A password manager is recommended. Forgotten passwords cannot be recovered by the server.</p>
@@ -68,7 +69,7 @@
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
     <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
-    <section class="board" id="board" tabindex="-1" aria-label="Task planning board" aria-busy="true"><p class="loading-message">Loading tasks…</p></section>
+    <section class="board" id="board" tabindex="-1" aria-label="Task planning board" aria-busy="true"><p class="loading-message loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span>Opening your tasks…</p></section>
     <footer class="board-footer"><p>Plan your week. Pick your day.</p><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
     </div>
   </main>

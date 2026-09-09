@@ -51,7 +51,19 @@ const nav = navigation((view, filters) => {
   Object.assign(state, filters, { view });
   if ($('#search').value !== state.query) $('#search').value = state.query;
   $('#category-filter').value = state.category;
-  if (state.ready) { clearDrag(); render(); if (changedView) renderReminders(state); }
+  if (state.ready) {
+    clearDrag(); render();
+    if (changedView) {
+      renderReminders(state);
+      // Animate only the new view, without retaining snapshots of decrypted tasks.
+      const board = $('#board');
+      board.getAnimations().forEach(animation => animation.cancel());
+      if (matchMedia('(prefers-reduced-motion: no-preference)').matches) {
+        board.animate([{ opacity: 0, translate: '0 6px' }, { opacity: 1, translate: '0 0' }],
+          { duration: 180, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      }
+    }
+  }
 });
 let dragId = null;
 let dropTarget = null;
@@ -183,6 +195,10 @@ async function syncStatus() {
 async function refresh({ quiet = false } = {}) {
   if (!isUnlocked() || state.loading || state.busy || dragId) return;
   state.loading = true;
+  if (!state.ready) {
+    $('#board').setAttribute('aria-busy', 'true');
+    $('#board').innerHTML = '<p class="loading-message loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span>Opening your tasks…</p>';
+  }
   try {
     const board = await request('/api/board');
     applyBoard(board);

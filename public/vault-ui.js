@@ -7,6 +7,13 @@ let setupToken = fragment.get('setup'), invitedUserId = fragment.get('user');
 if (setupToken) history.replaceState(null, '', location.pathname + location.search);
 let resolveFirst, initialized = false, attempt = 0;
 const configuration = userId => network('/api/auth/config?userId=' + encodeURIComponent(userId));
+function unlockBusy(busy) {
+  const label = setupToken ? 'Creating your vault…' : 'Unlocking your workspace…';
+  $('#unlock-submit').disabled = busy;
+  $('#unlock-submit').setAttribute('aria-busy', String(busy));
+  $('#unlock-submit').textContent = busy ? (setupToken ? 'Creating vault…' : 'Unlocking…') : (setupToken ? 'Create vault' : 'Unlock');
+  $('#unlock-progress').textContent = busy ? label : '';
+}
 function showGate() {
   attempt++;
   $('#vault-loading').hidden = true;
@@ -20,7 +27,7 @@ function showGate() {
   $('#unlock-confirm-field').hidden = !setup; $('#unlock-confirm').required = setup;
   $('#unlock-nickname-field').hidden = !setup;
   $('#unlock-password').autocomplete = setup ? 'new-password' : 'current-password';
-  $('#unlock-submit').textContent = setup ? 'Create vault' : 'Unlock'; $('#unlock-submit').disabled = false;
+  unlockBusy(false);
   for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
   (setup || selectedAccount() ? $('#unlock-password') : $('#unlock-user')).focus();
 }
@@ -28,6 +35,7 @@ function opened() {
   $('#vault-loading').hidden = true;
   document.body.classList.remove('vault-locked'); $('#main').inert = false; $('#unlock-screen').hidden = true;
   $('#unlock-form').reset(); $('#unlock-error').hidden = true;
+  unlockBusy(false);
   resolveFirst?.(); resolveFirst = null;
 }
 export async function startVault() {
@@ -39,14 +47,15 @@ export async function startVault() {
     window.addEventListener('taskpath-lock-error', event => { $('#unlock-error').textContent = event.detail; $('#unlock-error').hidden = false; });
     $('#unlock-form').addEventListener('submit', async event => {
       event.preventDefault();
+      if ($('#unlock-submit').disabled) return;
       let current = attempt;
       const userId = $('#unlock-user').value.trim().toLowerCase(), password = $('#unlock-password').value;
       const confirm = $('#unlock-confirm').value, nicknameInput = $('#unlock-nickname').value, remember = $('#unlock-remember').checked;
-      $('#unlock-submit').disabled = true; $('#unlock-error').hidden = true;
+      unlockBusy(true); $('#unlock-error').hidden = true;
       try {
         if (!validUserId(userId)) throw new Error('Enter the user ID from your invitation, not your nickname.');
         if (!crypto.subtle) throw new Error('Open Taskpath over HTTPS (or localhost) to use encryption.');
-        if (selectedAccount() !== userId) { await switchAccount(userId); current = attempt; $('#unlock-submit').disabled = true; }
+        if (selectedAccount() !== userId) { await switchAccount(userId); current = attempt; unlockBusy(true); }
         const record = await localState(); let config, online = true;
         try { config = (await configuration(userId)).config; }
         catch (error) { if (error.status) throw error; online = false; config = record.config; }
@@ -79,8 +88,11 @@ export async function startVault() {
         if (current !== attempt) return;
         $('#unlock-error').textContent = error.message; $('#unlock-error').hidden = false;
       } finally {
-        $('#unlock-password').value = ''; $('#unlock-confirm').value = ''; $('#unlock-nickname').value = '';
-        $('#unlock-submit').disabled = false;
+        // A cancelled attempt must not clear a newer attempt's fields or loading state.
+        if (current === attempt) {
+          $('#unlock-password').value = ''; $('#unlock-confirm').value = ''; $('#unlock-nickname').value = '';
+          unlockBusy(false);
+        }
       }
     });
     $('#switch-account').addEventListener('click', async () => {
