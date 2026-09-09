@@ -1,6 +1,6 @@
-import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v1/offline.js';
-import { loadAccount } from '/assets/accounts-v1/persistence.js';
-import { unlockVault } from '/assets/accounts-v1/crypto.js';
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v3/offline.js';
+import { loadAccount } from '/assets/accounts-v3/persistence.js';
+import { unlockVault } from '/assets/accounts-v3/crypto.js';
 window.addEventListener('message', async event => {
   if (event.origin !== location.origin) return;
   try {

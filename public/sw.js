@@ -1,6 +1,6 @@
-import { sync } from '/assets/accounts-v1/offline.js';
-const CACHE = 'taskpath-shell-accounts-v1';
-const ROOT = '/assets/accounts-v1/';
+import { sync } from '/assets/accounts-v3/offline.js';
+const CACHE = 'taskpath-shell-accounts-v3';
+const ROOT = '/assets/accounts-v3/';
 const FILES = ['style.css', 'app.js', 'dates.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 self.addEventListener('install', event => event.waitUntil((async () => {

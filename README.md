@@ -39,7 +39,7 @@ bun run admin disable USER_ID
 
 Send invitations privately: whoever claims a link first gets that pending account. Tokens are stored only as hashes, bound to one account, carried in URL fragments, and consumed atomically. The admin command uses the same `DATABASE_PATH` and `TASKPATH_ORIGIN` as the server; it can run while the server is online.
 
-An optional nickname of up to 40 characters is encrypted inside the vault and appears as “Hello, Alex” after unlocking. Change or clear it through **Workspace options → Nickname**; this works offline. Nicknames need not be unique and are never used for login.
+An optional nickname of up to 40 characters is encrypted inside the vault and appears in one of 120 randomized greetings after unlocking, such as “Good morning, Alex” or “Welcome to the night shift, Alex”. Greetings use the device’s local time and stay steady through sync and task edits, changing on a new unlock or time-of-day period. Change or clear it through **Workspace options → Nickname**; this works offline. Nicknames need not be unique and are never used for login.
 
 One account is active per browser profile. **Switch account** locks all Taskpath tabs, clears remembered keys, and preserves each account's encrypted cache and pending edits separately. Returning to a previously downloaded account works offline with its user ID and password. Background sync transfers only the active account's ciphertext and refuses a mismatched server session.
 

@@ -1,7 +1,7 @@
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v1/offline.js';
-import { openDatabase, commit, rememberedKey } from '/assets/accounts-v1/persistence.js';
-import { unlockVault } from '/assets/accounts-v1/crypto.js';
-import { selectAccount } from '/assets/accounts-v1/persistence.js';
+import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v3/offline.js';
+import { openDatabase, commit, rememberedKey } from '/assets/accounts-v3/persistence.js';
+import { unlockVault } from '/assets/accounts-v3/crypto.js';
+import { selectAccount } from '/assets/accounts-v3/persistence.js';
 const report = document.getElementById('result'), results = [], password = 'browser harness password 2026';
 const assert = (condition, message) => { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
 const originalFetch = window.fetch.bind(window); const requests = [];

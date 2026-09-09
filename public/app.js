@@ -122,7 +122,7 @@ async function deliverNotifications() {
     if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
     const notification = new Notification(single ? 'Taskpath reminder' : `${tasks.length} Taskpath reminders`, {
-      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/accounts-v1/favicon.svg',
+      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/accounts-v3/favicon.svg',
     });
     notification.onclick = () => {
       window.focus(); notification.close();
@@ -185,9 +185,155 @@ async function refresh({ quiet = false } = {}) {
   } finally { state.loading = false; $('#board').setAttribute('aria-busy', 'false'); }
 }
 
+const GREETINGS = {
+  "general": [
+    "Welcome back",
+    "Good to see you",
+    "Hello again",
+    "Hey there",
+    "Glad you stopped by",
+    "Welcome to your little corner",
+    "Make yourself at home",
+    "Back for another chapter",
+    "Your space is ready",
+    "Pick up where you left off",
+    "One thing at a time",
+    "No rush",
+    "Small steps count",
+    "Start wherever you like",
+    "A little progress goes a long way",
+    "Room for a fresh idea",
+    "Make a little room to think",
+    "Take it at your pace",
+    "Here for the next small step",
+    "Your plans have a home",
+    "A fresh look never hurts",
+    "Choose your own pace",
+    "A little focus, a little breathing room",
+    "Time for a tiny victory",
+    "Welcome to the drawing board",
+    "A good place to begin",
+    "Settle in",
+    "Hello from your task board",
+    "Nice to have you here",
+    "Ready when you are",
+    "Keep it simple",
+    "Leave room for the unexpected",
+    "Big plans, small steps",
+    "A little less scattered",
+    "Find your next little win",
+    "Give your thoughts a place to land",
+    "Let the ideas settle",
+    "A moment to get your bearings",
+    "You bring the ideas",
+    "Your next chapter starts here"
+  ],
+  "morning": [
+    "Good morning",
+    "Morning",
+    "Rise and shine",
+    "Hello, early bird",
+    "A fresh day awaits",
+    "New day, clean page",
+    "Ease into the morning",
+    "Start the day your way",
+    "A little morning clarity",
+    "Welcome to the early hours",
+    "Morning plans, gently made",
+    "First things first",
+    "Take the morning slowly",
+    "A new day to make your own",
+    "A fresh start looks good on you",
+    "The day is just getting started",
+    "Hello to a new day",
+    "A little planning before the bustle",
+    "Bring your morning ideas",
+    "Find your morning rhythm"
+  ],
+  "afternoon": [
+    "Good afternoon",
+    "Hello from the afternoon",
+    "Hope your day is going well",
+    "A little afternoon reset",
+    "Welcome to the second half",
+    "Time to regroup",
+    "An afternoon breather",
+    "Check in with your plans",
+    "A fresh page for the afternoon",
+    "Find your afternoon rhythm",
+    "Make room for a midday pause",
+    "The day still has room",
+    "A little focus for the afternoon",
+    "Pick a small afternoon win",
+    "Reset at your own pace",
+    "An easy start to the next thing",
+    "Afternoon ideas welcome",
+    "A moment between things",
+    "Give the rest of the day some room",
+    "Take stock, then take your time"
+  ],
+  "evening": [
+    "Good evening",
+    "Evening",
+    "Welcome to the quieter hours",
+    "A little evening clarity",
+    "Let the day settle",
+    "An evening check-in",
+    "Time to tie a loose end",
+    "Make a little room for tomorrow",
+    "Ease into the evening",
+    "Your evening, your pace",
+    "A quiet moment with your plans",
+    "Gather the loose thoughts",
+    "Keep the evening light",
+    "A softer pace feels right",
+    "Leave a little space for rest",
+    "Tomorrow can wait a moment",
+    "Put a bookmark in the day",
+    "A gentle finish to the day",
+    "Evening ideas have a home",
+    "Welcome to the winding-down hours"
+  ],
+  "night": [
+    "Welcome to the night shift",
+    "Hello, night owl",
+    "Burning the midnight oil",
+    "Welcome to the after-hours club",
+    "Hello from the quiet hours",
+    "Keep the late shift gentle",
+    "The night has room for a thought",
+    "Late-night ideas welcome",
+    "A quiet corner after dark",
+    "Welcome to the moonlight hours",
+    "Your thoughts can rest here",
+    "Leave a note for tomorrow",
+    "Keep it cozy",
+    "The small hours say hello",
+    "A little clarity after dark",
+    "Welcome to the hush",
+    "Catch that late-night thought",
+    "A soft landing for your ideas",
+    "Tomorrow’s thoughts can wait here",
+    "Make yourself a quiet moment"
+  ]
+};
+
+let greetingChoice = null;
+function nicknameGreeting(nickname, userId, now = new Date()) {
+  if (!nickname) return '';
+  const hour = now.getHours();
+  const period = hour >= 5 && hour < 12 ? 'morning' : hour < 17 && hour >= 12 ? 'afternoon' : hour >= 17 && hour < 22 ? 'evening' : 'night';
+  const key = `${userId}:${now.toDateString()}:${period}`;
+  if (greetingChoice?.key !== key) {
+    const choices = [...GREETINGS.general, ...GREETINGS[period]];
+    greetingChoice = { key, phrase: choices[Math.floor(Math.random() * choices.length)] };
+  }
+  return `${greetingChoice.phrase}, ${nickname}`;
+}
+
 function applyBoard(board) {
   if (!isUnlocked() || board.userId !== selectedAccount()) return;
-  $('#greeting').textContent = board.nickname ? `Hello, ${board.nickname}` : '';
+  $('#greeting').textContent = nicknameGreeting(board.nickname, board.userId);
   const changed = JSON.stringify(state.tasks) !== JSON.stringify(board.tasks) || state.day !== board.day;
   const previousDay = state.day;
   Object.assign(state, board, { ready: true });
@@ -773,7 +919,7 @@ window.addEventListener('taskpath-password-changed', () => notify('Password chan
 window.addEventListener('taskpath-locked', () => {
   toolsLifecycle?.abort();
   for (const name of ['list_tasks', 'create_task', 'move_task']) { try { context?.unregisterTool?.(name); } catch {} }
-  $('#greeting').textContent = ''; state.nickname = '';
+  $('#greeting').textContent = ''; state.nickname = ''; greetingChoice = null;
   realtime.pause(); clearTimeout(reminderTimer); clearTimeout(toastTimer); clearDrag();
   for (const key of Object.keys(state)) { if (Array.isArray(state[key])) state[key] = []; }
   Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, ready: false, query: '', tag: '', loading: false });
