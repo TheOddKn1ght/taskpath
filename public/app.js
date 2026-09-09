@@ -46,7 +46,13 @@ const columns = {
   done: { title: 'Done' },
 };
 const state = { view: 'board', archiveDetails: null, tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
-const nav = navigation(view => { state.view = view; if (state.ready) { clearDrag(); render(); renderReminders(state); } });
+const nav = navigation((view, filters) => {
+  const changedView = state.view !== view;
+  Object.assign(state, filters, { view });
+  if ($('#search').value !== state.query) $('#search').value = state.query;
+  $('#category-filter').value = state.category;
+  if (state.ready) { clearDrag(); render(); if (changedView) renderReminders(state); }
+});
 let dragId = null;
 let dropTarget = null;
 let toastTimer;
@@ -572,6 +578,10 @@ async function deleteTask(id) {
 }
 
 $('#new-task').addEventListener('click', () => openTask());
+$('.skip-link').addEventListener('click', event => {
+  event.preventDefault();
+  $('#board').focus(); $('#board').scrollIntoView({ block: 'start' });
+});
 $('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').value = ''; $('#task-reminder').value = ''; });
 $('#enable-notifications').addEventListener('click', toggleNotifications);
 $('#notifications-button').addEventListener('click', () => { $('.app-menu').open = false; void toggleNotifications(); });
@@ -681,9 +691,9 @@ $('#sign-in-again').addEventListener('click', event => { event.preventDefault();
 $('#retry').addEventListener('click', () => { void sync().catch(() => {}); void refresh(); });
 $('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); });
 $('#toast-action').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); toastAction?.(); });
-$('#tag-filter').addEventListener('change', event => { state.tag = event.target.value; if (state.ready) render(); });
-$('#category-filter').addEventListener('change', event => { state.category = event.target.value; if (state.ready) render(); });
-$('#search').addEventListener('input', event => { state.query = event.target.value; if (state.ready) render(); });
+$('#tag-filter').addEventListener('change', event => { nav.filters({ tag: event.target.value }); });
+$('#category-filter').addEventListener('change', event => { nav.filters({ category: event.target.value }); });
+$('#search').addEventListener('input', event => { nav.filters({ query: event.target.value }); });
 
 $('#task-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -768,7 +778,7 @@ async function runTaskAction(id, action) {
 $('#board').addEventListener('click', async event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
-  if (button.dataset.action === 'tag') { state.tag = button.dataset.tag; render(); return; }
+  if (button.dataset.action === 'tag') { nav.filters({ tag: button.dataset.tag }); return; }
   const id = button.closest('[data-id]').dataset.id;
   button.disabled = true;
   try { await runTaskAction(id, button.dataset.action); }
@@ -996,9 +1006,9 @@ window.addEventListener('taskpath-locked', () => {
   $('#error-banner').hidden = true; $('#toast').hidden = true;
   $('#tag-filter').innerHTML = '<option value="">All tags</option>';
   $('#archive-completed').textContent = 'Archive all completed (0)'; $('#archive-completed').disabled = true;
-  nav.reset();
+  nav.close();
 });
-window.addEventListener('taskpath-unlocked', () => { nav.reset(); registerTools(); void refresh(); realtime.resume(); });
+window.addEventListener('taskpath-unlocked', () => { nav.restore(); registerTools(); void refresh(); realtime.resume(); });
 window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });
 window.addEventListener('online', () => realtime.resume());
 window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()).catch(() => {}); });

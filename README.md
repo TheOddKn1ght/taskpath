@@ -33,7 +33,7 @@ Palette references: [Gruvbox](https://github.com/morhetz/gruvbox), [Nord](https:
 
 ## Archive and navigation
 
-Use **Board** and **Archive** in the sidebar. Collapse it to icons with its toggle; this preference stays in your browser. On phones, the navigation button opens a drawer. Each unlock starts on Board, and switching views keeps your current search, category, and tag filters.
+Use **Board** and **Archive** in the sidebar. Collapse it to icons with its toggle; this preference stays in your browser. On phones, the navigation button opens a drawer. Archive uses `#archive` in the URL, so refreshing or opening a saved link returns there after unlocking. Board uses the normal URL; browser Back and Forward switch between views. Search, category, and tag filters also live in the fragment, for example `#archive?q=trip&category=personal&tag=travel`. They survive refresh/unlock and stay selected when switching views. Typing or changing filters updates the current history entry; switching views adds an entry for Back/Forward. Search remains entirely local: these values never become HTTP query parameters or API payloads. They are readable in the address bar, browser history, and links you copy.
 
 Archive any task from its menu, right-click menu, or editor. **Workspace options → Archive all completed (N)** archives every completed task, regardless of filters. Archiving is manual: nothing is automatically archived or deleted. The Archive list is newest first and supports search, read-only details, Restore, and Delete. Restore a task before editing it.
 
