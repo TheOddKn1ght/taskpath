@@ -1,6 +1,6 @@
-import { sync } from '/assets/e2ee-v3/offline.js';
-const CACHE = 'taskpath-shell-e2ee-v3';
-const ROOT = '/assets/e2ee-v3/';
+import { sync } from '/assets/accounts-v1/offline.js';
+const CACHE = 'taskpath-shell-accounts-v1';
+const ROOT = '/assets/accounts-v1/';
 const FILES = ['style.css', 'app.js', 'dates.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 self.addEventListener('install', event => event.waitUntil((async () => {
@@ -13,7 +13,7 @@ self.addEventListener('install', event => event.waitUntil((async () => {
   // Waiting until every old window closes avoids mixing app generations.
 })()));
 self.addEventListener('activate', event => event.waitUntil((async () => {
-  for (const name of await caches.keys()) if (name.startsWith('taskpath-shell-e2ee-') && name !== CACHE) await caches.delete(name);
+  for (const name of await caches.keys()) if (name.startsWith('taskpath-shell-accounts-') && name !== CACHE) await caches.delete(name);
   await self.clients.claim();
 })()));
 self.addEventListener('fetch', event => {
@@ -28,4 +28,4 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => await (await caches.open(CACHE)).match(url.pathname) || fetch(event.request))());
   }
 });
-self.addEventListener('sync', event => { if (event.tag === 'taskpath-encrypted-sync') event.waitUntil(sync()); });
+self.addEventListener('sync', event => { if (event.tag === 'taskpath-accounts-sync') event.waitUntil(sync()); });

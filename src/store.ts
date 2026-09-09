@@ -20,8 +20,8 @@ export class Store {
       const old = new Database(path, { readonly: true });
       try {
         const tables = old.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(t => t.name);
-        if (tables.length && (!tables.includes('encrypted_format') || old.query<{ version: number }, []>('SELECT version FROM encrypted_format').get()?.version !== 1 || tables.includes('tasks'))) {
-          throw new Error('Legacy or unsupported database. Nothing was changed. Use a fresh database or Docker volume; export from the old app first if needed.');
+        if (tables.length && (!tables.includes('encrypted_format') || old.query<{ version: number }, []>('SELECT version FROM encrypted_format').get()?.version !== 2 || tables.includes('tasks'))) {
+          throw new Error('Legacy or unsupported database. Nothing was changed. Use a fresh multi-user database or Docker volume. Existing data was left untouched.');
         }
       } finally { old.close(); }
     }
@@ -29,23 +29,24 @@ export class Store {
     this.db = new Database(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS encrypted_format (version INTEGER NOT NULL);
-      INSERT INTO encrypted_format SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM encrypted_format);
+      INSERT INTO encrypted_format SELECT 2 WHERE NOT EXISTS (SELECT 1 FROM encrypted_format);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS vault (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, config TEXT NOT NULL, verifier TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS setup (id INTEGER PRIMARY KEY CHECK(id=1), tokenHash TEXT NOT NULL, expiresAt INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS encrypted_tasks (taskId TEXT PRIMARY KEY, editedAt TEXT NOT NULL, changeId TEXT NOT NULL, envelope TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS reminder_claims (token TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS accounts (userId TEXT PRIMARY KEY, status TEXT NOT NULL CHECK(status IN ('pending','active','disabled')), createdAt INTEGER NOT NULL, tokenHash TEXT, expiresAt INTEGER, revision INTEGER, config TEXT, verifier TEXT);
+      CREATE UNIQUE INDEX IF NOT EXISTS invitation_hash ON accounts(tokenHash) WHERE tokenHash IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS encrypted_tasks (userId TEXT NOT NULL, taskId TEXT NOT NULL, editedAt TEXT NOT NULL, changeId TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(userId, taskId));
+      CREATE TABLE IF NOT EXISTS reminder_claims (userId TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY(userId, token));
     `);
     this.db.query("INSERT OR IGNORE INTO settings VALUES ('timezone', ?)").run(timezone);
     this.timezone = this.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key='timezone'").get()!.value;
   }
   close() { this.db.close(); }
-  config(): any { const row = this.db.query<{ config: string }, []>('SELECT config FROM vault WHERE id=1').get(); return row ? JSON.parse(row.config) : null; }
-  syncBoard() {
-    return { format: 1, workspaceKey: this.config()?.vaultId, timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.db.query<{ envelope: string }, []>('SELECT envelope FROM encrypted_tasks ORDER BY taskId').all().map(row => JSON.parse(row.envelope)) };
+  config(userId: string): any { const row = this.db.query<{ config: string }, [string]>("SELECT config FROM accounts WHERE userId=? AND status='active'").get(userId); return row ? JSON.parse(row.config) : null; }
+  syncBoard(userId: string) {
+    return { format: 1, workspaceKey: this.config(userId)?.vaultId, timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.db.query<{ envelope: string }, [string]>('SELECT envelope FROM encrypted_tasks WHERE userId=? ORDER BY taskId').all(userId).map(row => JSON.parse(row.envelope)) };
   }
-  sync(input: any) {
-    const vaultId = this.config()?.vaultId;
+  sync(userId: string, input: any) {
+    const vaultId = this.config(userId)?.vaultId;
+    if (!vaultId) throw new InputError('Account unavailable.', 403);
     if (input.workspaceKey !== vaultId) throw new InputError('This server has a different workspace. Your encrypted changes remain on this device.', 409);
     if (Object.keys(input).some(k => !['workspaceKey', 'changes'].includes(k)) || !Array.isArray(input.changes) || input.changes.length > 50) throw new InputError('Send at most 50 encrypted changes.');
     for (const envelope of input.changes) {
@@ -56,20 +57,20 @@ export class Store {
       const acknowledged: string[] = [];
       let conflicts = 0, changed = false;
       for (const e of input.changes) {
-        const current = this.db.query<{ editedAt: string; changeId: string }, [string]>('SELECT editedAt, changeId FROM encrypted_tasks WHERE taskId=?').get(e.taskId);
+        const current = this.db.query<{ editedAt: string; changeId: string }, [string, string]>('SELECT editedAt, changeId FROM encrypted_tasks WHERE userId=? AND taskId=?').get(userId, e.taskId);
         acknowledged.push(e.changeId);
         if (current && (current.editedAt > e.editedAt || (current.editedAt === e.editedAt && current.changeId >= e.changeId))) {
           if (current.changeId !== e.changeId) conflicts++;
           continue;
         }
-        this.db.query('INSERT INTO encrypted_tasks VALUES (?, ?, ?, ?) ON CONFLICT(taskId) DO UPDATE SET editedAt=excluded.editedAt, changeId=excluded.changeId, envelope=excluded.envelope').run(e.taskId, e.editedAt, e.changeId, JSON.stringify(e));
+        this.db.query('INSERT INTO encrypted_tasks VALUES (?, ?, ?, ?, ?) ON CONFLICT(userId, taskId) DO UPDATE SET editedAt=excluded.editedAt, changeId=excluded.changeId, envelope=excluded.envelope').run(userId, e.taskId, e.editedAt, e.changeId, JSON.stringify(e));
         changed = true;
       }
-      return { ...this.syncBoard(), acknowledged, conflicts, changed };
+      return { ...this.syncBoard(userId), acknowledged, conflicts, changed };
     })();
   }
-  claim(tokens: unknown) {
+  claim(userId: string, tokens: unknown) {
     if (!Array.isArray(tokens) || tokens.length > 100 || tokens.some(t => !validId(t) || t.length < 32)) throw new InputError('Invalid reminder tokens.');
-    return this.db.transaction(() => ({ tokens: tokens.filter(token => this.db.query('INSERT OR IGNORE INTO reminder_claims VALUES (?)').run(token).changes === 1) }))();
+    return this.db.transaction(() => ({ tokens: tokens.filter(token => this.db.query('INSERT OR IGNORE INTO reminder_claims VALUES (?, ?)').run(userId, token).changes === 1) }))();
   }
 }

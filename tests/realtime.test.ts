@@ -2,9 +2,9 @@ import { test, expect } from 'bun:test';
 import { Realtime } from '../src/realtime';
 import { createHandler } from '../src/server';
 import { createRealtime } from '../public/realtime.js';
-import { fixture, testVault } from './auth-helpers';
+import { fixture, testVault, testUserId } from './auth-helpers';
 import { ClientStore } from './client-helpers';
-import { encryptChange, decryptEnvelope } from '../public/crypto.js';
+import { encryptChange, decryptEnvelope, createVault } from '../public/crypto.js';
 const until = async (condition: () => boolean, timeout = 4000) => {
   const end = Date.now() + timeout;
   while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await Bun.sleep(10); }
@@ -16,12 +16,15 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
   const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   try {
     expect((await fetch(origin + '/api/events', { headers: { origin } })).status).toBe(401);
-    const session = async () => (await post('/api/auth/login', { credential: testVault.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
+    const session = async () => (await post('/api/auth/login', { userId: testUserId, credential: testVault.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
     const a = await session(), b = await session();
+    const invitation = auth.createInvitation(), other = await createVault('another long vault password');
+    await auth.setup(invitation.userId, invitation.token, other.config, other.credential);
+    const c = (await post('/api/auth/login', { userId: invitation.userId, credential: other.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
     expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin: 'https://evil.example' } })).status).toBe(403);
     expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(426);
-    const messages: string[][] = [[], []]; const closed: number[] = [];
-    for (const [i, cookie] of [a, b].entries()) {
+    const messages: string[][] = [[], [], []]; const closed: number[] = [];
+    for (const [i, cookie] of [a, b, c].entries()) {
       const socket = new WebSocket(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
       socket.onmessage = event => messages[i].push(String(event.data));
       socket.onclose = event => { closed[i] = event.code; }; sockets.push(socket);
@@ -31,17 +34,20 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     const encrypted = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[0]);
     const send = (row: any, cookie: string) => post('/api/sync', { workspaceKey: testVault.config.vaultId, changes: [row] }, cookie);
     expect((await send(encrypted, a)).status).toBe(200);
-    await until(() => messages.every(list => list.some(m => JSON.parse(m).type === 'changed')));
+    await until(() => messages.slice(0,2).every(list => list.some(m => JSON.parse(m).type === 'changed')));
     const response = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();
     expect(JSON.stringify(response)).not.toContain(task.title);
     expect(await decryptEnvelope(testVault.key, testVault.config.vaultId, response.rows[0])).toMatchObject({ title: task.title, tags: ['laptop'] });
     device.update(task.id, { tags: ['phone', 'shared'] });
     const second = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[1]);
     await send(second, b);
-    await until(() => messages.every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
+    await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
     await send(second, b); await Bun.sleep(100);
-    expect(messages.every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
+    expect(messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
     expect(JSON.stringify(messages)).not.toContain(task.title);
+    expect(messages[2].some(m => JSON.parse(m).type === 'changed')).toBe(false);
+    auth.disable(invitation.userId); await until(() => closed[2] === 4401);
+    expect(closed[0]).toBeUndefined(); expect(closed[1]).toBeUndefined();
     await post('/api/auth/logout', {}, a); await until(() => closed[0] === 4401);
     expect(closed[1]).toBeUndefined();
     store.db.exec('UPDATE auth_sessions SET expiresAt=0'); await until(() => closed[1] === 4401);

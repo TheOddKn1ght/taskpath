@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/e2ee-v3/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/e2ee-v3/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v1/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v1/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/e2ee-v3/favicon.svg" type="image/svg+xml">
-  <script src="/assets/e2ee-v3/theme.js"></script>
-  <link rel="stylesheet" href="/assets/e2ee-v3/style.css">
-  <script src="/assets/e2ee-v3/pwa.js" type="module"></script>
-  <script src="/assets/e2ee-v3/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v1/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v1/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v1/style.css">
+  <script src="/assets/accounts-v1/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v1/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -24,8 +24,10 @@
       <h2 id="unlock-title">Unlock Taskpath</h2>
       <p id="unlock-description">One password opens your encrypted workspace.</p>
       <form id="unlock-form">
+        <label class="field">User ID<input id="unlock-user" type="text" required autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="34" placeholder="u_…"></label>
         <label class="field">Password<input id="unlock-password" type="password" required maxlength="2048" autocomplete="current-password"></label>
         <label class="field" id="unlock-confirm-field" hidden>Confirm password<input id="unlock-confirm" type="password" maxlength="2048" autocomplete="new-password"></label>
+        <label class="field" id="unlock-nickname-field" hidden>Nickname (optional)<input id="unlock-nickname" type="text" maxlength="80" autocomplete="off"></label>
         <label class="remember-option"><input id="unlock-remember" type="checkbox"> Remember this device</label>
         <p class="schedule-hint">Anyone using this browser profile may access your tasks when remembered. Otherwise, closing or reloading locks the workspace.</p>
         <p id="unlock-error" class="form-error" role="alert" hidden></p>
@@ -34,6 +36,7 @@
     </div>
     <p class="auth-note">Use 15–1,024 characters. A password manager is recommended. Forgotten passwords cannot be recovered by the server.</p>
   </section>
+  <dialog id="nickname-dialog" aria-labelledby="nickname-title"><form id="nickname-form"><div class="dialog-top"><h2 id="nickname-title">Your nickname</h2><button type="button" class="secondary-button" data-close="nickname-dialog">Close</button></div><label class="field">Nickname (optional)<input id="nickname-input" maxlength="80" autocomplete="off"></label><p class="schedule-hint">Only used for your greeting. Sign in with your user ID. Stored encrypted in your vault.</p><p id="nickname-error" class="form-error" hidden></p><button type="submit" class="primary-button">Save</button></form></dialog>
   <dialog id="password-dialog" aria-labelledby="password-title">
     <form id="password-form">
       <div class="dialog-top"><h2 id="password-title">Change password</h2><button type="button" class="secondary-button" data-close="password-dialog">Close</button></div>
@@ -48,14 +51,14 @@
   <a class="skip-link" href="#main">Skip to your tasks</a>
   <main id="main" inert>
     <header class="app-header">
-      <div class="app-heading"><h1>taskpath<span>.</span></h1><span id="week-label" class="week-label">This week</span></div>
+      <div class="app-heading"><h1>taskpath<span>.</span></h1><span id="greeting" class="week-label"></span><span id="week-label" class="week-label">This week</span></div>
       <div class="toolbar">
         <label class="search"><span data-icon="search"></span><input type="search" id="search" placeholder="Search" aria-label="Search tasks"></label>
         <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
         <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
-        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
       </div>
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>

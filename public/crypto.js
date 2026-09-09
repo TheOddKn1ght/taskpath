@@ -2,6 +2,12 @@
 const utf8 = new TextEncoder();
 const decode = new TextDecoder('utf-8', { fatal: true });
 export const FORMAT = 1;
+export const validUserId = id => typeof id === 'string' && /^u_[a-f0-9]{32}$/.test(id);
+export const PROFILE_ID = '_profile';
+export function normalizeNickname(value) {
+  if (typeof value !== 'string' || !value.isWellFormed() || /[\p{Cc}]/u.test(value) || [...value.trim()].length > 40) throw new Error('Use a nickname of up to 40 characters without control characters.');
+  return value.trim().normalize('NFC');
+}
 export const ITERATIONS = 600000;
 export const random = n => crypto.getRandomValues(new Uint8Array(n));
 export const base64 = bytes => btoa(Array.from(new Uint8Array(bytes), b => String.fromCharCode(b)).join(''));

@@ -13,6 +13,7 @@
     "dev": "NODE_ENV=development bun --watch src/server.ts",
     "dev:smol": "NODE_ENV=development bun --smol --watch src/server.ts",
     "test": "bun test",
-    "build": "bun run scripts/build.ts"
+    "build": "bun run scripts/build.ts",
+    "admin": "bun run src/admin.ts"
   }
 }

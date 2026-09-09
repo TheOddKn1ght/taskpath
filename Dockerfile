@@ -1,6 +1,6 @@
 FROM oven/bun:1.4.2-alpine
 WORKDIR /app
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/taskpath.sqlite
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/taskpath-accounts.sqlite
 COPY --chown=bun:bun package.json ./
 COPY --chown=bun:bun src ./src
 COPY --chown=bun:bun public ./public

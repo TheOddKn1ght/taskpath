@@ -3,7 +3,7 @@
 # Install as /etc/nginx/conf.d/taskpath.conf, included inside nginx.conf's http {}.
 # Obtain the certificate before enabling the HTTPS server below.
 # Set TASKPATH_ORIGIN=https://tasks.example.com before public access.
-# Finish encrypted setup using the one-use link printed by Taskpath.
+# Create account invitations with: docker compose exec taskpath bun run admin invite
 
 # Per-client request limit, including requests with incorrect passwords.
 # This is a general limit, not failed-login lockout or distributed attack protection.

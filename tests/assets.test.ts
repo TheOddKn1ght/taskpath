@@ -17,7 +17,7 @@ test('public shells use versioned assets and every service-worker shell resource
     expect(worker).toContain(`/assets/${ASSET_VERSION}/offline.js`);
     expect(worker).toContain('taskpath-shell-' + ASSET_VERSION);
     expect(worker).not.toContain('skipWaiting');
-    expect(worker).toContain("name.startsWith('taskpath-shell-e2ee-')");
+    expect(worker).toContain("name.startsWith('taskpath-shell-accounts-')");
     expect(await Bun.file('public/vendor/marked.LICENSE.md').exists()).toBe(true);
     expect(await Bun.file('.dockerignore').text()).toContain('!public/vendor/marked.LICENSE.md');
   } finally { store.close(); }

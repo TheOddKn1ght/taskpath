@@ -1,8 +1,10 @@
-import { activate, localState, offlineRequest, isUnlocked } from '/assets/e2ee-v3/offline.js';
-import { unlockVault } from '/assets/e2ee-v3/crypto.js';
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v1/offline.js';
+import { loadAccount } from '/assets/accounts-v1/persistence.js';
+import { unlockVault } from '/assets/accounts-v1/crypto.js';
 window.addEventListener('message', async event => {
   if (event.origin !== location.origin) return;
   try {
+  await loadAccount();
     if (event.data === 'edit') {
       const record = await localState(), unlocked = await unlockVault('browser harness password 2026', record.config);
       await activate(record.config, unlocked.key, false, record.lockEpoch);

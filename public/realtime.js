@@ -36,9 +36,10 @@ export function createRealtime({ sync, localState, url, Socket = WebSocket, acti
     let record;
     try { record = await localState(); } catch { return; }
     if (current !== generation) return;
-    if (record.locked || record.authRequired || !record.board) { pause(); return; }
+    if (record.inactive || record.locked || record.authRequired || !record.board) { pause(); return; }
     if (socket || retryTimer) return;
     let connection;
+    if (record.userId) endpoint.searchParams.set('userId', record.userId);
     try { connection = new Socket(endpoint.href); } catch { retry(); return; }
     socket = connection;
     const armWatchdog = () => {

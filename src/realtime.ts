@@ -1,6 +1,6 @@
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 
-export type RealtimeData = { authorized: () => boolean };
+export type RealtimeData = { userId: string; authorized: () => boolean };
 
 // Notifications only. Task data and all writes stay on the authenticated HTTP API.
 export class Realtime {
@@ -25,9 +25,9 @@ export class Realtime {
     for (const socket of this.sockets) this.valid(socket);
   }
 
-  notify() {
+  notify(userId: string) {
     for (const socket of this.sockets) {
-      if (this.valid(socket)) socket.send('{"type":"changed"}');
+      if (this.valid(socket) && socket.data.userId === userId) socket.send('{"type":"changed"}');
     }
   }
 

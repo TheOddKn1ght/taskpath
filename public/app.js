@@ -1,5 +1,5 @@
 import { normalizeTags } from './tags.js';
-import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked } from './offline.js';
+import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked, selectedAccount } from './offline.js';
 import { startVault } from './vault-ui.js';
 import { createRealtime } from './realtime.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
@@ -122,7 +122,7 @@ async function deliverNotifications() {
     if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
     const notification = new Notification(single ? 'Taskpath reminder' : `${tasks.length} Taskpath reminders`, {
-      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/e2ee-v3/favicon.svg',
+      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/accounts-v1/favicon.svg',
     });
     notification.onclick = () => {
       window.focus(); notification.close();
@@ -186,7 +186,8 @@ async function refresh({ quiet = false } = {}) {
 }
 
 function applyBoard(board) {
-  if (!isUnlocked()) return;
+  if (!isUnlocked() || board.userId !== selectedAccount()) return;
+  $('#greeting').textContent = board.nickname ? `Hello, ${board.nickname}` : '';
   const changed = JSON.stringify(state.tasks) !== JSON.stringify(board.tasks) || state.day !== board.day;
   const previousDay = state.day;
   Object.assign(state, board, { ready: true });
@@ -772,12 +773,13 @@ window.addEventListener('taskpath-password-changed', () => notify('Password chan
 window.addEventListener('taskpath-locked', () => {
   toolsLifecycle?.abort();
   for (const name of ['list_tasks', 'create_task', 'move_task']) { try { context?.unregisterTool?.(name); } catch {} }
+  $('#greeting').textContent = ''; state.nickname = '';
   realtime.pause(); clearTimeout(reminderTimer); clearTimeout(toastTimer); clearDrag();
   for (const key of Object.keys(state)) { if (Array.isArray(state[key])) state[key] = []; }
   Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, ready: false, query: '', tag: '', loading: false });
   editingTags = []; editingReminder = null; importSource = null; importRevision++; toastAction = null; contextTaskId = null; contextReturnFocus = null;
   for (const selector of ['#board', '#reminder-panel', '#task-context-menu', '#task-tags', '#tag-suggestions', '#import-tasks']) $(selector).replaceChildren();
-  for (const input of $$('input, textarea')) if (!['checkbox', 'file'].includes(input.type)) input.value = '';
+  for (const input of $$('input, textarea')) if (input.id !== 'unlock-user' && !['checkbox', 'file'].includes(input.type)) input.value = '';
   $('#task-form').reset(); $('#password-form').reset();
   for (const selector of ['#toast-message', '#announcer', '#error-text', '#form-error', '#import-error', '#import-summary', '#import-warning']) $(selector).textContent = '';
   $('#error-banner').hidden = true; $('#toast').hidden = true;
@@ -786,7 +788,7 @@ window.addEventListener('taskpath-locked', () => {
 window.addEventListener('taskpath-unlocked', () => { registerTools(); void refresh(); realtime.resume(); });
 window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });
 window.addEventListener('online', () => realtime.resume());
-window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()); });
+window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()).catch(() => {}); });
 await refresh();
 realtime.resume();
 window.addEventListener('focus', () => { void refresh({ quiet: true }); realtime.resume(); });

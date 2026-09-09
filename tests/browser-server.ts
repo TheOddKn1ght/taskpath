@@ -7,7 +7,11 @@ import { createVault } from '../public/crypto.js';
 import { resolve } from 'node:path';
 const store = new Store(), auth = new AuthManager(store.db);
 const vault = await createVault('browser harness password 2026');
-await auth.setup(auth.issueSetupToken(), vault.config, vault.credential);
+const invite = auth.createInvitation();
+await auth.setup(invite.userId, invite.token, vault.config, vault.credential);
+const secondInvite = auth.createInvitation(), secondVault = await createVault('browser second password 2026');
+await auth.setup(secondInvite.userId, secondInvite.token, secondVault.config, secondVault.credential);
+const pendingInvite = auth.createInvitation();
 const app = createHandler(store, auth);
 const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PORT || 3195), async fetch(request) {
   const path = new URL(request.url).pathname;
@@ -19,6 +23,8 @@ const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PO
     response.headers.set('Content-Security-Policy', response.headers.get('Content-Security-Policy')!.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
     return response;
   }
+  if (path === '/test-account') return Response.json({ userId: invite.userId, secondUserId: secondInvite.userId });
+  if (path === '/invitation') return new Response('<!doctype html><a href="/#user=' + pendingInvite.userId + '&amp;setup=' + pendingInvite.token + '">Open test invitation</a>', { headers: { 'content-type': 'text/html' } });
   if (path === '/checks') return new Response('<!doctype html><meta charset="utf-8"><title>Taskpath browser checks</title><h1>Browser persistence checks</h1><pre id="result">Running…</pre><script type="module" src="/checks.js"></script>', { headers: { 'content-type': 'text/html' } });
   if (path === '/checks.js') return new Response(Bun.file(resolve(import.meta.dir, 'browser-checks.js')), { headers: { 'content-type': 'text/javascript' } });
   if (path === '/frame') return new Response('<!doctype html><script type="module" src="/frame.js"></script>', { headers: { 'content-type': 'text/html' } });

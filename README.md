@@ -1,6 +1,6 @@
 # Taskpath
 
-A private task board: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. Client minification uses Bun, with no package installation. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
+An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. Client minification uses Bun, with no package installation. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
 
 ## Start locally
 
@@ -9,13 +9,41 @@ bun run build
 bun run start
 ```
 
-Open the **one-use setup link printed in the terminal**, choose a password of 15–1,024 characters, and save it in your password manager. The link expires after 30 minutes; restart an uninitialized server to get a new one. Setup is required even locally. Web Crypto requires HTTPS or localhost.
+In another terminal, create your own account (the owner uses the same invitation flow as friends):
+
+```sh
+bun run admin invite
+```
+
+The command prints a permanent user ID and a one-use setup link valid for **24 hours**. Open the link, choose and confirm a password of 15–1,024 characters, and optionally set a nickname. Save the user ID and password in your password manager. Future logins require **user ID + password**; nicknames never work as login IDs. HTTPS is required outside localhost.
+
+Restarting the server never creates or replaces invitations. An administrator must explicitly issue one.
 
 Use `bun run dev` for watch mode with readable client sources. `bun run build` minifies JavaScript (including the service worker and vendored lexer), CSS, HTML, and the web manifest into `dist/public`; the already compact SVG is trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
 
-**This release requires a fresh database.** Plaintext databases are rejected before modification. Nothing is migrated or deleted automatically. See [deployment and upgrading](DEPLOYMENT.md).
+**This release requires a fresh multi-user database.** Both plaintext and single-owner encrypted databases are rejected before modification. Existing accounts are not migrated; no old files are deleted. See [deployment and upgrading](DEPLOYMENT.md).
 
-## One password, encrypted tasks
+## Accounts and invitations
+
+One private vault per account, with no shared boards, roles, public registration, or email service. User IDs are random permanent identifiers, not secrets. Each account has independent encryption keys, sessions, task storage, reminder claims, and WebSocket notifications.
+
+```sh
+bun run admin invite
+bun run admin list
+bun run admin reinvite USER_ID
+bun run admin revoke USER_ID
+bun run admin disable USER_ID
+```
+
+`reinvite` replaces a pending invitation and invalidates its previous link. `revoke` cancels a pending invitation. Neither can reopen an activated vault. `disable` stops server access and revokes that user's sessions while retaining encrypted data; existing WebSockets close at the next authorization check (within the heartbeat interval). Other users stay signed in. Disabling cannot erase downloaded data or revoke copied decryption keys. There is no password reset, recovery key, or account deletion command.
+
+Send invitations privately: whoever claims a link first gets that pending account. Tokens are stored only as hashes, bound to one account, carried in URL fragments, and consumed atomically. The admin command uses the same `DATABASE_PATH` and `TASKPATH_ORIGIN` as the server; it can run while the server is online.
+
+An optional nickname of up to 40 characters is encrypted inside the vault and appears as “Hello, Alex” after unlocking. Change or clear it through **Workspace options → Nickname**; this works offline. Nicknames need not be unique and are never used for login.
+
+One account is active per browser profile. **Switch account** locks all Taskpath tabs, clears remembered keys, and preserves each account's encrypted cache and pending edits separately. Returning to a previously downloaded account works offline with its user ID and password. Background sync transfers only the active account's ciphertext and refuses a mismatched server session.
+
+## One password per vault, encrypted tasks
 
 The same password signs in and unlocks the workspace. It is never sent to the server. There is no separate vault password, recovery key, password-reset endpoint, or administrator bypass. **The server cannot recover a forgotten password.** An already unlocked or remembered browser may still export readable tasks; otherwise the encrypted data is inaccessible.
 
@@ -30,7 +58,7 @@ By default, keys stay in memory and closing, reloading, or navigating away locks
 - PBKDF2-HMAC-SHA-256, 600,000 iterations, a random 16-byte salt, and a 256-bit master secret. Password contents are exact: no trimming or Unicode normalization.
 - HKDF-SHA-256 separates authentication and vault-wrapping purposes with versioned labels. Only the derived authentication credential is sent over HTTPS; the server stores its Argon2id verifier. This credential is a replayable login secret, and this design depends on TLS. It is not a PAKE.
 - A random 256-bit vault key is wrapped with the password-derived key. Complete tasks, including titles, notes, tags, dates, planning fields, and tombstones, use AES-256-GCM with a fresh random 96-bit nonce and 128-bit authentication tag. Additional authenticated data binds the format version, vault identity, task identity, edit timestamp, and operation identity.
-- SQLite and the new `taskpath-encrypted-v1` browser database store ciphertext and public wrapping/sync metadata. Decrypted tasks remain in page memory. The worker never reads the separate remembered-key store.
+- SQLite and the new `taskpath-accounts-v1` browser database store ciphertext and public wrapping/sync metadata. Decrypted tasks remain in page memory. The worker never reads the separate remembered-key store.
 
 The server can still see task identifiers, edit times, ciphertext sizes, traffic patterns, timezone, and opaque reminder-claim activity. It cannot validate encrypted task contents or schedule reminders. Existing plaintext backups and legacy browser data remain plaintext. Exported Markdown/JSON is deliberately readable and should be protected accordingly.
 
@@ -82,7 +110,7 @@ docker compose up -d --build
 docker compose logs taskpath
 ```
 
-Compose binds to `127.0.0.1:3000` and uses a new `taskpath-encrypted-data` volume. Set `TASKPATH_START_SCRIPT=start:smol` for optional reduced-memory mode. Authentication is mandatory; remove old `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` settings. Choose the password only in your browser via the setup link.
+Compose binds to `127.0.0.1:3000` and uses a new `taskpath-accounts-data` volume. Set `TASKPATH_START_SCRIPT=start:smol` for optional reduced-memory mode. Authentication is mandatory; remove old `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` settings. Create invitations with `docker compose exec taskpath bun run admin invite`; recipients choose passwords in their browsers.
 
 For public access, use the included [Nginx template](deploy/nginx/taskpath.conf.example), valid HTTPS, `TASKPATH_ORIGIN=https://your-domain`, and cookie/Origin forwarding. Keep the application port private. Existing WebSocket and 2 MB sync proxy configuration works with encryption; no new Nginx directives are required. See the [step-by-step VPS guide](DEPLOYMENT.md).
 
@@ -92,8 +120,8 @@ For public access, use the included [Nginx template](deploy/nginx/taskpath.conf.
 bun test
 ```
 
-Tests use isolated databases and cover derivation separation, wrapping, tampering, record substitution, setup races, sessions, password changes, legacy database refusal, encrypted persistence, conflicts, tags, Markdown, rollover, reminder tokens, and real WebSocket connections. Source tests need no build. Run `bun run build` before `bun test` to also verify the minified module graph and served assets.
+Tests use isolated databases and cover derivation separation, wrapping, tampering, record substitution, invitation expiry/races, account isolation, nicknames, sessions, password changes, legacy database refusal, encrypted persistence, conflicts, tags, Markdown, rollover, reminder tokens, and real WebSocket connections. Source tests need no build. Run `bun run build` before `bun test` to also verify the minified module graph and served assets. That check is skipped if the build is absent or belongs to an older asset version.
 
-For real browser IndexedDB/concurrent-context checks, run `bun run tests/browser-server.ts` and open the printed `/checks` URL in a fresh browser context. It uses a temporary in-memory server workspace on a separate port, never the application's database. Its checks create disposable browser data on that origin. UI acceptance checks are separate from Bun tests.
+For real browser IndexedDB, account-switching, and concurrent-context checks, run `bun run tests/browser-server.ts` and open the printed `/checks` URL in a fresh browser context. It uses a temporary in-memory server workspace on a separate port, never the application's database. Its checks create disposable browser data on that origin. UI acceptance checks are separate from Bun tests.
 
 The [Tests workflow](.github/workflows/tests.yml) runs on pushes, pull requests, and manual GitHub dispatches. It builds the minified client before testing and uses Ubuntu 24.04 and Bun 1.4.2, a five-minute timeout, read-only permissions, and cancellation of superseded runs. Run `bun run build` followed by `bun test` with Bun 1.4.2 to reproduce the CI command locally. Linux/GitHub execution is confirmed by a GitHub run, not by local macOS tests.

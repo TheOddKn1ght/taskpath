@@ -1,10 +1,10 @@
 import type { Server } from 'bun';
 import { Realtime, type RealtimeData } from './realtime';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
-export const ASSET_VERSION = 'e2ee-v3';
+export const ASSET_VERSION = 'accounts-v1';
 const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
@@ -64,19 +64,19 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       };
       const client = trustedOrigin ? (request.headers.get('x-real-ip') || 'direct-client').slice(0, 100) : 'direct-client';
       if (path === '/healthz' && read) return json({ ok: true });
-      if (path === '/api/auth/config' && read) return json({ config: auth.configuration() });
-      if (path === '/api/auth/status' && read) return json({ enabled: true, authenticated: auth.isAuthenticated(request) });
+      if (path === '/api/auth/config' && read) return json({ config: auth.configuration(url.searchParams.get('userId') || '') });
+      if (path === '/api/auth/status' && read) return json({ enabled: true, authenticated: auth.isAuthenticated(request), userId: auth.identity(request) });
       if (path === '/api/auth/setup' && request.method === 'POST') {
         const data = await body();
-        if (Object.keys(data).some(k => !['token', 'config', 'credential'].includes(k))) throw new InputError('Unsupported setup payload.');
-        await auth.setup(data.token, data.config, data.credential);
-        const session = await auth.login(client, data.credential, 1);
+        if (Object.keys(data).some(k => !['userId', 'token', 'config', 'credential'].includes(k))) throw new InputError('Unsupported setup payload.');
+        await auth.setup(data.userId, data.token, data.config, data.credential);
+        const session = await auth.login(client, data.userId, data.credential, 1);
         return json({ ok: true }, 201, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
       if (path === '/api/auth/login' && request.method === 'POST') {
         const data = await body();
-        if (Object.keys(data).some(k => !['credential', 'revision'].includes(k))) throw new InputError('Use the encrypted login protocol.');
-        const session = await auth.login(client, data.credential, data.revision);
+        if (Object.keys(data).some(k => !['userId', 'credential', 'revision'].includes(k))) throw new InputError('Use the encrypted login protocol.');
+        const session = await auth.login(client, data.userId, data.credential, data.revision);
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
       // Every shell is public and contains no task data. Unlock happens in the page.
@@ -88,7 +88,9 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
         return new Response(request.method === 'HEAD' ? null : Bun.file(resolve(assetDirectory, file)), { headers: { ...headers, 'Content-Type': type,
           'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
       }
-      if (!auth.isAuthenticated(request)) return json({ error: 'Sign in to sync. Encrypted pending changes remain on this device.' }, 401);
+      const userId = auth.identity(request);
+      if (!userId) return json({ error: 'Sign in to sync. Encrypted pending changes remain on this device.' }, 401);
+      if (request.headers.get('x-taskpath-user') && request.headers.get('x-taskpath-user') !== userId) return json({ error: 'Another account is signed in. Unlock this account to sync.' }, 401);
       if (path === '/api/auth/logout' && request.method === 'POST') {
         auth.logout(request); realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
@@ -102,21 +104,22 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       }
       if (path === '/api/events' && request.method === 'GET') {
         if (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site') throw new InputError('Cross-origin requests are not allowed.', 403);
+        if (url.searchParams.get('userId') && url.searchParams.get('userId') !== userId) return json({ error: 'Account changed.' }, 401);
         if (!realtime || !server || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') return json({ error: 'WebSocket upgrade required.' }, 426);
-        if (server.upgrade(request, { data: { authorized: () => auth.isAuthenticated(request) } })) return;
+        if (server.upgrade(request, { data: { userId, authorized: () => auth.identity(request) === userId } })) return;
         return json({ error: 'WebSocket upgrade failed.' }, 400);
       }
-      if (path === '/api/sync' && request.method === 'GET') return json(store.syncBoard());
+      if (path === '/api/sync' && request.method === 'GET') return json(store.syncBoard(userId));
       if (path === '/api/sync' && request.method === 'POST') {
-        const result = store.sync(await body());
-        if (result.changed) realtime?.notify();
+        const result = store.sync(userId, await body());
+        if (result.changed) realtime?.notify(userId);
         const { changed, ...response } = result;
         return json(response);
       }
       if (path === '/api/reminders/claim' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some(k => k !== 'tokens')) throw new InputError('Use opaque reminder tokens.');
-        return json(store.claim(data.tokens));
+        return json(store.claim(userId, data.tokens));
       }
       return json({ error: 'Endpoint unavailable. Task operations and readable exports run in the unlocked browser.' }, 404);
     } catch (error) {
@@ -128,9 +131,12 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
   };
 }
 if (import.meta.main) {
-  if (process.env.NODE_ENV === 'production' && !existsSync(resolve(import.meta.dir, '../dist/public/index.html'))) throw new Error('Client build missing. Run bun run build before starting production.');
+  if (process.env.NODE_ENV === 'production') {
+    const shell = resolve(import.meta.dir, '../dist/public/index.html');
+    if (!existsSync(shell) || !readFileSync(shell, 'utf8').includes(`/assets/${ASSET_VERSION}/`)) throw new Error('Client build missing or outdated. Run bun run build before starting production.');
+  }
   if (process.env.TASKPATH_PASSWORD || process.env.TASKPATH_PASSWORD_HASH || process.env.TASKPATH_USERNAME) throw new Error('Remove legacy authentication environment variables. This version uses browser-based encrypted setup and a fresh database.');
-  const store = new Store(process.env.DATABASE_PATH || './data/taskpath.sqlite', undefined, process.env.TASKPATH_TIMEZONE);
+  const store = new Store(process.env.DATABASE_PATH || './data/taskpath-accounts.sqlite', undefined, process.env.TASKPATH_TIMEZONE);
   const auth = new AuthManager(store.db, Number(process.env.TASKPATH_SESSION_DAYS || 30));
   const realtime = new Realtime();
   const server = Bun.serve({ hostname: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000), maxRequestBodySize: 2 * 1024 * 1024,
@@ -138,8 +144,7 @@ if (import.meta.main) {
   const launchURL = new URL('/', process.env.TASKPATH_ORIGIN || server.url);
   if (!process.env.TASKPATH_ORIGIN && ['0.0.0.0', '[::]'].includes(launchURL.hostname)) launchURL.hostname = 'localhost';
   console.log(`Taskpath is ready at ${launchURL}`);
-  const token = auth.issueSetupToken();
-  if (token) { launchURL.hash = `setup=${token}`; console.log(`One-use setup link (expires in 30 minutes; restart for a new link): ${launchURL}`); }
+  console.log('Create an invitation with: bun run admin invite');
   const shutdown = async () => { realtime.close(); await server.stop(); store.close(); process.exit(0); };
   process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 }

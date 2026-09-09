@@ -9,9 +9,9 @@ services:
       TASKPATH_ORIGIN: ${TASKPATH_ORIGIN:-}
       TASKPATH_SESSION_DAYS: ${TASKPATH_SESSION_DAYS:-30}
     volumes:
-      - taskpath-encrypted-data:/app/data
+      - taskpath-accounts-data:/app/data
     restart: unless-stopped
     init: true
 
 volumes:
-  taskpath-encrypted-data:
+  taskpath-accounts-data:

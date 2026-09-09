@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/store';
-import { fixture, testVault, login, request } from './auth-helpers';
+import { fixture, testVault, testUserId, login, request } from './auth-helpers';
 import { encryptChange, decryptEnvelope } from '../public/crypto.js';
 import { acceptEncrypted } from '../public/offline.js';
 import { ClientStore } from './client-helpers';
@@ -25,14 +25,14 @@ test('encrypted edits, tags, moves, completion, deletion/undo, and immutable ret
     device.update(b.id, { beforeId: a.id }); device.update(a.id, { status: 'done', tags: ['Home', 'errands'] }); device.remove(a.id); device.restore(a.id);
     const encrypted = await Promise.all(device.record.pending.map(encrypt));
     const snapshot = JSON.stringify(encrypted);
-    const response = store.sync(input(encrypted));
+    const response = store.sync(testUserId, input(encrypted));
     expect(response.acknowledged).toHaveLength(encrypted.length);
-    expect(store.sync(input(encrypted)).changed).toBe(false);
+    expect(store.sync(testUserId, input(encrypted)).changed).toBe(false);
     expect(JSON.stringify(encrypted)).toBe(snapshot);
     expect(JSON.stringify(response)).not.toContain(a.title);
     expect(await decode(response.rows.find((e: any) => e.taskId === a.id))).toMatchObject({ title: a.title, tags: ['errands', 'home'], deletedAt: null, status: 'done' });
     store.close(); store = new Store(path, () => time);
-    expect(store.syncBoard().rows).toHaveLength(2);
+    expect(store.syncBoard(testUserId).rows).toHaveLength(2);
     const bytes = readFileSync(path).toString();
     for (const secret of [a.title, a.notes, testVault.credential, 'correct horse battery staple']) expect(bytes).not.toContain(secret);
     expect(store.db.query("SELECT name FROM sqlite_master WHERE name='tasks'").get()).toBeNull();
@@ -46,12 +46,12 @@ test('whole-task latest edit wins; equal timestamps use operation IDs; encrypted
     const change = async (title: string, editedAt: string, changeId: string, extra = {}) => encrypt({ ...base, changeId, editedAt, task: { ...task, title, tags: [title.toLowerCase()], ...extra, updatedAt: editedAt } });
     const newer = await change('New', '2026-09-08T12:01:00.000Z', 'z');
     const older = await change('Old', '2026-09-08T12:00:30.000Z', 'x');
-    store.sync(input([newer])); expect(store.sync(input([older])).conflicts).toBe(1);
-    const tie = await change('Tie', newer.editedAt, 'a'); store.sync(input([tie]));
-    expect(await decode(store.syncBoard().rows[0])).toMatchObject({ title: 'New', tags: ['new'] });
+    store.sync(testUserId, input([newer])); expect(store.sync(testUserId, input([older])).conflicts).toBe(1);
+    const tie = await change('Tie', newer.editedAt, 'a'); store.sync(testUserId, input([tie]));
+    expect(await decode(store.syncBoard(testUserId).rows[0])).toMatchObject({ title: 'New', tags: ['new'] });
     const tombstone = await change('Deleted', '2026-09-08T12:02:00.000Z', 'delete', { deletedAt: '2026-09-08T12:02:00.000Z' });
-    store.sync(input([tombstone])); store.sync(input([newer]));
-    expect((await decode(store.syncBoard().rows[0])).deletedAt).not.toBeNull();
+    store.sync(testUserId, input([tombstone])); store.sync(testUserId, input([newer]));
+    expect((await decode(store.syncBoard(testUserId).rows[0])).deletedAt).not.toBeNull();
   } finally { store.close(); }
 });
 test('acknowledgements preserve concurrent new edits and late snapshots cannot roll back accepted ciphertext', async () => {
@@ -60,12 +60,12 @@ test('acknowledgements preserve concurrent new edits and late snapshots cannot r
     const device = client(), task = device.create({ title: 'First' });
     const first = await encrypt(device.record.pending[0]);
     const local: any = { config: testVault.config, pending: [first], board: null, lastEdit: 0 };
-    const response = store.sync(input([first]));
+    const response = store.sync(testUserId, input([first]));
     device.update(task.id, { title: 'Second' });
     const second = await encrypt(device.record.pending[1]); local.pending.push(second);
     acceptEncrypted(local, response, time.getTime());
     expect(local.pending).toEqual([second]);
-    acceptEncrypted(local, store.sync(input([second])), time.getTime());
+    acceptEncrypted(local, store.sync(testUserId, input([second])), time.getTime());
     acceptEncrypted(local, response, time.getTime());
     expect(local.pending).toEqual([]);
     expect((await decode(local.board.rows[0])).title).toBe('Second');
@@ -78,8 +78,8 @@ test('invalid envelopes, legacy plaintext, oversized batches, future clocks and 
   const { store, handle } = await fixture(':memory:', () => time);
   try {
     const device = client(); device.create({ title: 'Keep' }); const encrypted = await encrypt(device.record.pending[0]);
-    for (const changes of [[encrypted, device.record.pending[0]], Array(51).fill(encrypted), [{ ...encrypted, nonce: 'bad' }], [{ ...encrypted, editedAt: '2099-01-01T00:00:00.000Z' }]]) expect(() => store.sync(input(changes))).toThrow();
-    expect(store.syncBoard().rows).toEqual([]);
+    for (const changes of [[encrypted, device.record.pending[0]], Array(51).fill(encrypted), [{ ...encrypted, nonce: 'bad' }], [{ ...encrypted, editedAt: '2099-01-01T00:00:00.000Z' }]]) expect(() => store.sync(testUserId, input(changes))).toThrow();
+    expect(store.syncBoard(testUserId).rows).toEqual([]);
     const { cookie } = await login(handle);
     expect((await request(handle, cookie, '/api/sync', { ...input([]), workspaceKey: 'other' })).status).toBe(409);
     expect((await request(handle, cookie, '/api/sync', input([encrypted]), 'https://evil.example')).status).toBe(403);
@@ -108,7 +108,7 @@ test('opaque reminder claims are atomic across devices and reveal no schedule or
     expect((await request(handle, '', '/api/reminders/claim', { tokens: [token] })).status).toBe(401);
     expect((await request(handle, cookie, '/api/reminders/claim', { tokens: [token] }, 'https://evil.example')).status).toBe(403);
     expect((await request(handle, cookie, '/api/reminders/claim', { taskId: 'plaintext' })).status).toBe(400);
-    expect(store.db.query('SELECT * FROM reminder_claims').all()).toEqual([{ token }]);
+    expect(store.db.query('SELECT * FROM reminder_claims').all()).toEqual([{ userId: testUserId, token }]);
   } finally { store.close(); }
 });
 test('client reminder tokens persist for unrelated edits; snooze and rescheduling rearm while stale actions fail', () => {

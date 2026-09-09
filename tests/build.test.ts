@@ -6,7 +6,7 @@ import { Store } from '../src/store';
 
 const root = resolve(import.meta.dir, '..');
 const built = resolve(root, 'dist/public');
-const hasBuild = await Bun.file(resolve(built, 'index.html')).exists();
+const hasBuild = await Bun.file(resolve(built, 'index.html')).exists() && (await Bun.file(resolve(built, 'index.html')).text()).includes(`/assets/${ASSET_VERSION}/`);
 
 test('HTML compaction preserves inline spacing, entities, attributes and literal text', async () => {
   const source = '<!doctype html>\n<p title="a  b">Hello \n <strong>world</strong> &amp; friends&nbsp;!</p><!-- discard -->\n<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea><script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>';

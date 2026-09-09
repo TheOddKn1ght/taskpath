@@ -2,25 +2,34 @@ import { test, expect } from 'bun:test';
 import { Store } from '../src/store';
 import { AuthManager } from '../src/auth';
 import { createHandler } from '../src/server';
-import { fixture, login, request, origin, testVault, testPassword } from './auth-helpers';
+import { fixture, login, request, origin, testVault, testPassword, testUserId } from './auth-helpers';
 import { base64, random, replacePassword } from '../public/crypto.js';
 
-test('one-use setup stores only token hash; expires after 30 minutes and setup races have one winner', async () => {
+test('invitations expire after 24 hours, are hash-only, replaceable before activation, and consumed atomically', async () => {
   const store = new Store(); let time = Date.now(); const auth = new AuthManager(store.db, 30, () => time);
   try {
-    const expired = auth.issueSetupToken()!;
-    expect(JSON.stringify(store.db.query('SELECT * FROM setup').all())).not.toContain(expired);
-    time += 1800001;
-    await expect(auth.setup(expired, testVault.config, testVault.credential)).rejects.toThrow();
-    const token = auth.issueSetupToken();
-    const results = await Promise.allSettled([auth.setup(token, testVault.config, testVault.credential), auth.setup(token, testVault.config, testVault.credential)]);
+    const invite = auth.createInvitation();
+    const other = auth.createInvitation();
+    await expect(auth.setup(other.userId, invite.token, testVault.config, testVault.credential)).rejects.toThrow();
+    auth.revokeInvitation(other.userId);
+    expect(JSON.stringify(auth.list())).not.toContain(invite.token);
+    expect(JSON.stringify(store.db.query('SELECT * FROM accounts').all())).not.toContain(invite.token);
+    time += 86400001;
+    await expect(auth.setup(invite.userId, invite.token, testVault.config, testVault.credential)).rejects.toThrow();
+    const fresh = auth.renewInvitation(invite.userId);
+    const replaced = auth.renewInvitation(invite.userId);
+    await expect(auth.setup(invite.userId, fresh.token, testVault.config, testVault.credential)).rejects.toThrow();
+    const results = await Promise.allSettled([auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential), auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential)]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
-    expect(store.db.query('SELECT * FROM setup').all()).toEqual([]);
-    expect(auth.issueSetupToken()).toBeNull();
-    await expect(auth.setup(token, testVault.config, testVault.credential)).rejects.toThrow();
+    expect(store.db.query('SELECT tokenHash,expiresAt FROM accounts WHERE userId=?').get(invite.userId)).toEqual({ tokenHash: null, expiresAt: null });
+    expect(() => auth.renewInvitation(invite.userId)).toThrow();
+    await expect(auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential)).rejects.toThrow();
+    const restarted = new AuthManager(store.db);
+    expect(restarted.configuration(invite.userId)).toEqual(testVault.config);
+    expect(restarted.list()).toHaveLength(2);
   } finally { store.close(); }
 });
-test('password-only derived login, public shell, protected APIs, secure cookies, Origin and legacy rejection', async () => {
+test('user-ID and derived-credential login, public shell, protected APIs, secure cookies, Origin and legacy rejection', async () => {
   const { store, handle } = await fixture();
   try {
     expect((await request(handle, '', '/')).status).toBe(200);
@@ -34,9 +43,9 @@ test('password-only derived login, public shell, protected APIs, secure cookies,
     expect((await login(handle, testVault.credential, 1, 'https://evil.example')).response.status).toBe(403);
     expect((await request(handle, cookie, '/api/auth/login', { password: testPassword })).status).toBe(400);
     for (const path of ['/api/tasks', '/api/import/preview', '/api/import/markdown', '/api/board', '/api/export']) expect((await request(handle, cookie, path, path.includes('export') || path.includes('board') ? undefined : {})).status).toBe(404);
-    const secrets = JSON.stringify(store.db.query('SELECT * FROM vault').all());
+    const secrets = JSON.stringify(store.db.query('SELECT * FROM accounts').all());
     expect(secrets).not.toContain(testPassword); expect(secrets).not.toContain(testVault.credential); expect(secrets).toContain('$argon2id$');
-    const config = await (await request(handle, '', '/api/auth/config')).json();
+    const config = await (await request(handle, '', '/api/auth/config?userId=' + testUserId)).json();
     expect(config).toEqual({ config: testVault.config });
   } finally { store.close(); }
 });
@@ -52,7 +61,7 @@ test('password change verifies current password, uses revision CAS and revokes e
     for (const cookie of [a.cookie, b.cookie]) expect((await request(handle, cookie, '/api/sync')).status).toBe(401);
     expect((await login(handle)).response.status).toBe(401);
     expect((await login(handle, replacement.credential, 2)).response.status).toBe(200);
-    expect(auth.configuration()).toEqual(replacement.config);
+    expect(auth.configuration(testUserId)).toEqual(replacement.config);
   } finally { store.close(); }
 });
 test('sessions survive handler restart, expire, and logout revokes only that session', async () => {
