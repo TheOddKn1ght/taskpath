@@ -1,5 +1,5 @@
 import { importTaskKey } from './tags.js';
-import { project, queueChange, validate } from './offline-model.js';
+import { project, queueChange, queueArchiveBatch, validate } from './offline-model.js';
 import { exportMarkdown } from './export-markdown.js';
 import { parseMarkdown } from './markdown.js';
 import { decryptEnvelope, encryptChange, validateConfig, validateEnvelope, PROFILE_ID, normalizeNickname } from './crypto.js';
@@ -124,7 +124,7 @@ async function plaintext(record, token) {
   const profiles = [...record.board.rows.map((e, i) => ({ envelope: e, task: rows[i] })), ...record.pending.map((e, i) => ({ envelope: e, task: pending[i].task }))].filter(p => p.task.id === PROFILE_ID);
   const profile = profiles.reduce((best, next) => newer(next.envelope, best?.envelope) ? next : best, null)?.task;
   assertUnlocked(await localState(), token);
-  return { ...record, nickname: profile?.nickname || '', board: { ...record.board, rows: rows.filter(t => t.id !== PROFILE_ID) }, pending: pending.filter(c => c.task.id !== PROFILE_ID), locked: false };
+  return { ...record, nickname: profile?.nickname || '', board: { ...record.board, changeIds: Object.fromEntries(record.board.rows.map(e => [e.taskId, e.changeId])), rows: rows.filter(t => t.id !== PROFILE_ID) }, pending: pending.filter(c => c.task.id !== PROFILE_ID), locked: false };
 }
 export async function readBoard() {
   const token = generation; let record = await localState(); assertUnlocked(record, token);
@@ -187,7 +187,8 @@ export async function offlineRequest(path, method = 'GET', body) {
     try {
       const claimed = await network(path, 'POST', { tokens: due.map(t => t.reminderToken) });
       assertUnlocked(await localState(), token);
-      return { tasks: due.filter(t => claimed.tokens.includes(t.reminderToken)) };
+      const current = await readBoard();
+      return { tasks: current.reminders.filter(t => claimed.tokens.includes(t.reminderToken)) };
     } catch { return { tasks: [] }; }
   }
   if (method === 'GET') throw new Error('Unsupported task operation.');
@@ -204,6 +205,8 @@ export async function offlineRequest(path, method = 'GET', body) {
       for (const task of preview.tasks) queueChange(record, '/api/tasks', 'POST', task);
       return { imported: preview.tasks.length, skipped: preview.skipped };
     }
+    if (path === '/api/tasks/archive-completed' && method === 'POST') return queueArchiveBatch(record, 'completed');
+    if (path === '/api/tasks/archive-undo' && method === 'POST') return queueArchiveBatch(record, 'undo', body);
     return queueChange(record, path, method, body);
   });
 }

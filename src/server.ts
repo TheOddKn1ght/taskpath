@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
-export const ASSET_VERSION = 'accounts-v5';
+export const ASSET_VERSION = 'accounts-v6';
 const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
@@ -16,6 +16,7 @@ const assets = new Map<string, [string, string]>([
   ["/tags.js", ["tags.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/dates.js", ["dates.js", "text/javascript; charset=utf-8"]],
+  ["/navigation.js", ["navigation.js", "text/javascript; charset=utf-8"]],
   ["/theme.js", ["theme.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml"]],

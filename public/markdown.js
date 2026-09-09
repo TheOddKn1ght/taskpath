@@ -31,9 +31,9 @@ export function parseMarkdown(markdown) {
       for (const item of part.items) {
         if (item.task) { nested.push(item); continue; }
         const text = plain(item).trim();
-        const match = text.match(/^(Category|Tags|Due|Reminder|Reminder dismissed):\s*([^\n]*)$/i);
+        const match = text.match(/^(Category|Tags|Due|Reminder|Reminder dismissed|Archived):\s*([^\n]*)$/i);
         if (!match) { notes.push(text + '\n'); continue; }
-        const key = ({ category: 'category', tags: 'tags', due: 'dueDate', reminder: 'reminderAt', 'reminder dismissed': 'reminderDismissedAt' })[match[1].toLowerCase()];
+        const key = ({ category: 'category', tags: 'tags', archived: 'archivedAt', due: 'dueDate', reminder: 'reminderAt', 'reminder dismissed': 'reminderDismissedAt' })[match[1].toLowerCase()];
         if (key in task) throw new Error(`Task ${tasks.length + 1}: duplicate ${match[1]} field.`);
         if (key === 'tags') {
           try { task.tags = normalizeTags(JSON.parse(match[2].trim())); }

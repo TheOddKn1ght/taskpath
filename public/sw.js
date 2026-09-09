@@ -1,7 +1,7 @@
-import { sync } from '/assets/accounts-v5/offline.js';
-const CACHE = 'taskpath-shell-accounts-v5';
-const ROOT = '/assets/accounts-v5/';
-const FILES = ['style.css', 'app.js', 'dates.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
+import { sync } from '/assets/accounts-v6/offline.js';
+const CACHE = 'taskpath-shell-accounts-v6';
+const ROOT = '/assets/accounts-v6/';
+const FILES = ['style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);

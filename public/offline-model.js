@@ -11,16 +11,18 @@ export function calendarAt(time, timezone) {
 export function project(record, time = Date.now() + (record?.offset || 0)) {
   if (!record?.board) return null;
   const rows = new Map(record.board.rows.map(task => [task.id, { ...task }]));
+  const changeIds = { ...record.board.changeIds };
   for (const change of record.pending) {
+    changeIds[change.task.id] = change.changeId;
     const previous = rows.get(change.task.id);
     rows.set(change.task.id, { ...change.task, tags: change.task.tags ?? previous?.tags ?? [] });
   }
-  for (const task of rows.values()) task.tags = [...(task.tags ?? [])];
+  for (const task of rows.values()) { task.tags = [...(task.tags ?? [])]; task.archivedAt ??= null; }
   const { day, week } = calendarAt(time, record.board.timezone);
   const order = (a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-  const moving = [...rows.values()].filter(task => ['today', 'week'].includes(task.status) && (task.plannedWeek !== week || (task.status === 'today' && task.plannedDay !== day))).sort(order);
+  const moving = [...rows.values()].filter(task => !task.archivedAt && ['today', 'week'].includes(task.status) && (task.plannedWeek !== week || (task.status === 'today' && task.plannedDay !== day))).sort(order);
   const ids = new Set(moving.map(t => t.id));
-  const ends = Object.fromEntries(['later', 'week'].map(status => [status, Math.max(-1, ...[...rows.values()].filter(t => !ids.has(t.id) && !t.deletedAt && t.status === status).map(t => t.position))]));
+  const ends = Object.fromEntries(['later', 'week'].map(status => [status, Math.max(-1, ...[...rows.values()].filter(t => !ids.has(t.id) && !t.deletedAt && !t.archivedAt && t.status === status).map(t => t.position))]));
   for (const task of moving) {
     if (task.plannedWeek !== week) { task.status = 'later'; task.plannedDay = null; task.plannedWeek = null; }
     else { task.status = 'week'; task.plannedDay = null; }
@@ -28,8 +30,8 @@ export function project(record, time = Date.now() + (record?.offset || 0)) {
   }
   const tasks = [...rows.values()].filter(t => !t.deletedAt).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   const serverTime = new Date(time).toISOString();
-  return { ...record.board, rows: [...rows.values()], tasks, day, week, serverTime,
-    reminders: tasks.filter(t => t.status !== 'done' && t.reminderAt && !t.reminderDismissedAt && t.reminderAt <= serverTime) };
+  return { ...record.board, changeIds, rows: [...rows.values()], tasks, day, week, serverTime,
+    reminders: tasks.filter(t => !t.archivedAt && t.status !== 'done' && t.reminderAt && !t.reminderDismissedAt && t.reminderAt <= serverTime) };
 }
 function validDate(value) {
   return typeof value === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value) && !value.startsWith('0000') && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
@@ -43,7 +45,7 @@ export function validate(task) {
   if (typeof task.notes !== 'string' || task.notes.length > 10000) throw new Error('Notes must be at most 10000 characters.');
   if (!['later', 'week', 'today', 'done'].includes(task.status) || !['work', 'personal'].includes(task.category)) throw new Error('Invalid column or category.');
   if (task.dueDate != null && !validDate(task.dueDate)) throw new Error('Choose a valid due date.');
-  for (const field of ['reminderAt', 'reminderDismissedAt', 'reminderNotifiedAt', 'createdAt', 'updatedAt', 'deletedAt', 'completedAt']) {
+  for (const field of ['reminderAt', 'reminderDismissedAt', 'reminderNotifiedAt', 'createdAt', 'updatedAt', 'deletedAt', 'completedAt', 'archivedAt']) {
     if (task[field] != null) task[field] = timestamp(task[field]);
   }
   if (!Number.isFinite(task.position) || Math.abs(task.position) > 1e12) throw new Error('Invalid task position.');
@@ -51,6 +53,7 @@ export function validate(task) {
   for (const field of ['plannedDay', 'plannedWeek']) if (task[field] != null && !validDate(task[field])) throw new Error('Invalid planning date.');
   if (task.reminderToken != null && !/^[\w-]{32,80}$/.test(task.reminderToken)) throw new Error('Invalid reminder token.');
   if (task.reminderDismissedAt && !task.reminderAt) throw new Error('A dismissed reminder needs a reminder time.');
+  task.archivedAt ??= null;
   task.tags = normalizeTags(task.tags ?? []);
   task.title = task.title.trim(); task.notes = task.notes.trim();
 }
@@ -61,17 +64,30 @@ export function queueChange(record, path, method, input = {}, now = Date.now()) 
   const time = Math.max(now + record.offset, (record.lastEdit || 0) + 1);
   const editedAt = new Date(time).toISOString();
   const board = project(record, time);
-  const match = path.match(/^\/api\/tasks\/([\w-]+)(?:\/(restore|reminder))?$/);
+  const match = path.match(/^\/api\/tasks\/([\w-]+)(?:\/(restore|reminder|archive|unarchive))?$/);
   const creating = path === '/api/tasks' && method === 'POST';
   let task = creating ? { id: crypto.randomUUID(), title: '', notes: '', tags: [], category: 'personal', status: 'later', position: 0,
-    plannedDay: null, plannedWeek: null, completedAt: null, createdAt: editedAt, updatedAt: editedAt, deletedAt: null,
+    plannedDay: null, plannedWeek: null, completedAt: null, createdAt: editedAt, updatedAt: editedAt, deletedAt: null, archivedAt: null,
     dueDate: null, reminderAt: null, reminderDismissedAt: null, reminderNotifiedAt: null } : board.rows.find(t => t.id === match?.[1]);
   if (!task) throw new Error('That task no longer exists.');
   task = { ...task };
   const oldStatus = task.status, oldReminder = task.reminderAt;
+  const action = match?.[2];
+  if (['archive', 'unarchive'].includes(action) && method !== 'POST') throw new Error('Use POST to archive or restore.');
+  if (task.deletedAt && action !== 'restore') throw new Error('That task was deleted.');
+  if (task.archivedAt && !['unarchive', 'restore'].includes(action) && method !== 'DELETE') throw new Error('Restore this archived task before changing it.');
   if ('reminderAt' in input && input.reminderAt != null) input = { ...input, reminderAt: timestamp(input.reminderAt) };
   if (method === 'DELETE') task.deletedAt = editedAt;
-  else if (match?.[2] === 'restore') task.deletedAt = null;
+  else if (action === 'restore') task.deletedAt = null;
+  else if (action === 'archive') task.archivedAt = editedAt;
+  else if (action === 'unarchive') {
+    if (!task.archivedAt) throw new Error('That task is not archived.');
+    task.archivedAt = null;
+    if (['today', 'week'].includes(task.status)) {
+      if (task.plannedWeek !== board.week) { task.status = 'later'; task.plannedDay = null; task.plannedWeek = null; }
+      else if (task.status === 'today' && task.plannedDay !== board.day) { task.status = 'week'; task.plannedDay = null; }
+    }
+  }
   else if (match?.[2] === 'reminder') {
     if (task.reminderAt !== input.reminderAt || task.reminderDismissedAt || task.status === 'done') throw new Error('This reminder has changed.');
     if (input.action === 'dismiss') task.reminderDismissedAt = editedAt;
@@ -81,13 +97,14 @@ export function queueChange(record, path, method, input = {}, now = Date.now()) 
     if (task.deletedAt) throw new Error('That task was deleted.');
     for (const key of ['title', 'notes', 'category', 'status', 'dueDate', 'reminderAt', 'tags']) if (key in input) task[key] = input[key];
     if ('reminderAt' in input && task.reminderAt !== board.rows.find(t => t.id === task.id)?.reminderAt) { task.reminderDismissedAt = null; task.reminderNotifiedAt = null; }
+    if (creating && 'archivedAt' in input) task.archivedAt = input.archivedAt;
     if (creating && input.reminderDismissedAt) task.reminderDismissedAt = input.reminderDismissedAt;
     task.plannedDay = task.status === 'today' ? board.day : null;
     task.plannedWeek = ['week', 'today'].includes(task.status) ? board.week : null;
     task.completedAt = task.status === 'done' ? task.completedAt || editedAt : null;
   }
-  if (creating || oldStatus !== task.status || 'beforeId' in input || match?.[2] === 'restore') {
-    const peers = board.tasks.filter(t => t.status === task.status && t.id !== task.id);
+  if (!task.archivedAt && (creating || oldStatus !== task.status || 'beforeId' in input || action === 'restore' || action === 'unarchive')) {
+    const peers = board.tasks.filter(t => !t.archivedAt && t.status === task.status && t.id !== task.id);
     let index = peers.findIndex(t => t.id === input.beforeId);
     if (input.beforeId && index < 0) throw new Error('That drop target no longer exists in this column.');
     if (index < 0) index = peers.length;
@@ -111,5 +128,24 @@ export function queueChange(record, path, method, input = {}, now = Date.now()) 
   const change = { changeId: crypto.randomUUID(), editedAt, task };
   record.pending.push(change);
   record.lastEdit = time;
-  return { task, ok: true };
+  return { task, ok: true, ...(action === 'archive' ? { undo: [{ id: task.id, changeId: change.changeId }] } : {}) };
+}
+
+// A batch becomes one IndexedDB commit; each task keeps its own encrypted sync operation.
+export function queueArchiveBatch(record, action, input = {}, now = Date.now()) {
+  const copy = structuredClone(record), undo = []; let restored = 0, skipped = 0;
+  if (action === 'completed') {
+    for (const task of project(copy, now + (copy.offset || 0)).tasks.filter(t => !t.archivedAt && t.status === 'done')) {
+      undo.push(...queueChange(copy, `/api/tasks/${task.id}/archive`, 'POST', {}, now).undo);
+    }
+  } else if (action === 'undo') {
+    if (!Array.isArray(input.undo) || input.undo.some(item => !item || typeof item.id !== 'string' || typeof item.changeId !== 'string')) throw new Error('Invalid archive undo.');
+    for (const receipt of input.undo) {
+      const board = project(copy, now + (copy.offset || 0)), task = board.tasks.find(t => t.id === receipt.id);
+      if (!task?.archivedAt || board.changeIds[receipt.id] !== receipt.changeId) { skipped++; continue; }
+      queueChange(copy, `/api/tasks/${task.id}/unarchive`, 'POST', {}, now); restored++;
+    }
+  } else throw new Error('Unsupported archive operation.');
+  record.pending = copy.pending; record.lastEdit = copy.lastEdit;
+  return { archived: undo.length, restored, skipped, undo };
 }

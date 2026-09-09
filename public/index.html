@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v5/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v5/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v6/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v6/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v5/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v5/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v5/style.css">
-  <script src="/assets/accounts-v5/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v5/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v6/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v6/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v6/style.css">
+  <script src="/assets/accounts-v6/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v6/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -53,22 +53,27 @@
   </dialog>
   <a class="skip-link" href="#main">Skip to your tasks</a>
   <main id="main" inert>
+    <aside id="sidebar"><button type="button" id="sidebar-toggle" class="icon-button" aria-expanded="true" aria-label="Collapse sidebar" aria-controls="sidebar"><span data-icon="sidebar"></span></button><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button></nav></aside>
+    <div class="workspace-content">
     <header class="app-header">
-      <div class="app-heading"><h1>taskpath<span>.</span></h1><span id="greeting" class="week-label"></span><span id="week-label" class="week-label">This week</span></div>
+      <div class="app-heading"><button type="button" id="navigation-open" class="icon-button" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="navigation-dialog" aria-expanded="false"><span data-icon="sidebar"></span></button><h1>taskpath<span>.</span></h1><span id="greeting" class="week-label"></span><span id="week-label" class="week-label">This week</span></div>
       <div class="toolbar">
         <label class="search"><span data-icon="search"></span><input type="search" id="search" placeholder="Search" aria-label="Search tasks"></label>
         <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
         <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Choose theme" title="Choose theme" aria-haspopup="dialog" aria-controls="theme-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
-        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="archive-completed" disabled>Archive all completed (0)</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
       </div>
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
     <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
-    <section class="board" id="board" aria-label="Task planning board" aria-busy="true"><p class="loading-message">Loading tasks…</p></section>
+    <section class="board" id="board" tabindex="-1" aria-label="Task planning board" aria-busy="true"><p class="loading-message">Loading tasks…</p></section>
     <footer class="board-footer"><p>Plan your week. Pick your day.</p><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
+    </div>
   </main>
+  <dialog id="navigation-dialog" aria-label="Navigation"><div class="dialog-top"><h2>taskpath<span>.</span></h2><button type="button" id="navigation-close" class="icon-button" aria-label="Close navigation"><span data-icon="x"></span></button></div><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button></nav></dialog>
+  <dialog id="archive-details-dialog" aria-labelledby="archive-details-title"><div class="dialog-top"><h2 id="archive-details-title">Archived task</h2><button type="button" class="icon-button" data-close="archive-details-dialog" aria-label="Close archived task"><span data-icon="x"></span></button></div><div id="archive-details-content"></div><div class="dialog-actions"><button type="button" id="archive-delete" class="subtle-button danger">Delete task</button><button type="button" id="archive-restore" class="primary-button">Restore task</button></div></dialog>
 
   <dialog id="task-dialog" class="task-dialog" aria-labelledby="dialog-title">
     <form id="task-form"><div class="dialog-top"><h2 id="dialog-title">New task</h2><button type="button" class="icon-button" data-close="task-dialog" aria-label="Close task editor"><span data-icon="x"></span></button></div>
@@ -91,7 +96,7 @@
         <p id="notification-status" class="schedule-hint" role="status"></p>
       </details>
       <p id="form-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions"><button type="button" class="subtle-button danger" id="delete-task" hidden><span data-icon="trash"></span>Delete task</button><div class="dialog-actions-right"><button type="button" class="secondary-button" data-close="task-dialog">Cancel</button><button type="submit" class="primary-button" id="save-task">Add task<span data-icon="arrow-right"></span></button></div></div>
+      <div class="dialog-actions"><button type="button" class="subtle-button danger" id="delete-task" hidden><span data-icon="trash"></span>Delete task</button><div class="dialog-actions-right"><button type="button" id="archive-task" class="secondary-button" hidden>Archive task</button><button type="button" class="secondary-button" data-close="task-dialog">Cancel</button><button type="submit" class="primary-button" id="save-task">Add task<span data-icon="arrow-right"></span></button></div></div>
     </form>
   </dialog>
 

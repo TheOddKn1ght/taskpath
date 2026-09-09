@@ -3,6 +3,7 @@ import { Realtime } from '../src/realtime';
 import { createHandler } from '../src/server';
 import { createRealtime } from '../public/realtime.js';
 import { fixture, testVault, testUserId } from './auth-helpers';
+import { queueChange } from '../public/offline-model.js';
 import { ClientStore } from './client-helpers';
 import { encryptChange, decryptEnvelope, createVault } from '../public/crypto.js';
 const until = async (condition: () => boolean, timeout = 4000) => {
@@ -44,6 +45,13 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
     await send(second, b); await Bun.sleep(100);
     expect(messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
+    queueChange(device.record, `/api/tasks/${task.id}/archive`, 'POST');
+    const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1));
+    await send(archived, a);
+    await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 3));
+    const archivedSnapshot = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();
+    expect((await decryptEnvelope(testVault.key, testVault.config.vaultId, archivedSnapshot.rows[0])).archivedAt).toBeTruthy();
+    expect(JSON.stringify(messages)).not.toContain('archivedAt');
     expect(JSON.stringify(messages)).not.toContain(task.title);
     expect(messages[2].some(m => JSON.parse(m).type === 'changed')).toBe(false);
     auth.disable(invitation.userId); await until(() => closed[2] === 4401);

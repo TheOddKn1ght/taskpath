@@ -1,5 +1,6 @@
 import { normalizeTags } from './tags.js';
 import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked, selectedAccount } from './offline.js';
+import { navigation } from './navigation.js';
 import { startVault } from './vault-ui.js';
 import { createRealtime } from './realtime.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
@@ -9,6 +10,8 @@ await startVault();
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const paths = {
+  archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',
+  sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
   board: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16m6-16v16"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
@@ -42,7 +45,8 @@ const columns = {
   today: { title: 'Today' },
   done: { title: 'Done' },
 };
-const state = { tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
+const state = { view: 'board', archiveDetails: null, tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
+const nav = navigation(view => { state.view = view; if (state.ready) { clearDrag(); render(); renderReminders(state); } });
 let dragId = null;
 let dropTarget = null;
 let toastTimer;
@@ -104,9 +108,9 @@ function renderReminders(board) {
     panel.innerHTML = html;
     if (board.reminders?.length > previous) announce(`${board.reminders.length} ${board.reminders.length === 1 ? 'reminder is' : 'reminders are'} due.`);
   }
-  panel.hidden = !html;
+  panel.hidden = !html || state.view === 'archive';
   clearTimeout(reminderTimer);
-  const upcoming = board.tasks.filter(t => t.reminderAt && !t.reminderDismissedAt && t.status !== 'done' && t.reminderAt > board.serverTime);
+  const upcoming = board.tasks.filter(t => !t.archivedAt && t.reminderAt && !t.reminderDismissedAt && t.status !== 'done' && t.reminderAt > board.serverTime);
   if (upcoming.length) {
     const next = Math.min(...upcoming.map(t => Date.parse(t.reminderAt)));
     reminderTimer = setTimeout(() => refresh({ quiet: true }), Math.max(500, Math.min(60000, next - Date.parse(board.serverTime) + 100)));
@@ -337,7 +341,11 @@ function applyBoard(board) {
   const changed = JSON.stringify(state.tasks) !== JSON.stringify(board.tasks) || state.day !== board.day;
   const previousDay = state.day;
   Object.assign(state, board, { ready: true });
-  if (changed || !$('#board .column')) render();
+  if (changed || !$('#board').children.length) render();
+  if ($('#archive-details-dialog').open) {
+    const task = state.tasks.find(t => t.id === state.archiveDetails && t.archivedAt);
+    if (task) archiveDetails(task, false); else $('#archive-details-dialog').close();
+  }
   renderReminders(board);
   if (previousDay && previousDay !== board.day) notify('Your tasks have rolled over to the new day.');
 }
@@ -428,7 +436,7 @@ function taskMarkup(task, index, total) {
     <div class="task-bottom"><div class="task-actions">
       <span class="move-control icon-button" title="Move task"><span>${icon('move')}</span><select class="move-select" aria-label="Move ${title} to a column">${options}</select></span>
       <button class="icon-button drag-handle" title="Drag to move; use the adjacent move control for keyboard movement" aria-label="Drag ${title}" tabindex="-1">${icon('grip')}</button>
-      <details class="task-menu"><summary class="icon-button" aria-label="More options for ${title}">${icon('more')}</summary><div class="menu-content"><button data-action="edit">${icon('edit')}Edit task</button><button data-action="up" ${index === 0 ? 'disabled' : ''}>${icon('up')}Move up</button><button data-action="down" ${index === total - 1 ? 'disabled' : ''}>${icon('down')}Move down</button><button class="danger" data-action="delete">${icon('trash')}Delete task</button></div></details>
+      <details class="task-menu"><summary class="icon-button" aria-label="More options for ${title}">${icon('more')}</summary><div class="menu-content"><button data-action="edit">${icon('edit')}Edit task</button><button data-action="up" ${index === 0 ? 'disabled' : ''}>${icon('up')}Move up</button><button data-action="down" ${index === total - 1 ? 'disabled' : ''}>${icon('down')}Move down</button><button data-action="archive">${icon('archive')}Archive task</button><button class="danger" data-action="delete">${icon('trash')}Delete task</button></div></details>
     </div></div>
   </article>`;
 }
@@ -445,9 +453,15 @@ function render() {
   const selection = focus instanceof HTMLInputElement ? [focus.selectionStart, focus.selectionEnd] : null;
   renderTagFilter();
   const query = state.query.trim().normalize('NFC').toLocaleLowerCase();
-  const filtered = state.tasks.filter(task => (state.category === 'all' || task.category === state.category) && (!state.tag || task.tags?.includes(state.tag)) && (!query || `${task.title} ${task.notes} ${(task.tags || []).join(' ')}`.normalize('NFC').toLocaleLowerCase().includes(query)));
+  const filtered = state.tasks.filter(task => Boolean(task.archivedAt) === (state.view === 'archive') && (state.category === 'all' || task.category === state.category) && (!state.tag || task.tags?.includes(state.tag)) && (!query || `${task.title} ${task.notes} ${(task.tags || []).join(' ')}`.normalize('NFC').toLocaleLowerCase().includes(query)));
   const board = $('#board');
-  board.innerHTML = Object.keys(columns).map(status => {
+  board.classList.toggle('is-archive', state.view === 'archive');
+  board.setAttribute('aria-label', state.view === 'archive' ? 'Archived tasks' : 'Task planning board');
+  $('#new-task').hidden = state.view === 'archive';
+  const completed = state.tasks.filter(t => !t.archivedAt && t.status === 'done').length;
+  $('#archive-completed').textContent = `Archive all completed (${completed})`;
+  $('#archive-completed').disabled = !completed;
+  board.innerHTML = state.view === 'archive' ? `<header class="archive-heading"><h2>Archive</h2><p>Out of the way, here when you need them.</p></header><div class="archive-list">${filtered.length ? filtered.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt) || a.id.localeCompare(b.id)).map(archiveMarkup).join('') : `<p class="archive-empty">${state.query || state.tag || state.category !== 'all' ? 'No matching archived tasks.' : 'No archived tasks yet. Archive a task from its menu.'}</p>`}</div>` : Object.keys(columns).map(status => {
     const column = columns[status];
     const tasks = filtered.filter(t => t.status === status);
     const isFiltered = !!query || state.category !== 'all' || !!state.tag;
@@ -465,12 +479,59 @@ function render() {
     if (input && selection && selection[0] !== null) input.setSelectionRange(...selection);
   } else if (focusedTask) {
     const card = $(`[data-id="${focusedTask}"]`);
+    if (!card) board.focus({ preventScroll: true });
     (focusedTag ? $$('[data-tag]', card || board).find(button => button.dataset.tag === focusedTag) : focusedAction ? $(`[data-action="${focusedAction}"]`, card || board) : card)?.focus({ preventScroll: true });
   } else if (focusedId && document.activeElement !== focus) document.getElementById(focusedId)?.focus({ preventScroll: true });
 }
 
+function archiveMarkup(task) {
+  return `<article class="task-card archived-card" data-id="${task.id}" tabindex="0" aria-label="${escape(task.title)}. Archived.">
+    <div class="archive-copy"><button class="task-title" data-action="edit">${escape(task.title)}</button><p class="archive-meta">${escape(columns[task.status].title)} · Archived <time datetime="${escape(task.archivedAt)}">${escape(reminderLabel(task.archivedAt))}</time></p>
+    ${task.tags?.length ? `<div class="card-tags">${task.tags.map(tag => `<button class="tag-chip" data-action="tag" data-tag="${escape(tag)}">${escape(tag)}</button>`).join('')}</div>` : ''}</div>
+    <div class="archive-actions"><button class="secondary-button" data-action="unarchive" aria-label="Restore ${escape(task.title)}">Restore</button><details class="task-menu"><summary class="icon-button" aria-label="More options for ${escape(task.title)}">${icon('more')}</summary><div class="menu-content"><button data-action="edit">View details</button><button class="danger" data-action="delete">Delete task</button></div></details></div>
+  </article>`;
+}
+function archiveDetails(task, open = true) {
+  closeTaskContextMenu(); state.archiveDetails = task.id;
+  $('#archive-details-content').innerHTML = `<h3>${escape(task.title)}</h3><p class="archive-meta">${escape(columns[task.status].title)} · ${escape(task.category)} · Archived ${escape(reminderLabel(task.archivedAt))}</p>${task.notes ? `<p class="archive-notes">${escape(task.notes)}</p>` : ''}${task.tags?.length ? `<p>Tags: ${escape(task.tags.join(', '))}</p>` : ''}${task.dueDate ? `<p>Due: ${escape(task.dueDate)}</p>` : ''}${task.reminderAt ? `<p>Reminder: ${escape(reminderLabel(task.reminderAt))} (${task.reminderDismissedAt ? 'dismissed' : 'paused while archived'})</p>` : ''}`;
+  if (open) $('#archive-details-dialog').showModal();
+}
+function archiveNotice(result) {
+  const count = result.undo.length;
+  if (!count) { notify('No completed tasks to archive.'); return; }
+  notify(count === 1 ? 'Task archived.' : `${count} tasks archived.`, async () => {
+    try {
+      const undone = await mutate('/api/tasks/archive-undo', 'POST', { undo: result.undo });
+      notify(`${undone.restored} ${undone.restored === 1 ? 'task restored' : 'tasks restored'}.${undone.skipped ? ` ${undone.skipped} changed since archiving and were skipped.` : ''}`);
+    } catch (error) { notify(error.message); }
+  });
+}
+async function archiveTask(id) { archiveNotice(await mutate(`/api/tasks/${id}/archive`, 'POST')); }
+$('#archive-task').addEventListener('click', async () => {
+  if (!state.editing) return;
+  try { await archiveTask(state.editing); $('#task-dialog').close(); }
+  catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+});
+$('#archive-completed').addEventListener('click', async () => {
+  $('.app-menu').open = false;
+  try { archiveNotice(await mutate('/api/tasks/archive-completed', 'POST')); }
+  catch (error) { notify(error.message); }
+});
+$('#archive-restore').addEventListener('click', async () => {
+  if (!state.archiveDetails) return;
+  try { await mutate(`/api/tasks/${state.archiveDetails}/unarchive`, 'POST', {}, 'Task restored.'); $('#archive-details-dialog').close(); }
+  catch (error) { notify(error.message); }
+});
+$('#archive-delete').addEventListener('click', async () => {
+  if (!state.archiveDetails) return;
+  try { await deleteTask(state.archiveDetails); $('#archive-details-dialog').close(); }
+  catch (error) { notify(error.message); }
+});
+
 function openTask(status = 'later', task = null) {
   if (!isUnlocked()) return;
+  if (task?.archivedAt) { archiveDetails(task); return; }
+  if (!task && state.view === 'archive') nav.reset();
   closeTaskContextMenu();
   state.editing = task?.id || null;
   $('#task-form').reset();
@@ -490,6 +551,7 @@ function openTask(status = 'later', task = null) {
   $('#dialog-title').textContent = task ? 'Edit task' : 'New task';
   $('#save-task').innerHTML = `${task ? 'Save changes' : 'Add task'}${icon('arrow-right')}`;
   $('#delete-task').hidden = !task;
+  $('#archive-task').hidden = !task;
   $('#task-dialog').showModal();
   $('#task-title').focus();
 }
@@ -596,7 +658,7 @@ $('#preview-markdown').addEventListener('click', async () => {
     if (result.tasks.some(task => task.reminderAt && !task.reminderDismissedAt && task.status !== 'done' && Date.parse(task.reminderAt) <= Date.now())) warnings.push('Past reminders will appear immediately.');
     $('#import-warning').textContent = warnings.join(' ');
     $('#import-warning').hidden = !warnings.length;
-    $('#import-tasks').innerHTML = result.tasks.map(task => `<li><strong>${escape(task.title)}</strong><small>${escape(columns[task.status].title)} · ${escape(task.category)}${task.tags?.length ? ` · Tags: ${escape(task.tags.join(', '))}` : ''}${task.dueDate ? ` · Due ${escape(task.dueDate)}` : ''}${task.reminderAt ? ` · Reminder ${escape(reminderLabel(task.reminderAt))}${task.reminderDismissedAt ? ' (dismissed)' : ''}` : ''}</small>${task.notes ? `<small>${escape(task.notes)}</small>` : ''}</li>`).join('');
+    $('#import-tasks').innerHTML = result.tasks.map(task => `<li><strong>${escape(task.title)}</strong><small>${escape(columns[task.status].title)} · ${escape(task.category)}${task.tags?.length ? ` · Tags: ${escape(task.tags.join(', '))}` : ''}${task.archivedAt ? ` · Archived ${escape(reminderLabel(task.archivedAt))}` : ''}${task.dueDate ? ` · Due ${escape(task.dueDate)}` : ''}${task.reminderAt ? ` · Reminder ${escape(reminderLabel(task.reminderAt))}${task.reminderDismissedAt ? ' (dismissed)' : ''}` : ''}</small>${task.notes ? `<small>${escape(task.notes)}</small>` : ''}</li>`).join('');
     $('#import-preview').hidden = false;
     $('#confirm-import').textContent = `Import ${result.tasks.length} tasks`;
     $('#confirm-import').hidden = !result.tasks.length;
@@ -679,7 +741,10 @@ async function runTaskAction(id, action) {
     if (Object.hasOwn(columns, status)) await moveTask(id, status);
     return;
   }
-  if (action === 'delete') await deleteTask(task.id);
+  if (action === 'archive') { await archiveTask(task.id); return; }
+  if (action === 'unarchive') { await mutate(`/api/tasks/${task.id}/unarchive`, 'POST', {}, 'Task restored.'); return; }
+  if (action === 'delete') { await deleteTask(task.id); return; }
+  if (task.archivedAt) throw new Error('Restore this archived task before changing it.');
   if (action === 'complete') {
     const previous = task.status;
     const next = previous === 'done' ? 'today' : 'done';
@@ -728,14 +793,14 @@ function openTaskContextMenu(card, x, y) {
   contextTaskId = task.id;
   contextReturnFocus = card;
   const menu = $('#task-context-menu');
-  const cards = $$('.task-card', card.closest('.column'));
+  const cards = task.archivedAt ? [] : $$('.task-card', card.closest('.column'));
   const index = cards.indexOf(card);
   const item = (action, label, symbol, disabled = false, danger = false) => `<button type="button" role="menuitem" tabindex="-1" data-context-action="${action}" ${disabled ? 'disabled aria-disabled="true"' : ''} ${danger ? 'class="danger"' : ''}>${icon(symbol)}${label}</button>`;
   const separator = '<div role="separator"></div>';
-  menu.innerHTML = item('edit', 'Edit task', 'edit') + item('schedule', 'Date & reminder…', 'calendar') +
+  menu.innerHTML = task.archivedAt ? item('edit', 'View details', 'help') + item('unarchive', 'Restore task', 'arrow-right') + separator + item('delete', 'Delete task', 'trash', false, true) : item('edit', 'Edit task', 'edit') + item('schedule', 'Date & reminder…', 'calendar') +
     item('complete', task.status === 'done' ? 'Reopen in Today' : 'Mark as done', 'check') + separator +
     Object.entries(columns).filter(([status]) => status !== task.status && status !== 'done' && !(task.status === 'done' && status === 'today')).map(([status, column]) => item(`move:${status}`, `Move to ${column.title}`, 'arrow-right')).join('') + separator +
-    item('up', 'Move up', 'up', index === 0) + item('down', 'Move down', 'down', index === cards.length - 1) + separator + item('delete', 'Delete task', 'trash', false, true);
+    item('up', 'Move up', 'up', index === 0) + item('down', 'Move down', 'down', index === cards.length - 1) + separator + item('archive', 'Archive task', 'archive') + item('delete', 'Delete task', 'trash', false, true);
   menu.setAttribute('aria-label', `Actions for ${task.title}`);
   menu.hidden = false;
   // Fixed positioning keeps the menu at the pointer and inside the viewport.
@@ -853,7 +918,7 @@ async function finishDrop() {
 $('#board').addEventListener('dragstart', event => {
   closeTaskContextMenu();
   const card = event.target.closest('.task-card');
-  if (!card || state.busy || state.loading || touchDrag) { event.preventDefault(); return; }
+  if (!card || state.view === 'archive' || state.busy || state.loading || touchDrag) { event.preventDefault(); return; }
   dragId = card.dataset.id;
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('text/plain', dragId);
@@ -905,7 +970,7 @@ if (context?.registerTool && isUnlocked()) {
   toolsLifecycle?.abort();
   const lifecycle = toolsLifecycle = new AbortController();
   const register = tool => { try { Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } };
-  register({ name: 'list_tasks', description: 'Read the tasks in this Taskpath workspace.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute: async () => { const board = await request('/api/board'); if (!state.busy && !state.loading && !dragId) applyBoard(board); return { tasks: board.tasks }; } });
+  register({ name: 'list_tasks', description: 'Read the tasks in this Taskpath workspace.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute: async () => { const board = await request('/api/board'); if (!state.busy && !state.loading && !dragId) applyBoard(board); return { tasks: board.tasks.filter(task => !task.archivedAt) }; } });
   register({ name: 'create_task', description: 'Create a task and save it to the selected Taskpath column.', inputSchema: { type: 'object', properties: { title: { type: 'string', maxLength: 240 }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['title', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { const result = await mutate('/api/tasks', 'POST', input); return { task: result.task }; } });
   register({ name: 'move_task', description: 'Move a saved Taskpath task into Later, This Week, Today, or Done.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['id', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { if (!input || typeof input.id !== 'string' || !/^[\w-]+$/.test(input.id) || !Object.hasOwn(columns, input.status)) throw new Error('Invalid task or column.'); await moveTask(input.id, input.status); return { id: input.id, status: input.status }; } });
 }
@@ -922,16 +987,18 @@ window.addEventListener('taskpath-locked', () => {
   $('#greeting').textContent = ''; state.nickname = ''; greetingChoice = null;
   realtime.pause(); clearTimeout(reminderTimer); clearTimeout(toastTimer); clearDrag();
   for (const key of Object.keys(state)) { if (Array.isArray(state[key])) state[key] = []; }
-  Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, ready: false, query: '', tag: '', loading: false });
+  Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, archiveDetails: null, view: 'board', ready: false, query: '', tag: '', loading: false });
   editingTags = []; editingReminder = null; importSource = null; importRevision++; toastAction = null; contextTaskId = null; contextReturnFocus = null;
-  for (const selector of ['#board', '#reminder-panel', '#task-context-menu', '#task-tags', '#tag-suggestions', '#import-tasks']) $(selector).replaceChildren();
+  for (const selector of ['#board', '#archive-details-content', '#reminder-panel', '#task-context-menu', '#task-tags', '#tag-suggestions', '#import-tasks']) $(selector).replaceChildren();
   for (const input of $$('input, textarea')) if (input.id !== 'unlock-user' && !['checkbox', 'file'].includes(input.type)) input.value = '';
   $('#task-form').reset(); $('#password-form').reset();
   for (const selector of ['#toast-message', '#announcer', '#error-text', '#form-error', '#import-error', '#import-summary', '#import-warning']) $(selector).textContent = '';
   $('#error-banner').hidden = true; $('#toast').hidden = true;
   $('#tag-filter').innerHTML = '<option value="">All tags</option>';
+  $('#archive-completed').textContent = 'Archive all completed (0)'; $('#archive-completed').disabled = true;
+  nav.reset();
 });
-window.addEventListener('taskpath-unlocked', () => { registerTools(); void refresh(); realtime.resume(); });
+window.addEventListener('taskpath-unlocked', () => { nav.reset(); registerTools(); void refresh(); realtime.resume(); });
 window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });
 window.addEventListener('online', () => realtime.resume());
 window.addEventListener('offline', () => { realtime.pause(); void localState(r => { r.online = false; }).then(() => syncStatus()).catch(() => {}); });

@@ -13,5 +13,5 @@ export function normalizeTags(value) {
 
 export function importTaskKey(task) {
   return JSON.stringify([task.title, task.notes || '', task.category || 'personal', task.status || 'later',
-    task.dueDate || null, task.reminderAt || null, Boolean(task.reminderDismissedAt), normalizeTags(task.tags ?? [])]);
+    task.dueDate || null, task.reminderAt || null, Boolean(task.reminderDismissedAt), Boolean(task.archivedAt), normalizeTags(task.tags ?? [])]);
 }

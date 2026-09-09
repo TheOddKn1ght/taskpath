@@ -9,6 +9,7 @@ export function exportMarkdown(tasks) {
       lines.push(`- [${status === 'done' ? 'x' : ' '}] ${escapeText(task.title)}`);
       lines.push(`  - Category: ${task.category === 'work' ? 'Work' : 'Personal'}`);
       if (task.tags?.length) lines.push(`  - Tags: ${escapeText(JSON.stringify(task.tags))}`);
+      if (task.archivedAt) lines.push(`  - Archived: ${task.archivedAt}`);
       if (task.dueDate) lines.push(`  - Due: ${task.dueDate}`);
       if (task.reminderAt) lines.push(`  - Reminder: ${task.reminderAt}`);
       if (task.reminderDismissedAt) lines.push(`  - Reminder dismissed: ${task.reminderDismissedAt}`);

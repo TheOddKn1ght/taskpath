@@ -1,6 +1,6 @@
-import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v5/offline.js';
-import { loadAccount } from '/assets/accounts-v5/persistence.js';
-import { unlockVault } from '/assets/accounts-v5/crypto.js';
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v6/offline.js';
+import { loadAccount } from '/assets/accounts-v6/persistence.js';
+import { unlockVault } from '/assets/accounts-v6/crypto.js';
 window.addEventListener('message', async event => {
   if (event.origin !== location.origin) return;
   try {
@@ -10,6 +10,10 @@ window.addEventListener('message', async event => {
       await activate(record.config, unlocked.key, false, record.lockEpoch);
       await Promise.all(Array.from({ length: 4 }, (_, i) => offlineRequest('/api/tasks', 'POST', { title: `FRAME_PRIVATE_${i}` })));
       parent.postMessage('edited', location.origin);
+    }
+    if (event.data?.type === 'unarchive') {
+      await offlineRequest(`/api/tasks/${event.data.id}/unarchive`, 'POST');
+      parent.postMessage('unarchived', location.origin);
     }
     if (event.data === 'check-lock') parent.postMessage(isUnlocked() ? 'unlocked' : 'locked', location.origin);
   } catch (error) { parent.postMessage({ error: error.message }, location.origin); }

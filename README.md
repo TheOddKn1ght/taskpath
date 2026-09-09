@@ -31,6 +31,20 @@ Each theme has matching tab, notification, and install icons; dark palettes have
 
 Palette references: [Gruvbox](https://github.com/morhetz/gruvbox), [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Catppuccin](https://github.com/catppuccin/catppuccin), and [Rosé Pine](https://rosepinetheme.com/palette/). Taskpath icons are original artwork.
 
+## Archive and navigation
+
+Use **Board** and **Archive** in the sidebar. Collapse it to icons with its toggle; this preference stays in your browser. On phones, the navigation button opens a drawer. Each unlock starts on Board, and switching views keeps your current search, category, and tag filters.
+
+Archive any task from its menu, right-click menu, or editor. **Workspace options → Archive all completed (N)** archives every completed task, regardless of filters. Archiving is manual: nothing is automatically archived or deleted. The Archive list is newest first and supports search, read-only details, Restore, and Delete. Restore a task before editing it.
+
+Archived tasks retain their contents and previous column, disappear from the board, and pause reminders and calendar rollover. Restoring appends them to their previous column after normal rollover: an old Today task can return to This Week or Later; Done stays Done. Reminder dates and dismissal state are preserved, so an overdue, undismissed reminder may become due again after restoration. Deleting an archived task and undoing deletion keeps it archived.
+
+The archive Undo toast restores only tasks that still match the archiving operation; subsequent changes from another tab or device are kept and reported as skipped. Archive and restore work offline using the existing encrypted sync queue. Server storage contains no readable archive state.
+
+Full-workspace JSON and Markdown exports include archived tasks even when filters are active. Markdown records archive dates with nested `Archived: <ISO timestamp>` metadata beneath the original column heading. Imports preview and preserve that state; files without the field remain compatible. Duplicate detection distinguishes active and archived versions of a task.
+
+Update all your devices before using Archive. Open online, close all Taskpath tabs and installed-app windows, then reopen to activate the new PWA shell. Existing vaults and encrypted pending operations are retained; no database migration is needed.
+
 ## Accounts and invitations
 
 One private vault per account, with no shared boards, roles, public registration, or email service. User IDs are random permanent identifiers, not secrets. Each account has independent encryption keys, sessions, task storage, reminder claims, and WebSocket notifications.
