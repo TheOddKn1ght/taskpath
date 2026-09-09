@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
-export const ASSET_VERSION = 'accounts-v3';
+export const ASSET_VERSION = 'accounts-v4';
 const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
@@ -32,6 +32,13 @@ const assets = new Map<string, [string, string]>([
   ["/icon-512.png", ["icon-512.png", "image/png"]],
   ["/apple-touch-icon.png", ["apple-touch-icon.png", "image/png"]],
 ]);
+for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
+  for (const [file, type] of [['favicon.svg', 'image/svg+xml'], ['manifest.webmanifest', 'application/manifest+json'],
+    ['icon-192.png', 'image/png'], ['icon-512.png', 'image/png'], ['apple-touch-icon.png', 'image/png']]) {
+    const path = `themes/${theme}/${file}`;
+    assets.set('/' + path, [path, type]);
+  }
+}
 
 export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public')) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;

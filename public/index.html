@@ -3,23 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v3/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v3/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v4/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v4/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v3/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v3/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v3/style.css">
-  <script src="/assets/accounts-v3/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v3/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v4/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v4/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v4/style.css">
+  <script src="/assets/accounts-v4/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v4/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
   <section id="unlock-screen" class="auth-shell" aria-labelledby="unlock-title">
-    <header class="auth-header"><h1>taskpath<span>.</span></h1><button type="button" id="unlock-theme" class="secondary-button">Switch theme</button></header>
+    <header class="auth-header"><h1>taskpath<span>.</span></h1><button type="button" id="unlock-theme" class="secondary-button" aria-haspopup="dialog" aria-controls="theme-dialog">Switch theme</button></header>
     <div class="auth-card">
       <h2 id="unlock-title">Unlock Taskpath</h2>
       <p id="unlock-description">One password opens your encrypted workspace.</p>
@@ -57,7 +57,7 @@
         <select id="category-filter" aria-label="Filter tasks by category"><option value="all">All tasks</option><option value="work">Work</option><option value="personal">Personal</option></select>
         <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
-        <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Switch to dark theme" title="Switch to dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
+        <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Choose theme" title="Choose theme" aria-haspopup="dialog" aria-controls="theme-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
         <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
       </div>
     </header>
@@ -90,6 +90,12 @@
       <p id="form-error" class="form-error" role="alert" hidden></p>
       <div class="dialog-actions"><button type="button" class="subtle-button danger" id="delete-task" hidden><span data-icon="trash"></span>Delete task</button><div class="dialog-actions-right"><button type="button" class="secondary-button" data-close="task-dialog">Cancel</button><button type="submit" class="primary-button" id="save-task">Add task<span data-icon="arrow-right"></span></button></div></div>
     </form>
+  </dialog>
+
+  <dialog id="theme-dialog" aria-labelledby="theme-title">
+    <div class="dialog-top"><h2 id="theme-title">Appearance</h2><button type="button" class="icon-button" id="theme-close" aria-label="Close appearance">×</button></div>
+    <p class="theme-hint">Make yourself at home. Saved on this browser.</p>
+    <div id="theme-choices" class="theme-choices" role="group" aria-label="Theme"></div>
   </dialog>
 
   <dialog id="import-dialog" aria-labelledby="import-title">

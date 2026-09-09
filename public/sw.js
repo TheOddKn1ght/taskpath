@@ -1,14 +1,28 @@
-import { sync } from '/assets/accounts-v3/offline.js';
-const CACHE = 'taskpath-shell-accounts-v3';
-const ROOT = '/assets/accounts-v3/';
+import { sync } from '/assets/accounts-v4/offline.js';
+const CACHE = 'taskpath-shell-accounts-v4';
+const ROOT = '/assets/accounts-v4/';
 const FILES = ['style.css', 'app.js', 'dates.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
+for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
+  for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
+}
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
-  await Promise.all(['/offline-shell', ...FILES].map(async path => {
-    const response = await fetch(path, { cache: 'reload' });
-    if (!response.ok || response.redirected) throw new Error('Incomplete encrypted shell');
-    await cache.put(path, response);
+  const remaining = ['/offline-shell', ...FILES];
+  // Bound the burst and retry temporary proxy throttling as the full icon set downloads.
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (remaining.length) {
+      const path = remaining.shift();
+      let response;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        response = await fetch(path, { cache: 'reload' });
+        if (response.status !== 429 || attempt === 5) break;
+        await response.body?.cancel();
+        await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt, 8) * 1000));
+      }
+      if (!response.ok || response.redirected) throw new Error('Incomplete encrypted shell');
+      await cache.put(path, response);
+    }
   }));
   // Waiting until every old window closes avoids mixing app generations.
 })()));

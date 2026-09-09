@@ -19,9 +19,17 @@ The command prints a permanent user ID and a one-use setup link valid for **24 h
 
 Restarting the server never creates or replaces invitations. An administrator must explicitly issue one.
 
-Use `bun run dev` for watch mode with readable client sources. `bun run build` minifies JavaScript (including the service worker and vendored lexer), CSS, HTML, and the web manifest into `dist/public`; the already compact SVG is trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
+Use `bun run dev` for watch mode with readable client sources. `bun run build` minifies JavaScript (including the service worker and vendored lexer), CSS, HTML, and the web manifest into `dist/public`; compact SVG icons are trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
 
 **This release requires a fresh multi-user database.** Both plaintext and single-owner encrypted databases are rejected before modification. Existing accounts are not migrated; no old files are deleted. See [deployment and upgrading](DEPLOYMENT.md).
+
+## Appearance
+
+Open the theme icon in the toolbar, or **Switch theme** on the sign-in screen. Choose Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha, or Rosé Pine Dawn. **Follow system** switches between Light and Dark automatically. Preferences are saved for this browser, work offline, and apply across its Taskpath tabs and accounts.
+
+Each theme has matching tab, notification, and install icons; dark palettes have a crescent detail. Choose your theme before installing the PWA. Already installed home-screen icons may stay unchanged until you reinstall, depending on the browser and OS. Close all Taskpath windows and reopen online to activate this update.
+
+Palette references: [Gruvbox](https://github.com/morhetz/gruvbox), [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Catppuccin](https://github.com/catppuccin/catppuccin), and [Rosé Pine](https://rosepinetheme.com/palette/). Taskpath icons are original artwork.
 
 ## Accounts and invitations
 

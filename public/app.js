@@ -122,7 +122,7 @@ async function deliverNotifications() {
     if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
     const notification = new Notification(single ? 'Taskpath reminder' : `${tasks.length} Taskpath reminders`, {
-      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: '/assets/accounts-v3/favicon.svg',
+      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: document.querySelector('link[rel="apple-touch-icon"]').href,
     });
     notification.onclick = () => {
       window.focus(); notification.close();
