@@ -8,6 +8,7 @@ services:
       TASKPATH_TIMEZONE: ${TASKPATH_TIMEZONE:-UTC}
       TASKPATH_ORIGIN: ${TASKPATH_ORIGIN:-}
       TASKPATH_SESSION_DAYS: ${TASKPATH_SESSION_DAYS:-30}
+      TASKPATH_PUSH_SUBJECT: ${TASKPATH_PUSH_SUBJECT:-}
     volumes:
       - taskpath-accounts-data:/app/data
     restart: unless-stopped

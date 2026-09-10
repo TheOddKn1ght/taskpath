@@ -15,5 +15,8 @@
     "test": "bun test",
     "build": "bun run scripts/build.ts",
     "admin": "bun run src/admin.ts"
+  },
+  "dependencies": {
+    "web-push": "3.6.7"
   }
 }

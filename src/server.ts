@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
-export const ASSET_VERSION = 'accounts-v10';
+import { PushService } from './push';
+export const ASSET_VERSION = 'accounts-v11';
 const assets = new Map<string, [string, string]>([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
@@ -28,6 +29,7 @@ const assets = new Map<string, [string, string]>([
   ["/export-markdown.js", ["export-markdown.js", "text/javascript; charset=utf-8"]],
   ["/realtime.js", ["realtime.js", "text/javascript; charset=utf-8"]],
   ["/pwa.js", ["pwa.js", "text/javascript; charset=utf-8"]],
+  ["/push.js", ["push.js", "text/javascript; charset=utf-8"]],
   ["/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
   ["/icon-192.png", ["icon-192.png", "image/png"]],
   ["/icon-512.png", ["icon-512.png", "image/png"]],
@@ -41,7 +43,7 @@ for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', '
   }
 }
 
-export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public')) {
+export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public'), push = new PushService(store)) {
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && (!['http:', 'https:'].includes(trustedOrigin.protocol) || trustedOrigin.pathname !== '/' || trustedOrigin.search || trustedOrigin.hash || trustedOrigin.username || trustedOrigin.password)) throw new Error('TASKPATH_ORIGIN must be an HTTP(S) origin.');
   const headers = {
@@ -129,6 +131,17 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
         if (Object.keys(data).some(k => k !== 'tokens')) throw new InputError('Use opaque reminder tokens.');
         return json(store.claim(userId, data.tokens));
       }
+      if (path === '/api/push' && request.method === 'GET') return json(push.status(userId));
+      if (path === '/api/push' && request.method === 'POST') {
+        const data = await body();
+        if (Object.keys(data).some(k => k !== 'subscription')) throw new InputError('Use a browser push subscription.');
+        return json(push.subscribe(userId, data.subscription));
+      }
+      if (path === '/api/push' && request.method === 'DELETE') {
+        const data = await body();
+        if (Object.keys(data).some(k => k !== 'id')) throw new InputError('Use a subscription ID.');
+        return json(push.remove(userId, data.id));
+      }
       return json({ error: 'Endpoint unavailable. Task operations and readable exports run in the unlocked browser.' }, 404);
     } catch (error) {
       if (error instanceof InputError) return json({ error: error.message }, error.status, error.status === 429 ? { 'Retry-After': '900' } : {});
@@ -147,12 +160,14 @@ if (import.meta.main) {
   const store = new Store(process.env.DATABASE_PATH || './data/taskpath-accounts.sqlite', undefined, process.env.TASKPATH_TIMEZONE);
   const auth = new AuthManager(store.db, Number(process.env.TASKPATH_SESSION_DAYS || 30));
   const realtime = new Realtime();
+  const push = new PushService(store, process.env.TASKPATH_PUSH_SUBJECT || (process.env.TASKPATH_ORIGIN?.startsWith('https:') ? process.env.TASKPATH_ORIGIN : undefined));
   const server = Bun.serve({ hostname: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000), maxRequestBodySize: 2 * 1024 * 1024,
-    fetch: createHandler(store, auth, process.env.TASKPATH_ORIGIN, realtime), websocket: realtime.websocket });
+    fetch: createHandler(store, auth, process.env.TASKPATH_ORIGIN, realtime, undefined, push), websocket: realtime.websocket });
+  push.start();
   const launchURL = new URL('/', process.env.TASKPATH_ORIGIN || server.url);
   if (!process.env.TASKPATH_ORIGIN && ['0.0.0.0', '[::]'].includes(launchURL.hostname)) launchURL.hostname = 'localhost';
   console.log(`Taskpath is ready at ${launchURL}`);
   console.log('Create an invitation with: bun run admin invite');
-  const shutdown = async () => { realtime.close(); await server.stop(); store.close(); process.exit(0); };
+  const shutdown = async () => { realtime.close(); await push.stop(); await server.stop(); store.close(); process.exit(0); };
   process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);
 }

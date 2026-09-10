@@ -371,6 +371,7 @@ body.vault-locked #task-context-menu { display: none !important; }
 .theme-preview img { width:32px; height:32px; border-radius:9px; }
 .theme-system { color:var(--accent); font-size:32px; line-height:1; }
 #theme-close { min-width:44px; min-height:44px; font-size:24px; }
+#push-dialog button { min-height:44px; }
 
 /* Workspace navigation and archive share the vault's locked/inert boundary. */
 #main { display:grid; grid-template-columns:184px minmax(0,1fr); gap:28px; max-width:1700px; padding:0 28px 26px; }

@@ -3,9 +3,11 @@ import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked, s
 import { navigation } from './navigation.js';
 import { startVault } from './vault-ui.js';
 import { createRealtime } from './realtime.js';
+import { setupPush } from './push.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
 
 await startVault();
+setupPush();
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -143,8 +145,8 @@ async function deliverNotifications() {
     const { tasks } = await request('/api/reminders/claim', 'POST', {});
     if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
-    const notification = new Notification(single ? 'Taskpath reminder' : `${tasks.length} Taskpath reminders`, {
-      body: tasks.slice(0, 3).map(t => t.title).join('\n'), tag: single ? `taskpath-${single.id}-${single.reminderAt}` : 'taskpath-reminders', icon: document.querySelector('link[rel="apple-touch-icon"]').href,
+    const notification = new Notification('Taskpath reminder', {
+      body: 'You have a reminder in Taskpath.', tag: single ? `taskpath-reminder-${single.reminderToken}` : 'taskpath-reminders', icon: document.querySelector('link[rel="apple-touch-icon"]').href,
     });
     notification.onclick = () => {
       window.focus(); notification.close();

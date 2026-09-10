@@ -35,6 +35,10 @@ export class Store {
       CREATE UNIQUE INDEX IF NOT EXISTS invitation_hash ON accounts(tokenHash) WHERE tokenHash IS NOT NULL;
       CREATE TABLE IF NOT EXISTS encrypted_tasks (userId TEXT NOT NULL, taskId TEXT NOT NULL, editedAt TEXT NOT NULL, changeId TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(userId, taskId));
       CREATE TABLE IF NOT EXISTS reminder_claims (userId TEXT NOT NULL, token TEXT NOT NULL, PRIMARY KEY(userId, token));
+      CREATE TABLE IF NOT EXISTS push_subscriptions (id TEXT PRIMARY KEY, userId TEXT NOT NULL, subscription TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS push_reminders (userId TEXT NOT NULL, taskId TEXT NOT NULL, changeId TEXT NOT NULL, token TEXT NOT NULL, dueAt INTEGER NOT NULL, PRIMARY KEY(userId, taskId));
+      CREATE TABLE IF NOT EXISTS push_deliveries (userId TEXT NOT NULL, taskId TEXT NOT NULL, token TEXT NOT NULL, subscriptionId TEXT NOT NULL, nextAt INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(userId, token, subscriptionId));
+      CREATE INDEX IF NOT EXISTS push_due ON push_reminders(dueAt);
     `);
     this.db.query("INSERT OR IGNORE INTO settings VALUES ('timezone', ?)").run(timezone);
     this.timezone = this.db.query<{ value: string }, []>("SELECT value FROM settings WHERE key='timezone'").get()!.value;
@@ -42,13 +46,20 @@ export class Store {
   close() { this.db.close(); }
   config(userId: string): any { const row = this.db.query<{ config: string }, [string]>("SELECT config FROM accounts WHERE userId=? AND status='active'").get(userId); return row ? JSON.parse(row.config) : null; }
   syncBoard(userId: string) {
-    return { format: 1, workspaceKey: this.config(userId)?.vaultId, timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.db.query<{ envelope: string }, [string]>('SELECT envelope FROM encrypted_tasks WHERE userId=? ORDER BY taskId').all(userId).map(row => JSON.parse(row.envelope)) };
+    return { format: 1, workspaceKey: this.config(userId)?.vaultId, pushEnabled: this.pushEnabled(userId), timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.db.query<{ envelope: string }, [string]>('SELECT envelope FROM encrypted_tasks WHERE userId=? ORDER BY taskId').all(userId).map(row => JSON.parse(row.envelope)) };
   }
   sync(userId: string, input: any) {
     const vaultId = this.config(userId)?.vaultId;
     if (!vaultId) throw new InputError('Account unavailable.', 403);
     if (input.workspaceKey !== vaultId) throw new InputError('This server has a different workspace. Your encrypted changes remain on this device.', 409);
-    if (Object.keys(input).some(k => !['workspaceKey', 'changes'].includes(k)) || !Array.isArray(input.changes) || input.changes.length > 50) throw new InputError('Send at most 50 encrypted changes.');
+    if (Object.keys(input).some(k => !['workspaceKey', 'changes', 'reminders'].includes(k)) || !Array.isArray(input.changes) || input.changes.length > 50) throw new InputError('Send at most 50 encrypted changes.');
+    const reminders = input.reminders ?? [];
+    if (!Array.isArray(reminders) || reminders.length > 50) throw new InputError('Send at most 50 reminder schedules.');
+    for (const r of reminders) {
+      object(r);
+      if (Object.keys(r).some(k => !['taskId', 'changeId', 'token', 'dueAt'].includes(k)) || !validId(r.taskId) || !validId(r.changeId)
+        || (r.token === null ? r.dueAt !== null : !validId(r.token) || r.token.length < 32 || typeof r.dueAt !== 'string' || !Number.isFinite(Date.parse(r.dueAt)) || new Date(r.dueAt).toISOString() !== r.dueAt)) throw new InputError('Use only opaque reminder IDs and an ISO reminder time.');
+    }
     for (const envelope of input.changes) {
       try { validateEnvelope(envelope, vaultId); } catch { throw new InputError('Invalid encrypted change. Plaintext sync is unsupported.'); }
       if (Date.parse(envelope.editedAt) > this.now().getTime() + 300000) throw new InputError('Edit time is too far in the future. Check this device’s clock.');
@@ -64,11 +75,20 @@ export class Store {
           continue;
         }
         this.db.query('INSERT INTO encrypted_tasks VALUES (?, ?, ?, ?, ?) ON CONFLICT(userId, taskId) DO UPDATE SET editedAt=excluded.editedAt, changeId=excluded.changeId, envelope=excluded.envelope').run(userId, e.taskId, e.editedAt, e.changeId, JSON.stringify(e));
+        // Until matching metadata arrives, never send the previous revision's reminder.
+        this.db.query('DELETE FROM push_reminders WHERE userId=? AND taskId=?').run(userId, e.taskId);
         changed = true;
       }
-      return { ...this.syncBoard(userId), acknowledged, conflicts, changed };
+      if (this.pushEnabled(userId)) for (const r of reminders) {
+        const current = this.db.query<{ changeId: string }, [string, string]>('SELECT changeId FROM encrypted_tasks WHERE userId=? AND taskId=?').get(userId, r.taskId);
+        if (current?.changeId !== r.changeId) continue;
+        if (r.token === null) this.db.query('DELETE FROM push_reminders WHERE userId=? AND taskId=?').run(userId, r.taskId);
+        else this.db.query('INSERT INTO push_reminders VALUES (?, ?, ?, ?, ?) ON CONFLICT(userId,taskId) DO UPDATE SET changeId=excluded.changeId,token=excluded.token,dueAt=excluded.dueAt').run(userId, r.taskId, r.changeId, r.token, Date.parse(r.dueAt));
+      }
+      return { ...this.syncBoard(userId), acknowledged, reminderAcknowledged: reminders.map(r => ({ taskId: r.taskId, changeId: r.changeId })), conflicts, changed };
     })();
   }
+  pushEnabled(userId: string) { return Boolean(this.db.query('SELECT 1 FROM push_subscriptions WHERE userId=? LIMIT 1').get(userId)); }
   claim(userId: string, tokens: unknown) {
     if (!Array.isArray(tokens) || tokens.length > 100 || tokens.some(t => !validId(t) || t.length < 32)) throw new InputError('Invalid reminder tokens.');
     return this.db.transaction(() => ({ tokens: tokens.filter(token => this.db.query('INSERT OR IGNORE INTO reminder_claims VALUES (?, ?)').run(userId, token).changes === 1) }))();

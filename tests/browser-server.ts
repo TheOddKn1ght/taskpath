@@ -24,6 +24,16 @@ const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PO
     return response;
   }
   if (path === '/test-account') return Response.json({ userId: invite.userId, secondUserId: secondInvite.userId });
+  // A fake subscription exercises persisted scheduling without contacting any push provider.
+  if (path === '/test-push') {
+    const userId = auth.identity(request);
+    if (!userId) return new Response('Unauthorized', { status: 401 });
+    if (request.method === 'POST') {
+      if (request.headers.get('origin') !== new URL(request.url).origin) return new Response('Forbidden', { status: 403 });
+      store.db.query('INSERT OR IGNORE INTO push_subscriptions VALUES (?, ?, ?)').run('fixture-' + userId, userId, '{}');
+    }
+    return Response.json({ reminders: store.db.query('SELECT taskId,changeId,token,dueAt FROM push_reminders WHERE userId=?').all(userId) });
+  }
   if (path === '/invitation') return new Response('<!doctype html><a href="/#user=' + pendingInvite.userId + '&amp;setup=' + pendingInvite.token + '">Open test invitation</a>', { headers: { 'content-type': 'text/html' } });
   if (path === '/checks') return new Response('<!doctype html><meta charset="utf-8"><title>Taskpath browser checks</title><h1>Browser persistence checks</h1><pre id="result">Running…</pre><script type="module" src="/checks.js"></script>', { headers: { 'content-type': 'text/html' } });
   if (path === '/checks.js') return new Response(Bun.file(resolve(import.meta.dir, 'browser-checks.js')), { headers: { 'content-type': 'text/javascript' } });

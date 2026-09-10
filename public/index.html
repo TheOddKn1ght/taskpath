@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v10/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v10/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v11/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v11/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v10/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v10/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v10/style.css">
-  <script src="/assets/accounts-v10/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v10/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v11/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v11/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v11/style.css">
+  <script src="/assets/accounts-v11/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v11/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -40,6 +40,14 @@
     </div>
     <p class="auth-note">Use 15–1,024 characters. A password manager is recommended. Forgotten passwords cannot be recovered by the server.</p>
   </section>
+  <dialog id="push-dialog" aria-labelledby="push-title">
+    <div class="dialog-top"><h2 id="push-title">Background reminders</h2><button type="button" class="secondary-button" data-close="push-dialog">Close</button></div>
+    <div class="guide-copy"><p>Get “You have a reminder in Taskpath” even when the app is closed or locked. Task titles and notes never appear in these notifications.</p>
+    <p>Enabling shares reminder times and random identifiers with your server, plus this device’s push subscription. Your tasks and vault keys stay encrypted. Delivery uses your browser’s push service.</p>
+    <p>On iPhone or iPad, add Taskpath to the Home Screen and open it there first. Notifications need internet and may be delayed by your device settings.</p></div>
+    <p id="push-status" class="import-hint" role="status"></p><p id="push-error" class="form-error" role="alert" hidden></p>
+    <div class="dialog-actions"><button type="button" id="push-toggle" class="primary-button" disabled>Enable on this device</button></div>
+  </dialog>
   <dialog id="nickname-dialog" aria-labelledby="nickname-title"><form id="nickname-form"><div class="dialog-top"><h2 id="nickname-title">Your nickname</h2><button type="button" class="secondary-button" data-close="nickname-dialog">Close</button></div><label class="field">Nickname (optional)<input id="nickname-input" maxlength="80" autocomplete="off"></label><p class="schedule-hint">Only used for your greeting. Sign in with your user ID. Stored encrypted in your vault.</p><p id="nickname-error" class="form-error" hidden></p><button type="submit" class="primary-button">Save</button></form></dialog>
   <dialog id="password-dialog" aria-labelledby="password-title">
     <form id="password-form">
@@ -64,7 +72,7 @@
         <select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select>
         <button class="primary-button" id="new-task" aria-label="New task"><span data-icon="plus"></span>New task</button>
         <button type="button" class="icon-button theme-toggle" id="theme-toggle" aria-label="Choose theme" title="Choose theme" aria-haspopup="dialog" aria-controls="theme-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 0 1-9.5-9.5A8.5 8.5 0 1 0 20.5 13Z"/></svg></button>
-        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="archive-completed" disabled>Archive all completed (0)</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
+        <details class="app-menu"><summary class="icon-button" aria-label="Workspace options"><span data-icon="more"></span></summary><div class="menu-content"><button id="notifications-button">Enable desktop notifications</button><button id="background-notifications">Background reminders…</button><button id="import-markdown">Import Markdown…</button><button id="export-markdown">Export Markdown</button><button id="export">Export JSON</button><button id="install-app" hidden>Install Taskpath</button><button id="show-guide">How it works</button><button id="archive-completed" disabled>Archive all completed (0)</button><button id="edit-nickname">Nickname…</button><button id="switch-account">Switch account</button><button id="change-password">Change password…</button><button id="logout">Lock</button></div></details>
       </div>
     </header>
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
@@ -92,7 +100,7 @@
       <details id="task-schedule" class="task-schedule"><summary>Date &amp; reminder <span>optional</span></summary>
         <div class="field-row schedule-fields"><label class="field">Due date<input type="date" id="task-due-date" name="dueDate" min="0001-01-01" max="9999-12-31"></label><label class="field">Remind me<input type="datetime-local" id="task-reminder" min="0001-01-01T00:00" max="9999-12-31T23:59" step="60"></label></div>
         <p class="schedule-hint" id="reminder-timezone"></p>
-        <p class="schedule-hint">Keep Taskpath open for reminders. Missed reminders appear when you return.</p>
+        <p class="schedule-hint">Missed reminders appear when you return. Enable Background reminders in workspace options to receive private alerts while the app is closed.</p>
         <div class="schedule-actions"><button type="button" id="enable-notifications" class="subtle-button">Enable desktop notifications</button><button type="button" id="clear-task-dates" class="subtle-button">Clear dates</button></div>
         <p id="notification-status" class="schedule-hint" role="status"></p>
       </details>

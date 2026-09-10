@@ -1,8 +1,8 @@
-import { sync } from '/assets/accounts-v10/offline.js';
-const CACHE = 'taskpath-shell-accounts-v10';
-const ROOT = '/assets/accounts-v10/';
+import { sync } from '/assets/accounts-v11/offline.js';
+const CACHE = 'taskpath-shell-accounts-v11';
+const ROOT = '/assets/accounts-v11/';
 const FILES = ['style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
-  'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
+  'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'push.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
 }
@@ -43,3 +43,20 @@ self.addEventListener('fetch', event => {
   }
 });
 self.addEventListener('sync', event => { if (event.tag === 'taskpath-accounts-sync') event.waitUntil(sync()); });
+self.addEventListener('push', event => {
+  // Never fetch task data or load vault keys, even on remembered devices.
+  let token = '';
+  try { const data = event.data?.json(); if (/^[\w-]{32,100}$/.test(data?.token)) token = data.token; } catch {}
+  event.waitUntil(self.registration.showNotification('Taskpath reminder', {
+    body: 'You have a reminder in Taskpath.', icon: ROOT + 'icon-192.png',
+    tag: 'taskpath-reminder-' + token, renotify: false,
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find(client => new URL(client.url).origin === self.location.origin && ['/', '/login'].includes(new URL(client.url).pathname));
+    if (existing) await existing.focus(); else await self.clients.openWindow('/');
+  })());
+});

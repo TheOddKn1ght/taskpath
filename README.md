@@ -1,10 +1,11 @@
 # Taskpath
 
-An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. Client minification uses Bun, with no package installation. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
+An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. The client has no package dependencies; server push delivery uses pinned `web-push` 3.6.7. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
 
 ## Start locally
 
 ```sh
+bun install --frozen-lockfile --ignore-scripts
 bun run build
 bun run start
 ```
@@ -21,7 +22,7 @@ Restarting the server never creates or replaces invitations. An administrator mu
 
 Use `bun run dev` for watch mode with readable client sources. `bun run build` minifies JavaScript (including the service worker and vendored lexer), CSS, HTML, and the web manifest into `dist/public`; compact SVG icons are trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
 
-**This release requires a fresh multi-user database.** Both plaintext and single-owner encrypted databases are rejected before modification. Existing accounts are not migrated; no old files are deleted. See [deployment and upgrading](DEPLOYMENT.md).
+**Upgrading from a plaintext or single-owner release requires a fresh multi-user database.** Those older databases are rejected before modification; no old files are deleted or accounts migrated. Existing multi-user installations retain their accounts and data. See [deployment and upgrading](DEPLOYMENT.md#10-update-taskpath) and [enabling background reminders on a VPS](DEPLOYMENT.md#enable-background-reminders).
 
 ## Appearance
 
@@ -86,7 +87,7 @@ By default, keys stay in memory and closing, reloading, or navigating away locks
 - A random 256-bit vault key is wrapped with the password-derived key. Complete tasks, including titles, notes, tags, dates, planning fields, and tombstones, use AES-256-GCM with a fresh random 96-bit nonce and 128-bit authentication tag. Additional authenticated data binds the format version, vault identity, task identity, edit timestamp, and operation identity.
 - SQLite and the new `taskpath-accounts-v1` browser database store ciphertext and public wrapping/sync metadata. Decrypted tasks remain in page memory. The worker never reads the separate remembered-key store.
 
-The server can still see task identifiers, edit times, ciphertext sizes, traffic patterns, timezone, and opaque reminder-claim activity. It cannot validate encrypted task contents or schedule reminders. Existing plaintext backups and legacy browser data remain plaintext. Exported Markdown/JSON is deliberately readable and should be protected accordingly.
+The server can still see task identifiers, edit times, ciphertext sizes, traffic patterns, timezone, and opaque reminder-claim activity. It cannot validate encrypted task contents. Opting into background reminders additionally exposes reminder times, random reminder tokens and device push subscriptions, allowing the server to schedule generic alerts. This scheduling metadata is also stored beside ciphertext in IndexedDB, so a locked worker can transfer it. Existing plaintext backups and legacy browser data remain plaintext. Exported Markdown/JSON is deliberately readable and should be protected accordingly.
 
 This is a custom, unaudited implementation using standard Web Crypto primitives. A compromised host could serve malicious JavaScript that captures an entered password or unlocked data. HTTPS and E2EE do not protect against that active host attack or a compromised browser/device. Use a strong generated password, keep the host updated, and retain secure backups.
 
@@ -110,7 +111,22 @@ Drag tasks between columns or use each card's move control. Native context menus
 
 Tasks support up to 10 tags of up to 32 Unicode characters each. Tag names are trimmed, normalized, lowercase, deduplicated, and sorted. Type a tag and press Enter or choose a suggestion. Cards show two muted labels and a `+N` editor button. Combine one tag filter with category and text search; quick-add inherits the selected tag. Tags survive offline operations and Markdown/JSON exports.
 
-Dates and reminder times are encrypted. Keep the workspace **open and unlocked** for reminders. In-app reminders remain until dismissed; desktop notifications need browser permission and a connection to claim a reminder. An authenticated, atomic claim of an opaque random token prevents repeated desktop alerts across devices. Snoozing or rescheduling generates a new token. Closed or locked apps cannot schedule plaintext notifications.
+Dates and reminder times are encrypted inside tasks. In-app reminders need the workspace open and unlocked and remain until dismissed. System notifications always use the generic text **“You have a reminder in Taskpath.”** Snoozing or rescheduling generates a new random reminder token.
+
+### Background reminders
+
+1. Set `TASKPATH_ORIGIN=https://your-domain.example` on the VPS and keep HTTPS and the server running. Allow outbound HTTPS to browser push services. No additional Nginx route or incoming port is needed.
+2. Update the app, close all Taskpath tabs and installed-app windows, and reopen online to activate the new worker. Install locked dependencies before starting locally; Docker and CI do this automatically.
+3. Unlock and open **Workspace options → Background reminders → Enable on this device**. Grant notification permission. On iPhone/iPad, use the Home Screen installation on iOS/iPadOS 16.4 or later; a normal Safari tab is insufficient. Repeat on each device that should receive alerts.
+4. Wait for synchronization after creating or changing a reminder. Close or lock the app: the server can now send a generic notification. Clicking it opens/focuses Taskpath; the normal vault unlock rules still apply.
+
+Enabling any device opts this account into sharing reminder scheduling metadata. Task titles, notes, tags, passwords and vault keys are never included in pushes. Workers show the fixed generic message without reading vault keys, even on remembered devices. Browser push services handle delivery (Apple, Google, Mozilla, or Windows); Taskpath needs no third-party dashboard or paid messaging service. See [Web Push](https://developer.mozilla.org/en-US/docs/Web/API/Push_API) and [iOS Home Screen requirements](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+
+The server creates VAPID signing keys once and retains them in SQLite. Back up the whole database: it contains ciphertext, wrapping metadata, push signing keys, subscriptions, schedules and retry state. VAPID keys authorize notifications and cannot decrypt tasks. `TASKPATH_PUSH_SUBJECT` optionally overrides the public origin with an HTTPS contact URL or `mailto:` address. Protect subscriptions and signing keys; never log them.
+
+Schedules are tied to the winning encrypted task revision. Completion, deletion, archive, dismissal and rescheduling update or cancel them on sync. Offline changes and their minimal schedules are saved together; retries reuse the encrypted operation unchanged. Changes made offline cannot cancel a push already queued remotely until they reach the server. Locking preserves subscriptions; switching accounts attempts to unsubscribe this browser. **Turn off on this device** removes its subscription; turning off the last device removes the server's schedules. Other devices and already delivered notifications may remain active.
+
+The durable scheduler checks every 15 seconds, sends to up to 10 subscribed devices per account, retries transient failures and removes expired endpoints. While background reminders are enabled, the page does not also claim a desktop alert. Delivery is best effort: OS settings, offline devices, disabled browser background activity and push-service delays can prevent timely alerts. Retries may be delivered more than once, but a stable notification tag replaces duplicates on a device. After downtime, only reminders overdue by at most 24 hours are sent; a push service may retain an accepted message for up to one hour. Older missed reminders remain in the app. Existing schedules continue after a session expires; new changes require signing in to sync again.
 
 ## Markdown and JSON
 
@@ -150,4 +166,4 @@ Tests use isolated databases and cover derivation separation, wrapping, tamperin
 
 For real browser IndexedDB, account-switching, and concurrent-context checks, run `bun run tests/browser-server.ts` and open the printed `/checks` URL in a fresh browser context. It uses a temporary in-memory server workspace on a separate port, never the application's database. Its checks create disposable browser data on that origin. UI acceptance checks are separate from Bun tests.
 
-The [Tests workflow](.github/workflows/tests.yml) runs on pushes, pull requests, and manual GitHub dispatches. It builds the minified client before testing and uses Ubuntu 24.04 and Bun 1.4.2, a five-minute timeout, read-only permissions, and cancellation of superseded runs. Run `bun run build` followed by `bun test` with Bun 1.4.2 to reproduce the CI command locally. Linux/GitHub execution is confirmed by a GitHub run, not by local macOS tests.
+The [Tests workflow](.github/workflows/tests.yml) runs on pushes, pull requests, and manual GitHub dispatches. It installs frozen dependencies, builds the minified client before testing and uses Ubuntu 24.04 and Bun 1.4.2, a five-minute timeout, read-only permissions, and cancellation of superseded runs. Run `bun install --frozen-lockfile --ignore-scripts`, `bun run build`, then `bun test` with Bun 1.4.2 to reproduce CI locally. Push tests use a fake sender and never contact external delivery services. Linux/GitHub execution and real phone delivery require separate checks.

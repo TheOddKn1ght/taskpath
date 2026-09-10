@@ -54,6 +54,17 @@ function assertUnlocked(record, token = generation) {
 }
 export async function switchAccount(userId) {
   clearMemory();
+  if (page && selectedAccount() && selectedAccount() !== userId) {
+    const previous = selectedAccount(), started = generation; let timer;
+    try {
+      await Promise.race([(async () => {
+        const registration = await navigator.serviceWorker?.getRegistration();
+        const subscription = await registration?.pushManager?.getSubscription();
+        if (selectedAccount() === previous && generation === started) await subscription?.unsubscribe();
+      })(), new Promise(resolve => { timer = setTimeout(resolve, 1500); })]);
+    } catch { /* Permission/device state may be unavailable offline; pushes contain no account or task text. */ }
+    finally { clearTimeout(timer); }
+  }
   await selectAccount(userId);
   channel?.postMessage('account');
   emit('taskpath-locked');
@@ -68,6 +79,26 @@ export async function network(path, method = 'GET', body, userId = selectedAccou
   return response.json();
 }
 const newer = (a, b) => !b || a.editedAt > b.editedAt || (a.editedAt === b.editedAt && a.changeId > b.changeId);
+export function reminderMetadata(task, changeId) {
+  const active = !task.deletedAt && !task.archivedAt && task.status !== 'done' && task.reminderAt && !task.reminderDismissedAt && task.reminderToken;
+  return { taskId: task.id, changeId, token: active ? task.reminderToken : null, dueAt: active ? task.reminderAt : null };
+}
+// Only opted-in accounts retain this small scheduling sidecar. Workers can send
+// it alongside ciphertext, without opening the key store or decrypting tasks.
+async function preparePushMetadata(userId) {
+  if (!page || !vaultKey || userId !== selectedAccount()) return;
+  const token = generation, key = vaultKey, record = await localState(undefined, userId);
+  if (!record.pushEnabled || record.inactive || token !== generation) return;
+  const latest = new Map();
+  for (const e of [...(record.board?.rows || []), ...record.pending]) if (e.taskId !== PROFILE_ID && newer(e, latest.get(e.taskId))) latest.set(e.taskId, e);
+  const outbox = { ...record.reminderOutbox }; let updated = false;
+  for (const e of latest.values()) {
+    if (record.reminderPublished?.[e.taskId] === e.changeId || outbox[e.taskId]?.changeId === e.changeId) continue;
+    const task = await decryptEnvelope(key, record.config.vaultId, e); validate(task);
+    outbox[e.taskId] = reminderMetadata(task, e.changeId); updated = true;
+  }
+  if (updated && token === generation && vaultKey) await commit(record.revision, { ...record, reminderOutbox: outbox });
+}
 export function acceptEncrypted(record, response, now = Date.now()) {
   if (response.format !== 1 || !Array.isArray(response.rows) || response.workspaceKey !== record.config?.vaultId) {
     const error = new Error('This server has a different or unsupported workspace. Local encrypted changes were kept.'); error.status = 409; throw error;
@@ -79,6 +110,12 @@ export function acceptEncrypted(record, response, now = Date.now()) {
   for (const e of response.rows) if (newer(e, rows.get(e.taskId))) rows.set(e.taskId, e);
   const ack = new Set(response.acknowledged || []);
   record.pending = record.pending.filter(e => !ack.has(e.changeId));
+  record.pushEnabled = response.pushEnabled === true;
+  if (!record.pushEnabled) { record.reminderOutbox = {}; record.reminderPublished = {}; }
+  else for (const r of response.reminderAcknowledged || []) {
+    (record.reminderPublished ||= {})[r.taskId] = r.changeId;
+    if (record.reminderOutbox?.[r.taskId]?.changeId === r.changeId) delete record.reminderOutbox[r.taskId];
+  }
   record.board = { format: 1, workspaceKey: response.workspaceKey, timezone: response.timezone, serverTime: response.serverTime, rows: [...rows.values()] };
   record.offset = Date.parse(response.serverTime) - now;
   record.lastEdit = Math.max(record.lastEdit || 0, ...response.rows.map(e => Date.parse(e.editedAt)));
@@ -94,6 +131,7 @@ export function sync() {
     if (!userId || !(await localState(undefined, userId)).config) return;
     try {
       for (let batch = 0; batch < 20; batch++) {
+        await preparePushMetadata(userId);
         const record = await localState(undefined, userId), changes = []; let bytes = 0;
         if (record.inactive) return;
         for (const change of record.pending.slice(0, 50)) {
@@ -101,10 +139,15 @@ export function sync() {
           if (changes.length && bytes + size > 1024 * 1024) break;
           changes.push(change); bytes += size;
         }
-        const response = await network('/api/sync', changes.length ? 'POST' : 'GET', changes.length ? { workspaceKey: record.config.vaultId, changes } : undefined, userId);
+        const available = new Set([...changes, ...(record.board?.rows || [])].map(e => e.changeId));
+        const reminders = record.pushEnabled ? Object.values(record.reminderOutbox || {}).filter(r => available.has(r.changeId)).slice(0, 50) : [];
+        const posting = changes.length || reminders.length;
+        const response = await network('/api/sync', posting ? 'POST' : 'GET', posting ? { workspaceKey: record.config.vaultId, changes, ...(reminders.length ? { reminders } : {}) } : undefined, userId);
         await localState(current => acceptEncrypted(current, response), userId);
+        await preparePushMetadata(userId);
         changed();
-        if (!changes.length || !(await localState()).pending.length) return;
+        const next = await localState(undefined, userId);
+        if (!next.pending.length && !Object.keys(next.reminderOutbox || {}).length) return;
       }
     } catch (error) {
       await localState(record => { record.online = Boolean(error.status); record.authRequired = error.status === 401; record.error = error.status && error.status !== 401 ? error.message : null; }, userId).catch(() => {});
@@ -142,10 +185,13 @@ async function write(operation) {
       if (!current.board) throw new Error('Connect once to download your workspace.');
       const decoded = await plaintext(current, token), count = decoded.pending.length;
       const result = operation(decoded);
-      const pending = [...current.pending];
-      for (const change of decoded.pending.slice(count)) pending.push(await encryptChange(vaultKey, current.config.vaultId, change));
+      const pending = [...current.pending], reminderOutbox = { ...current.reminderOutbox };
+      for (const change of decoded.pending.slice(count)) {
+        pending.push(await encryptChange(vaultKey, current.config.vaultId, change));
+        if (current.pushEnabled && change.task.id !== PROFILE_ID) reminderOutbox[change.task.id] = reminderMetadata(change.task, change.changeId);
+      }
       assertUnlocked(await localState(), token);
-      if (await commit(current.revision, { ...current, pending, lastEdit: decoded.lastEdit })) { changed(); return result; }
+      if (await commit(current.revision, { ...current, pending, reminderOutbox, lastEdit: decoded.lastEdit })) { changed(); return result; }
     }
     throw new Error('Another tab is updating. Please try again.');
   };
@@ -181,7 +227,8 @@ export async function offlineRequest(path, method = 'GET', body) {
     return { ...previewImport(parsed.tasks, record), ignoredBlocks: parsed.ignoredBlocks };
   }
   if (path === '/api/reminders/claim') {
-    if ((await localState()).pending.length) return { tasks: [] };
+    const current = await localState();
+    if (current.pending.length || current.pushEnabled) return { tasks: [] };
     const board = await readBoard();
     const due = board.reminders.filter(t => t.reminderToken).slice(0, 100);
     try {

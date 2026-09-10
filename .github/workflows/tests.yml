@@ -28,6 +28,9 @@ jobs:
         with:
           bun-version: "1.4.2"
 
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Minify client
         run: bun run build
 
