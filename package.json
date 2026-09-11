@@ -17,6 +17,7 @@
     "admin": "bun run src/admin.ts"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.2",
     "web-push": "3.6.7"
   }
 }

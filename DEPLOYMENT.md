@@ -4,7 +4,7 @@ This guide deploys an invite-only Taskpath installation with private per-user va
 
 **Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. This update adds push tables automatically; it does not require a new vault or password. Only older plaintext/single-owner installations need the separate fresh-start procedure.
 
-The image uses Bun **1.4.2**. Docker installs the versions in `bun.lock`, including the server's `web-push` dependency, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host.
+The image uses Bun **1.4.2**. Docker installs the versions in `bun.lock`, including the server's Drizzle ORM and `web-push` dependencies, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
 
 You need:
 

@@ -1,6 +1,6 @@
 # Taskpath
 
-An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. The client has no package dependencies; server push delivery uses pinned `web-push` 3.6.7. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
+An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and plain HTML/CSS/JavaScript. The client has no package dependencies; the server uses pinned Drizzle ORM 0.45.2 and `web-push` 3.6.7. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
 
 ## Start locally
 
@@ -23,6 +23,14 @@ Restarting the server never creates or replaces invitations. An administrator mu
 Use `bun run dev` for watch mode with readable client sources. `bun run build` minifies JavaScript (including the service worker and vendored lexer), CSS, HTML, and the web manifest into `dist/public`; compact SVG icons are trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
 
 **Upgrading from a plaintext or single-owner release requires a fresh multi-user database.** Those older databases are rejected before modification; no old files are deleted or accounts migrated. Existing multi-user installations retain their accounts and data. See [deployment and upgrading](DEPLOYMENT.md#10-update-taskpath) and [enabling background reminders on a VPS](DEPLOYMENT.md#enable-background-reminders).
+
+## Database code
+
+Drizzle uses the native `bun:sqlite` connection. `src/db/schema.ts` defines typed tables; the account/session, workspace, and push repositories in `src/db/` contain database operations. Auth, sync conflict resolution, and notification delivery remain in their respective services. Complex push queue queries use parameterized SQL where it makes the account and revision checks clearer. Query logging is disabled.
+
+The ORM refactor preserves the existing multi-user database format, accounts, sessions, ciphertext, and push keys. No new vault, migration command, database reset, or frontend dependency is required. `src/db/connection.ts` retains explicit, idempotent schema initialization and rejects unsupported legacy databases before writes. Table definitions do not automatically modify deployed databases; update initialization deliberately when changing the schema. Drizzle Kit and automatic schema push are not part of deployment.
+
+Run `bun install --frozen-lockfile --ignore-scripts` after updating a local checkout; Docker and CI install the pinned dependency automatically. The test suite includes a pre-Drizzle database fixture and failure-injection checks for transaction rollback.
 
 ## Appearance
 
