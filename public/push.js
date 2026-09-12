@@ -41,7 +41,9 @@ export function setupPush() {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') throw new Error('Notifications were not allowed. You can change this in your browser or device settings.');
         check();
-        const key = Uint8Array.from(atob(config.publicKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+        if (typeof config.publicKey !== 'string' || !/^[\w-]{80,100}$/.test(config.publicKey)) throw new Error('Background notifications are unavailable. Reopen Taskpath online after updating, then try again.');
+        const unpadded = config.publicKey.replace(/-/g, '+').replace(/_/g, '/');
+        const key = Uint8Array.from(atob(unpadded + '='.repeat((4 - unpadded.length % 4) % 4)), c => c.charCodeAt(0));
         existing = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
         check();
         await network('/api/push', 'POST', { subscription: existing.toJSON() }, account);
