@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { normalizeTags } from '../public/tags.js';
 import { runInNewContext } from 'node:vm';
-const source = (await Bun.file('public/navigation.js').text()).replace(/^import .*\n/gm, '').replace('export function navigation', 'function navigation');
+const source = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/navigation.ts').text()).replace(/^import .*\n/gm, '').replace('export function navigation', 'function navigation'));
 function fixture(hash = '') {
   const listeners = new Map<string, Function>();
   const node = (view?: string) => ({

@@ -32,7 +32,7 @@ test('AES-GCM round trip, fresh nonces, and authenticated metadata prevent tampe
   const a = await encryptChange(vault.key, vault.config.vaultId, change), b = await encryptChange(vault.key, vault.config.vaultId, change);
   expect(a.nonce).not.toBe(b.nonce); expect(a.ciphertext).not.toBe(b.ciphertext);
   expect(JSON.stringify(a)).not.toContain(change.task.title);
-  expect(await decryptEnvelope(vault.key, vault.config.vaultId, a)).toEqual(change.task);
+  expect(await decryptEnvelope(vault.key, vault.config.vaultId, a)).toEqual({ ...change.task });
   for (const patch of [{ taskId: 'different' }, { changeId: 'different' }, { editedAt: '2026-01-01T00:00:00.000Z' }, { version: 2 }, { vaultId: 'other' }, { nonce: base64(random(12)) }, { ciphertext: base64(random(unbase64(a.ciphertext).length)) }]) await expect(decryptEnvelope(vault.key, vault.config.vaultId, { ...a, ...patch })).rejects.toThrow();
 });
 test('password change rewraps the same data key without changing task ciphertext', async () => {
@@ -42,8 +42,8 @@ test('password change rewraps the same data key without changing task ciphertext
   expect(replacement.config.revision).toBe(2);
   expect(replacement.credential).not.toBe(vault.credential);
   const next = await unlockVault('new password from a manager', replacement.config);
-  expect(await decryptEnvelope(next.key, vault.config.vaultId, encrypted)).toEqual(change.task);
+  expect(await decryptEnvelope(next.key, vault.config.vaultId, encrypted)).toEqual({ ...change.task });
   await expect(unlockVault(password, replacement.config)).rejects.toThrow();
   // An already copied key remains usable, as documented.
-  expect(await decryptEnvelope(vault.key, vault.config.vaultId, encrypted)).toEqual(change.task);
+  expect(await decryptEnvelope(vault.key, vault.config.vaultId, encrypted)).toEqual({ ...change.task });
 });

@@ -4,7 +4,7 @@ import { InputError, object, Store } from './store';
 import { PushRepository } from './db/push';
 
 export const subscriptionId = (endpoint: string) => createHash('sha256').update(endpoint).digest('hex');
-export function subscription(input: any) {
+export function subscription(input: unknown): webpush.PushSubscription {
   const value = object(input), keys = object(value.keys);
   if (Object.keys(value).some(k => !['endpoint', 'expirationTime', 'keys'].includes(k)) || Object.keys(keys).some(k => !['p256dh', 'auth'].includes(k))) throw new InputError('Invalid push subscription.');
   try {
@@ -15,9 +15,9 @@ export function subscription(input: any) {
     for (const [name, size] of [['p256dh', 65], ['auth', 16]] as const) {
       if (typeof keys[name] !== 'string' || !/^[\w-]+$/.test(keys[name]) || Buffer.from(keys[name], 'base64url').length !== size) throw new Error();
     }
-    ECDH.convertKey(Buffer.from(keys.p256dh, 'base64url'), 'prime256v1');
+    ECDH.convertKey(Buffer.from(keys.p256dh as string, 'base64url'), 'prime256v1');
   } catch { throw new InputError('Unsupported or invalid browser push subscription.'); }
-  return { endpoint: value.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } };
+  return { endpoint: value.endpoint as string, keys: { p256dh: keys.p256dh as string, auth: keys.auth as string } };
 }
 
 // These signing keys authorize generic push messages; they cannot decrypt a vault.
@@ -94,9 +94,10 @@ export class PushService {
           topic: subscriptionId(job.token).slice(0, 32),
         });
         this.repository.dropDelivery(job);
-      } catch (error: any) {
-        if ([404, 410].includes(error.statusCode)) this.remove(job.userId, job.subscriptionId);
-        else if ([400, 413].includes(error.statusCode) || job.attempts >= 9) this.repository.dropDelivery(job);
+      } catch (error: unknown) {
+        const status = error && typeof error === 'object' && 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : 0;
+        if ([404, 410].includes(status)) this.remove(job.userId, job.subscriptionId);
+        else if ([400, 413].includes(status) || job.attempts >= 9) this.repository.dropDelivery(job);
         else this.repository.retryDelivery(job, this.now() + Math.min(3600000, 30000 * 2 ** job.attempts));
       }
     }

@@ -1,11 +1,11 @@
-export function localReminderValue(iso) {
+export function localReminderValue(iso: string | null | undefined) {
   if (!iso) return '';
   const date = new Date(iso);
-  const pad = n => String(n).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function reminderFromInput(value) {
+export function reminderFromInput(value: string) {
   if (!value) return null;
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('Choose a valid reminder date and time.');
   const date = new Date(value);
@@ -15,7 +15,7 @@ export function reminderFromInput(value) {
   return date.toISOString();
 }
 
-export function dueLabel(dueDate, today) {
+export function dueLabel(dueDate: string, today: string) {
   const delta = Math.round((Date.parse(`${dueDate}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
   if (delta === 0) return 'Today';
   if (delta === 1) return 'Tomorrow';

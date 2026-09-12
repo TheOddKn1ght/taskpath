@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ]
+  },
+  "include": [
+    "public/**/*.ts",
+    "tests/browser-checks.ts",
+    "tests/browser-frame.ts",
+    "types/experimental.d.ts",
+    "types/browser.d.ts"
+  ],
+  "exclude": [
+    "public/sw.ts"
+  ]
+}

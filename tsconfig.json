@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.test.ts",
+    "tests/*helpers.ts",
+    "tests/browser-server.ts",
+    "types/experimental.d.ts",
+    "types/browser.d.ts"
+  ]
+}

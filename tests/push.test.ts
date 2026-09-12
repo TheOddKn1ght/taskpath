@@ -50,7 +50,7 @@ test('opt-in metadata is atomic, revision checked, and cannot override a newer e
     expect(() => store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [envelope], reminders: [{ ...reminderMetadata(last.task, last.changeId), title: 'forbidden' }] })).toThrow();
     expect(JSON.stringify(store.syncBoard(testUserId))).not.toContain(task.title);
     expect(JSON.stringify(store.db.query('SELECT * FROM push_reminders').all())).not.toContain(task.notes);
-    device.update(task.id, { status: 'done' }); await sync();
+    device.update(task.id, { status: 'done' as const }); await sync();
     expect(store.db.query('SELECT * FROM push_reminders').all()).toEqual([]);
   } finally { store.close(); }
 });
@@ -63,7 +63,7 @@ test('new ciphertext without scheduling metadata cancels stale reminders; archiv
     const last = device.record.pending.at(-1)!;
     store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [await encryptChange(testVault.key, testVault.config.vaultId, last)] });
     await push.tick(); expect(sent).toHaveLength(0);
-    for (const extra of [{ archivedAt: new Date(time).toISOString() }, { deletedAt: new Date(time).toISOString() }, { status: 'done' }, { reminderDismissedAt: new Date(time).toISOString() }]) expect(reminderMetadata({ ...task, ...extra }, 'change')).toMatchObject({ token: null, dueAt: null });
+    for (const extra of [{ archivedAt: new Date(time).toISOString() }, { deletedAt: new Date(time).toISOString() }, { status: 'done' as const }, { reminderDismissedAt: new Date(time).toISOString() }]) expect(reminderMetadata({ ...task, ...extra }, 'change')).toMatchObject({ token: null, dueAt: null });
   } finally { store.close(); }
 });
 
@@ -128,7 +128,7 @@ test('push endpoints require a session, enforce Origin and account binding, and 
 
 test('service worker displays only generic text while locked and ignores injected titles and click URLs', async () => {
   const listeners = new Map(), shown: any[] = [], opened: string[] = [];
-  const code = (await Bun.file('public/sw.js').text()).replace(/^import .*\n/gm, '');
+  const code = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/sw.ts').text()).replace(/^import .*\n/gm, ''));
   runInNewContext(code, { URL, self: { location: { origin }, addEventListener: (name: string, handler: any) => listeners.set(name, handler),
     registration: { showNotification: async (title: string, options: any) => { shown.push({ title, ...options }); } },
     clients: { matchAll: async () => [], openWindow: async (url: string) => { opened.push(url); } },

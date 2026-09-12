@@ -1,7 +1,7 @@
 // Apply appearance before styles load. Preferences belong to this browser, not a vault.
 (() => {
   const key = 'taskpath-theme';
-  const root = '/assets/accounts-v11/';
+  const root = '/assets/accounts-v13/';
   const themes = [
     { id: 'light', name: 'Light', color: '#fafaf8' },
     { id: 'dark', name: 'Dark', color: '#171c19' },
@@ -12,12 +12,12 @@
     { id: 'rose-pine', name: 'Rosé Pine Dawn', color: '#faf4ed' },
   ];
   const system = window.matchMedia('(prefers-color-scheme: dark)');
-  const valid = value => themes.some(theme => theme.id === value) ? value : null;
-  let preference = null;
+  const valid = (value: string | null) => themes.some(theme => theme.id === value) ? value : null;
+  let preference: string | null = null;
   try { preference = valid(localStorage.getItem(key)); } catch { /* Storage may be unavailable. */ }
 
   function apply() {
-    const theme = themes.find(theme => theme.id === (preference || (system.matches ? 'dark' : 'light')));
+    const theme = themes.find(theme => theme.id === (preference || (system.matches ? 'dark' : 'light')))!;
     const path = `${root}themes/${theme.id}/`;
     document.documentElement.dataset.theme = theme.id;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.color);
@@ -32,15 +32,15 @@
       button.replaceChildren(Object.assign(document.createElement('img'), { src: path + 'favicon.svg', alt: '' }));
     }
     document.getElementById('unlock-theme')?.setAttribute('aria-label', label);
-    for (const choice of document.querySelectorAll('[data-theme-choice]')) {
+    for (const choice of document.querySelectorAll<HTMLElement>('[data-theme-choice]')) {
       choice.setAttribute('aria-pressed', String(choice.dataset.themeChoice === (preference || 'system')));
     }
   }
 
   apply();
   document.addEventListener('DOMContentLoaded', () => {
-    const dialog = document.getElementById('theme-dialog');
-    const choices = document.getElementById('theme-choices');
+    const dialog = document.getElementById('theme-dialog') as HTMLDialogElement;
+    const choices = document.getElementById('theme-choices')!;
     for (const theme of [{ id: 'system', name: 'Follow system' }, ...themes]) {
       const button = document.createElement('button');
       button.type = 'button';
@@ -62,11 +62,11 @@
       choices.append(button);
     }
     apply();
-    document.getElementById('theme-toggle').addEventListener('click', () => {
+    document.getElementById('theme-toggle')!.addEventListener('click', () => {
       if (!dialog.open) dialog.showModal();
-      choices.querySelector('[aria-pressed="true"]')?.focus();
+      choices.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
     });
-    document.getElementById('theme-close').addEventListener('click', () => dialog.close());
+    document.getElementById('theme-close')!.addEventListener('click', () => dialog.close());
   });
   system.addEventListener('change', () => { if (!preference) apply(); });
   window.addEventListener('storage', event => {

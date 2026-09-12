@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import { runInNewContext } from 'node:vm';
 
 const html = await Bun.file('public/index.html').text();
-const source = (await Bun.file('public/vault-ui.js').text()).replace(/^import .*\n/gm, '').replace('export async function startVault', 'async function startVault');
+const source = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/vault-ui.ts').text()).replace(/^import .*\n/gm, '').replace('export async function startVault', 'async function startVault'));
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (reason: Error) => void;
@@ -29,6 +29,7 @@ function startup(hash = '', overrides = {}) {
     return nodes.get(id);
   }
   const context = {
+    $: node, Error, validateConfig: (input: unknown) => input, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error), errorStatus: (error: {status?: number}) => error.status,
     URLSearchParams, location: { hash }, history: { replaceState() {} },
     document: { querySelector: node, querySelectorAll: () => [], body: { classList: { add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c) } } },
     window: { addEventListener: (name: string, callback: Function) => listeners.set(name, callback) },
@@ -64,7 +65,7 @@ test('unlock shows progress, ignores repeated submissions, and recovers from a f
   const config = deferred<any>(); let requests = 0;
   const ui = startup('', {
     validUserId: () => true, crypto: { subtle: {} }, localState: async () => ({}),
-    network: () => { requests++; return config.promise; }, validateConfig() {},
+    network: () => { requests++; return config.promise; }, validateConfig: (input: unknown) => input,
     unlockVault: async () => { throw new Error('Wrong password'); },
   });
   ui.load.resolve(); await tick(); ui.restore.resolve(false); await tick();

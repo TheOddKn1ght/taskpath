@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": [],
+    "lib": [
+      "ESNext"
+    ],
+    "paths": {
+      "/assets/accounts-v13/*": [
+        "./public/*"
+      ]
+    }
+  }
+}

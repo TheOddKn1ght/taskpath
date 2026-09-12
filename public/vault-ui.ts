@@ -1,13 +1,19 @@
+import { select as $ } from './dom.js';
+import { errorMessage, errorStatus } from './errors.js';
+import type { VaultConfig, PushStatus } from './types.js';
 import { createVault, unlockVault, replacePassword, validateConfig, validUserId, normalizeNickname } from './crypto.js';
 import { network, localState, activate, restoreRemembered, isUnlocked, sync, syncAfterCurrent, switchAccount, selectedAccount, offlineRequest, readBoard } from './offline.js';
 import { loadAccount } from './persistence.js';
-const $ = selector => document.querySelector(selector);
 const fragment = new URLSearchParams(location.hash.slice(1));
 let setupToken = fragment.get('setup'), invitedUserId = fragment.get('user');
 if (setupToken) history.replaceState(null, '', location.pathname + location.search);
-let resolveFirst, initialized = false, attempt = 0;
-const configuration = userId => network('/api/auth/config?userId=' + encodeURIComponent(userId));
-function unlockBusy(busy) {
+let resolveFirst: (()=>void) | null = null, initialized = false, attempt = 0;
+const configuration = async (userId:string | null) => {
+  if (!userId) throw new Error('Select an account first.');
+  const response = await network<{config:unknown}>('/api/auth/config?userId=' + encodeURIComponent(userId));
+  return { config: response.config === null ? null : validateConfig(response.config) };
+};
+function unlockBusy(busy: boolean) {
   const label = setupToken ? 'Creating your vault…' : 'Unlocking your workspace…';
   $('#unlock-submit').disabled = busy;
   $('#unlock-submit').setAttribute('aria-busy', String(busy));
@@ -28,7 +34,7 @@ function showGate() {
   $('#unlock-nickname-field').hidden = !setup;
   $('#unlock-password').autocomplete = setup ? 'new-password' : 'current-password';
   unlockBusy(false);
-  for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+  for (const dialog of document.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close();
   (setup || selectedAccount() ? $('#unlock-password') : $('#unlock-user')).focus();
 }
 function opened() {
@@ -58,7 +64,7 @@ export async function startVault() {
         if (selectedAccount() !== userId) { await switchAccount(userId); current = attempt; unlockBusy(true); }
         const record = await localState(); let config, online = true;
         try { config = (await configuration(userId)).config; }
-        catch (error) { if (error.status) throw error; online = false; config = record.config; }
+        catch (error) { if (errorStatus(error)) throw error; online = false; config = record.config; }
         let key, nickname;
         if (setupToken) {
           if (config) throw new Error('This invitation has already been used. Open the normal app URL to sign in.');
@@ -86,7 +92,7 @@ export async function startVault() {
         else void syncAfterCurrent().catch(() => {});
       } catch (error) {
         if (current !== attempt) return;
-        $('#unlock-error').textContent = error.message; $('#unlock-error').hidden = false;
+        $('#unlock-error').textContent = errorMessage(error); $('#unlock-error').hidden = false;
       } finally {
         // A cancelled attempt must not clear a newer attempt's fields or loading state.
         if (current === attempt) {
@@ -106,12 +112,12 @@ export async function startVault() {
     $('#edit-nickname').addEventListener('click', async () => {
       $('.app-menu').open = false;
       const board = await readBoard(); if (!isUnlocked()) return;
-      $('#nickname-input').value = board.nickname; $('#nickname-error').hidden = true; $('#nickname-dialog').showModal();
+      $('#nickname-input').value = board.nickname || ''; $('#nickname-error').hidden = true; $('#nickname-dialog').showModal();
     });
     $('#nickname-form').addEventListener('submit', async event => {
       event.preventDefault();
       try { await offlineRequest('/api/profile', 'POST', { nickname: $('#nickname-input').value }); $('#nickname-dialog').close(); $('#nickname-input').value = ''; }
-      catch (error) { $('#nickname-error').textContent = error.message; $('#nickname-error').hidden = false; }
+      catch (error) { $('#nickname-error').textContent = errorMessage(error); $('#nickname-error').hidden = false; }
     });
     $('#change-password').addEventListener('click', () => {
       $('.app-menu').open = false;
@@ -124,7 +130,7 @@ export async function startVault() {
         if (!isUnlocked()) throw new Error('Unlock first.');
         if ($('#new-password').value !== $('#confirm-password').value) throw new Error('The new passwords do not match.');
         const config = (await configuration(userId)).config;
-        if (config.vaultId !== (await localState()).config.vaultId) throw new Error('Vault identity changed.');
+        if (!config || config.vaultId !== (await localState()).config?.vaultId) throw new Error('Vault identity changed.');
         const replacement = await replacePassword($('#current-password').value, $('#new-password').value, config);
         if (!isUnlocked() || selectedAccount() !== userId) throw new Error('Vault was locked or account changed.');
         await network('/api/auth/password', 'POST', { ...replacement, revision: config.revision }, userId);
@@ -132,11 +138,11 @@ export async function startVault() {
         await network('/api/auth/login', 'POST', { userId, credential: replacement.credential, revision: replacement.config.revision }, userId);
         $('#password-dialog').close(); $('#password-form').reset();
         window.dispatchEvent(new Event('taskpath-password-changed'));
-      } catch (error) { $('#password-error').textContent = error.name === 'OperationError' ? 'Current password is incorrect.' : error.message; $('#password-error').hidden = false; }
+      } catch (error) { $('#password-error').textContent = error instanceof Error && error.name === 'OperationError' ? 'Current password is incorrect.' : errorMessage(error); $('#password-error').hidden = false; }
       finally { $('#password-form').querySelectorAll('input').forEach(input => { input.value = ''; }); $('#password-save').disabled = false; }
     });
   }
-  const ready = new Promise(resolve => { resolveFirst = resolve; });
+  const ready = new Promise<void>(resolve => { resolveFirst = resolve; });
   try {
     await loadAccount();
     if (!setupToken && await restoreRemembered()) opened(); else showGate();

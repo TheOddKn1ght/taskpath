@@ -1,8 +1,19 @@
+import type { EncryptedRecord } from './types.js';
+interface SocketLike {
+  readyState:number; close():void;
+  onmessage?: WebSocket['onmessage'];
+  onclose?: WebSocket['onclose'];
+  onerror?: WebSocket['onerror'];
+}
+interface RealtimeOptions {
+  sync:()=>Promise<unknown>; localState:()=>Promise<Pick<Partial<EncryptedRecord>, "locked" | "authRequired" | "inactive" | "userId"> & { board?: unknown }>; url:string;
+  Socket?:new(url:string)=>SocketLike; active?:()=>boolean;
+}
 // Keep the durable HTTP queue as the only sync path, including after reconnects.
-export function createRealtime({ sync, localState, url, Socket = WebSocket, active = () => !document.hidden && navigator.onLine !== false }) {
+export function createRealtime({ sync, localState, url, Socket = WebSocket, active = () => !document.hidden && navigator.onLine !== false }: RealtimeOptions) {
   const endpoint = new URL('/api/events', url);
   endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
-  let socket, retryTimer, watchdog, attempts = 0, generation = 0;
+  let socket: SocketLike | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined, watchdog: ReturnType<typeof setTimeout> | undefined, attempts = 0, generation = 0;
   let pulling = false, requested = false;
 
   async function pull() {

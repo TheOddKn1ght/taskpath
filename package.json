@@ -14,10 +14,16 @@
     "dev:smol": "NODE_ENV=development bun --smol --watch src/server.ts",
     "test": "bun test",
     "build": "bun run scripts/build.ts",
-    "admin": "bun run src/admin.ts"
+    "admin": "bun run src/admin.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.browser.json && tsc -p tsconfig.worker.json"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/web-push": "3.6.4",
+    "typescript": "7.0.2"
   }
 }

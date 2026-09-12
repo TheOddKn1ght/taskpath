@@ -36,14 +36,15 @@ export async function buildClient() {
   try {
     const files = [...new Bun.Glob('**/*').scanSync({ cwd: source, onlyFiles: true })].sort();
     for (const name of files) {
+      if (name.endsWith(".d.ts")) continue;
       const input = Bun.file(resolve(source, name));
-      const destination = resolve(staging, name);
+      const destination = resolve(staging, name.replace(/\.ts$/, '.js'));
       await mkdir(dirname(destination), { recursive: true });
       const extension = extname(name);
-      if (extension === '.js' || extension === '.css') {
+      if (extension === '.ts' || extension === '.js' || extension === '.css') {
         const result = await Bun.build({
           entrypoints: [resolve(source, name)], target: 'browser',
-          format: name === 'theme.js' ? 'iife' : 'esm',
+          format: name === 'theme.ts' ? 'iife' : 'esm',
           // Preserve the module graph: the page and worker must each have one
           // offline-state module, not independent copies inside every bundle.
           external: ['*'], minify: true, sourcemap: 'none', env: 'disable',
@@ -62,7 +63,7 @@ export async function buildClient() {
         // Keep binary icons and the vendored license/provenance intact.
         await Bun.write(destination, input);
       }
-      if (['.js', '.css', '.html', '.webmanifest', '.json', '.svg'].includes(extension)) {
+      if (['.ts', '.js', '.css', '.html', '.webmanifest', '.json', '.svg'].includes(extension)) {
         before += input.size;
         after += Bun.file(destination).size;
       }

@@ -1,19 +1,21 @@
+import { select as $ } from './dom.js';
+import { errorMessage, errorStatus } from './errors.js';
+import type { VaultConfig, PushStatus } from './types.js';
 import { network, localState, selectedAccount, isUnlocked, syncAfterCurrent } from './offline.js';
-const $ = selector => document.querySelector(selector);
-const digest = async text => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(n => n.toString(16).padStart(2, '0')).join('');
+const digest = async (text: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(n => n.toString(16).padStart(2, '0')).join('');
 export function setupPush() {
   const dialog = $('#push-dialog'), button = $('#push-toggle'), status = $('#push-status');
-  let registration, config, existing, subscribed = false, userId, revision = 0;
+  let registration: ServiceWorkerRegistration | undefined, config: PushStatus | undefined, existing: PushSubscription | null | undefined, subscribed = false, userId: string | null = null, revision = 0;
   const supported = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const check = () => { if (!isUnlocked() || selectedAccount() !== userId) throw new Error('Unlock this account to change notifications.'); };
   const refresh = async () => {
     check(); const current = revision, account = userId;
-    const [nextConfig, nextRegistration] = await Promise.all([network('/api/push', 'GET', undefined, account), navigator.serviceWorker.getRegistration()]);
+    const [nextConfig, nextRegistration] = await Promise.all([network<PushStatus>('/api/push', 'GET', undefined, account), navigator.serviceWorker.getRegistration()]);
     const nextSubscription = await nextRegistration?.pushManager.getSubscription();
     const id = nextSubscription && await digest(nextSubscription.endpoint);
     if (current !== revision) return;
     check(); config = nextConfig; registration = nextRegistration; existing = nextSubscription;
-    subscribed = Boolean(existing && config.subscriptionIds.includes(id));
+    subscribed = Boolean(existing && config.subscriptionIds.includes(id || ''));
     button.textContent = subscribed ? 'Turn off on this device' : 'Enable on this device';
     button.disabled = !config.available || !registration?.active;
     status.textContent = !config.available ? 'Your administrator needs to set TASKPATH_ORIGIN to the public HTTPS address.' : !registration?.active ? 'The offline app is still installing. Close this dialog and try again shortly.' : subscribed ? 'Background reminders are on for this device, including while the vault is locked.' : 'Background reminders are off on this device.';
@@ -23,7 +25,7 @@ export function setupPush() {
     const current = ++revision; button.disabled = true; $('#push-error').hidden = true;
     if (!supported()) { status.textContent = 'This browser does not support background notifications here. On iPhone or iPad, add Taskpath to your Home Screen and open it there (iOS 16.4 or later).'; return; }
     status.textContent = 'Checking this device…';
-    try { await refresh(); } catch (error) { if (current === revision) status.textContent = error.message; }
+    try { await refresh(); } catch (error) { if (current === revision) status.textContent = errorMessage(error); }
   });
   window.addEventListener('taskpath-locked', () => { revision++; button.disabled = true; dialog.close(); });
   button.addEventListener('click', async () => {
@@ -33,15 +35,15 @@ export function setupPush() {
     try {
       check();
       if (subscribed) {
-        await network('/api/push', 'DELETE', { id: await digest(existing.endpoint) }, account);
-        await existing.unsubscribe();
-        for (const notification of await registration.getNotifications()) if (notification.tag.startsWith('taskpath-reminder-')) notification.close();
+        await network('/api/push', 'DELETE', { id: await digest(existing!.endpoint) }, account);
+        await existing!.unsubscribe();
+        for (const notification of await registration!.getNotifications()) if (notification.tag.startsWith('taskpath-reminder-')) notification.close();
       } else {
         // Permission is requested directly from this user gesture, including on iOS.
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') throw new Error('Notifications were not allowed. You can change this in your browser or device settings.');
         check();
-        if (typeof config.publicKey !== 'string' || !/^[\w-]{80,100}$/.test(config.publicKey)) throw new Error('Background notifications are unavailable. Reopen Taskpath online after updating, then try again.');
+        if (typeof config?.publicKey !== 'string' || !/^[\w-]{80,100}$/.test(config.publicKey)) throw new Error('Background notifications are unavailable. Reopen Taskpath online after updating, then try again.');
         const unpadded = config.publicKey.replace(/-/g, '+').replace(/_/g, '/');
         const key = Uint8Array.from(atob(unpadded + '='.repeat((4 - unpadded.length % 4) % 4)), c => c.charCodeAt(0));
         // Subscribe on the live active registration, not a possibly stale cached one.
@@ -51,8 +53,8 @@ export function setupPush() {
         try {
           existing = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
         } catch (error) {
-          if (error?.name === 'NotAllowedError') throw new Error('Notifications were not allowed. You can change this in your browser or device settings.');
-          throw new Error(`Could not reach the browser push service (${error?.name || 'push service error'}). Check connection, VPN/ad-blocker, and that this browser can reach its push provider, then try again.`, { cause: error });
+          if (error instanceof Error && error.name === 'NotAllowedError') throw new Error('Notifications were not allowed. You can change this in your browser or device settings.');
+          throw new Error(`Could not reach the browser push service (${error instanceof Error ? error.name : 'push service error'}). Check connection, VPN/ad-blocker, and that this browser can reach its push provider, then try again.`, { cause: error });
         }
         check();
         await network('/api/push', 'POST', { subscription: existing.toJSON() }, account);
@@ -63,7 +65,7 @@ export function setupPush() {
       await syncAfterCurrent();
       if (current === revision) await refresh();
     } catch (error) {
-      if (current === revision) { $('#push-error').textContent = error.message; $('#push-error').hidden = false; }
+      if (current === revision) { $('#push-error').textContent = errorMessage(error); $('#push-error').hidden = false; }
     } finally { if (current === revision) button.disabled = !config?.available || !registration?.active; }
   });
 }

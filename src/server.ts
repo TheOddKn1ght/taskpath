@@ -1,3 +1,4 @@
+import { clientAsset } from './client-assets';
 import type { Server } from 'bun';
 import { Realtime, type RealtimeData } from './realtime';
 import { resolve } from 'node:path';
@@ -5,8 +6,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
 import { PushService } from './push';
-export const ASSET_VERSION = 'accounts-v11';
+export const ASSET_VERSION = 'accounts-v13';
 const assets = new Map<string, [string, string]>([
+  ["/dom.js", ["dom.js", "text/javascript; charset=utf-8"]],
+  ["/errors.js", ["errors.js", "text/javascript; charset=utf-8"]],
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
   ["/vault-ui.js", ["vault-ui.js", "text/javascript; charset=utf-8"]],
@@ -79,6 +82,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       if (path === '/api/auth/setup' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some(k => !['userId', 'token', 'config', 'credential'].includes(k))) throw new InputError('Unsupported setup payload.');
+        if (typeof data.userId !== 'string' || typeof data.credential !== 'string') throw new InputError('Invalid setup payload.');
         await auth.setup(data.userId, data.token, data.config, data.credential);
         const session = await auth.login(client, data.userId, data.credential, 1);
         return json({ ok: true }, 201, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
@@ -86,6 +90,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       if (path === '/api/auth/login' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some(k => !['userId', 'credential', 'revision'].includes(k))) throw new InputError('Use the encrypted login protocol.');
+        if (typeof data.userId !== 'string' || typeof data.credential !== 'string' || typeof data.revision !== 'number') throw new InputError('Invalid login payload.');
         const session = await auth.login(client, data.userId, data.credential, data.revision);
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
@@ -95,7 +100,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       if (read && assets.has(assetPath) && (shell || path === '/sw.js' || path.startsWith(`/assets/${ASSET_VERSION}/`))) {
         const [file, type] = assets.get(assetPath)!;
         const socketOrigin = origin.replace(/^http/, 'ws');
-        return new Response(request.method === 'HEAD' ? null : Bun.file(resolve(assetDirectory, file)), { headers: { ...headers, 'Content-Type': type,
+        return new Response(request.method === 'HEAD' ? null : await clientAsset(assetDirectory, file), { headers: { ...headers, 'Content-Type': type,
           'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
       }
       const userId = auth.identity(request);
@@ -108,6 +113,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       if (path === '/api/auth/password' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some(k => !['revision', 'config', 'currentCredential', 'credential'].includes(k))) throw new InputError('Unsupported password-change payload.');
+        if (typeof data.currentCredential !== 'string' || typeof data.credential !== 'string' || typeof data.revision !== 'number') throw new InputError('Invalid password-change payload.');
         await auth.changePassword(client, request, data.currentCredential, data.credential, data.config, data.revision);
         realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });

@@ -43,9 +43,9 @@ test('pre-Drizzle database retains schema, sessions, ciphertext, invitations, an
     db.query('INSERT INTO settings VALUES (?,?)').run('push-vapid', JSON.stringify(keys));
     db.query('INSERT INTO settings VALUES (?,?)').run('timezone', 'Europe/Moscow');
     db.query('INSERT INTO push_subscriptions VALUES (?,?,?)').run('device', testUserId, '{"endpoint":"https://web.push.apple.com/fixture"}');
-    db.query('INSERT INTO push_reminders VALUES (?,?,?,?,?)').run(testUserId, task.id, envelope.changeId, task.reminderToken, time.getTime());
-    db.query('INSERT INTO reminder_claims VALUES (?,?)').run(testUserId, task.reminderToken);
-    db.query('INSERT INTO push_deliveries VALUES (?,?,?,?,?,?)').run(testUserId, task.id, task.reminderToken, 'device', time.getTime() + 60000, 3);
+    db.query('INSERT INTO push_reminders VALUES (?,?,?,?,?)').run(testUserId, task.id, envelope.changeId, task.reminderToken!, time.getTime());
+    db.query('INSERT INTO reminder_claims VALUES (?,?)').run(testUserId, task.reminderToken!);
+    db.query('INSERT INTO push_deliveries VALUES (?,?,?,?,?,?)').run(testUserId, task.id, task.reminderToken!, 'device', time.getTime() + 60000, 3);
     const before = snapshot(db);
     db.close(); db = undefined;
 
@@ -73,7 +73,7 @@ test('sync SQL failure rolls back earlier encrypted writes and reminder cancella
     const first = device.create({ title: 'Keep original', reminderAt: time.toISOString() });
     const original = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[0]);
     store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [original] });
-    store.db.query('INSERT INTO push_reminders VALUES (?,?,?,?,?)').run(testUserId, first.id, original.changeId, first.reminderToken, time.getTime());
+    store.db.query('INSERT INTO push_reminders VALUES (?,?,?,?,?)').run(testUserId, first.id, original.changeId, first.reminderToken!, time.getTime());
     const before = snapshot(store.db);
     device.update(first.id, { title: 'Must roll back' });
     device.create({ title: 'Fail insertion' });

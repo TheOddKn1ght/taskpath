@@ -1,7 +1,8 @@
-import { sync } from '/assets/accounts-v11/offline.js';
-const CACHE = 'taskpath-shell-accounts-v11';
-const ROOT = '/assets/accounts-v11/';
-const FILES = ['style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
+declare const self: ServiceWorkerGlobalScope;
+import { sync } from '/assets/accounts-v13/offline.js';
+const CACHE = 'taskpath-shell-accounts-v13';
+const ROOT = '/assets/accounts-v13/';
+const FILES = ['dom.js', 'errors.js', 'style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'push.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
@@ -12,7 +13,7 @@ self.addEventListener('install', event => event.waitUntil((async () => {
   // Bound the burst and retry temporary proxy throttling as the full icon set downloads.
   await Promise.all(Array.from({ length: 4 }, async () => {
     while (remaining.length) {
-      const path = remaining.shift();
+      const path = remaining.shift()!;
       let response;
       for (let attempt = 0; attempt < 6; attempt++) {
         response = await fetch(path, { cache: 'reload' });
@@ -20,7 +21,7 @@ self.addEventListener('install', event => event.waitUntil((async () => {
         await response.body?.cancel();
         await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt, 8) * 1000));
       }
-      if (!response.ok || response.redirected) throw new Error('Incomplete encrypted shell');
+      if (!response?.ok || response.redirected) throw new Error('Incomplete encrypted shell');
       await cache.put(path, response);
     }
   }));
@@ -46,7 +47,7 @@ self.addEventListener('sync', event => { if (event.tag === 'taskpath-accounts-sy
 self.addEventListener('push', event => {
   // Never fetch task data or load vault keys, even on remembered devices.
   let token = '';
-  try { const data = event.data?.json(); if (/^[\w-]{32,100}$/.test(data?.token)) token = data.token; } catch {}
+  try { const data: unknown = event.data?.json(); if (data && typeof data === 'object' && 'token' in data && typeof data.token === 'string' && /^[\w-]{32,100}$/.test(data.token)) token = data.token; } catch {}
   event.waitUntil(self.registration.showNotification('Taskpath reminder', {
     body: 'You have a reminder in Taskpath.', icon: ROOT + 'icon-192.png',
     tag: 'taskpath-reminder-' + token, renotify: false,

@@ -1,3 +1,6 @@
+import type { Task, Board, Status, Route, ArchiveReceipt, ArchiveResult, MutationResult } from './types.js';
+import { select as $, selectAll as $$ } from './dom.js';
+import { errorMessage } from './errors.js';
 import { normalizeTags } from './tags.js';
 import { offlineRequest, sync, syncAfterCurrent, localState, lock, isUnlocked, selectedAccount } from './offline.js';
 import { navigation } from './navigation.js';
@@ -9,9 +12,7 @@ import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
 await startVault();
 setupPush();
 
-const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const paths = {
+const paths: Record<string, string> = {
   archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
@@ -38,7 +39,7 @@ const paths = {
   up: '<path d="M12 20V4m-6 6 6-6 6 6"/>',
   down: '<path d="M12 4v16m-6-6 6 6 6-6"/>',
 };
-const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.inbox}</svg>`;
+const icon = (name: string | undefined) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name || ""] || paths.inbox}</svg>`;
 $$('[data-icon]').forEach(node => { node.innerHTML = icon(node.dataset.icon); });
 
 const columns = {
@@ -47,7 +48,8 @@ const columns = {
   today: { title: 'Today' },
   done: { title: 'Done' },
 };
-const state = { view: 'board', archiveDetails: null, tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
+type AppState = Route & Board & { archiveDetails: string | null; ready: boolean; busy: boolean; loading: boolean; editing: string | null };
+const state: AppState = { rows: [], reminders: [], changeIds: {}, serverTime: '', view: 'board', archiveDetails: null, tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
 const nav = navigation((view, filters) => {
   const changedView = state.view !== view;
   Object.assign(state, filters, { view });
@@ -67,20 +69,20 @@ const nav = navigation((view, filters) => {
     }
   }
 });
-let dragId = null;
-let dropTarget = null;
-let toastTimer;
-let toastAction;
-let touchDrag = null;
-let touchScrollFrame;
-let contextTaskId = null;
-let contextReturnFocus = null;
+let dragId: string | null = null;
+let dropTarget: { status: Status; beforeId: string | null } | null = null;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let toastAction: (() => void | Promise<void>) | null | undefined;
+let touchDrag: { id: string; pointer: number; x: number; y: number; currentX: number; currentY: number; started: boolean } | null = null;
+let touchScrollFrame = 0;
+let contextTaskId: string | null = null;
+let contextReturnFocus: HTMLElement | null = null;
 let importRevision = 0;
-let importSource = null;
+let importSource: Task[] | null = null;
 let importBusy = false;
-let reminderTimer;
+let reminderTimer: ReturnType<typeof setTimeout> | undefined;
 let notificationBusy = false;
-let editingReminder = null;
+let editingReminder: string | null = null;
 let notificationsOff = false;
 try { notificationsOff = localStorage.getItem('taskpath-notifications') === 'off'; } catch { /* Preferences are optional. */ }
 
@@ -108,19 +110,19 @@ async function toggleNotifications() {
   } catch { notify('Desktop notifications are unavailable. In-app reminders will still appear.'); }
 }
 
-function reminderLabel(iso) {
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', ...(new Date(iso).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+function reminderLabel(iso: string | null) {
+  return new Date(iso!).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', ...(new Date(iso!).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
 }
 
-function taskDates(task) {
+function taskDates(task: Task) {
   const activeReminder = task.reminderAt && !task.reminderDismissedAt && task.status !== 'done';
   if (!task.dueDate && !activeReminder) return '';
-  const overdue = task.dueDate < state.day && task.status !== 'done';
+  const overdue = task.dueDate && task.dueDate < state.day && task.status !== 'done';
   const label = task.dueDate ? (task.status === 'done' ? dueLabel(task.dueDate, state.day).replace('Overdue · ', '') : dueLabel(task.dueDate, state.day)) : '';
   return `<div class="task-dates">${task.dueDate ? `<span class="task-date ${overdue ? 'overdue' : task.dueDate === state.day ? 'due-today' : ''}" title="Due ${escape(task.dueDate)}">${icon('calendar')}<time datetime="${escape(task.dueDate)}">${escape(label)}</time></span>` : ''}${activeReminder ? `<span class="task-reminder" title="Reminder: ${escape(reminderLabel(task.reminderAt))}" aria-label="Reminder: ${escape(reminderLabel(task.reminderAt))}">${icon('bell')}${task.dueDate ? '' : `<time datetime="${escape(task.reminderAt)}">${escape(reminderLabel(task.reminderAt))}</time>`}</span>` : ''}</div>`;
 }
 
-function renderReminders(board) {
+function renderReminders(board: Board) {
   const panel = $('#reminder-panel');
   const html = (board.reminders || []).map(task => `<div class="reminder-row" data-reminder-id="${task.id}">${icon('bell')}<button class="reminder-open" data-reminder-action="open"><strong>${escape(task.title)}</strong><span>${escape(reminderLabel(task.reminderAt))}</span></button><button class="subtle-button" data-reminder-action="snooze">Snooze 10m</button><button class="subtle-button" data-reminder-action="dismiss">Dismiss</button></div>`).join('');
   if (panel.innerHTML !== html) {
@@ -132,7 +134,7 @@ function renderReminders(board) {
   clearTimeout(reminderTimer);
   const upcoming = board.tasks.filter(t => !t.archivedAt && t.reminderAt && !t.reminderDismissedAt && t.status !== 'done' && t.reminderAt > board.serverTime);
   if (upcoming.length) {
-    const next = Math.min(...upcoming.map(t => Date.parse(t.reminderAt)));
+    const next = Math.min(...upcoming.map(t => Date.parse(t.reminderAt!)));
     reminderTimer = setTimeout(() => refresh({ quiet: true }), Math.max(500, Math.min(60000, next - Date.parse(board.serverTime) + 100)));
   }
   if (board.reminders?.length) void deliverNotifications();
@@ -146,7 +148,7 @@ async function deliverNotifications() {
     if (!isUnlocked() || !tasks.length) return;
     const single = tasks.length === 1 ? tasks[0] : null;
     const notification = new Notification('Taskpath reminder', {
-      body: 'You have a reminder in Taskpath.', tag: single ? `taskpath-reminder-${single.reminderToken}` : 'taskpath-reminders', icon: document.querySelector('link[rel="apple-touch-icon"]').href,
+      body: 'You have a reminder in Taskpath.', tag: single ? `taskpath-reminder-${single.reminderToken}` : 'taskpath-reminders', icon: document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')!.href,
     });
     notification.onclick = () => {
       window.focus(); notification.close();
@@ -159,13 +161,13 @@ async function deliverNotifications() {
 }
 
 // Task content is always escaped before it is inserted into markup.
-function escape(value) { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]); }
-function announce(message) { if (isUnlocked()) $('#announcer').textContent = message; }
-function connection(text, offline = false) {
+function escape(value: unknown) { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]!); }
+function announce(message: string) { if (isUnlocked()) $('#announcer').textContent = message; }
+function connection(text: string, offline = false) {
   $('#save-status').innerHTML = `<span class="status-dot"></span>${escape(text)}`;
   $('#save-status').classList.toggle('offline', offline);
 }
-function notify(message, action, label = 'Undo') {
+function notify(message: string, action?: () => void | Promise<void>, label = 'Undo') {
   if (!isUnlocked()) return;
   clearTimeout(toastTimer);
   $('#toast-message').textContent = message;
@@ -175,15 +177,13 @@ function notify(message, action, label = 'Undo') {
   $('#toast').hidden = false;
   toastTimer = setTimeout(() => { $('#toast').hidden = true; }, action ? 15000 : 5000);
 }
-function showError(error) {
+function showError(error: unknown) {
   if (!isUnlocked()) return;
-  $('#error-text').textContent = error.message || 'Could not reach your workspace. Please try again.';
+  $('#error-text').textContent = errorMessage(error) || 'Could not reach your workspace. Please try again.';
   $('#error-banner').hidden = false;
   connection('Connection interrupted', true);
 }
-async function request(path, method = 'GET', body, format = 'json') {
-  return offlineRequest(path, method, body);
-}
+const request = offlineRequest;
 async function syncStatus() {
   const local = await localState();
   if (!isUnlocked()) return;
@@ -346,8 +346,8 @@ const GREETINGS = {
   ]
 };
 
-let greetingChoice = null;
-function nicknameGreeting(nickname, userId, now = new Date()) {
+let greetingChoice: {key: string; phrase: string} | null = null;
+function nicknameGreeting(nickname: string | undefined, userId: string | null | undefined, now = new Date()) {
   if (!nickname) return '';
   const hour = now.getHours();
   const period = hour >= 5 && hour < 12 ? 'morning' : hour < 17 && hour >= 12 ? 'afternoon' : hour >= 17 && hour < 22 ? 'evening' : 'night';
@@ -359,7 +359,7 @@ function nicknameGreeting(nickname, userId, now = new Date()) {
   return `${greetingChoice.phrase}, ${nickname}`;
 }
 
-function applyBoard(board) {
+function applyBoard(board: Board & {userId?: string | null}) {
   if (!isUnlocked() || board.userId !== selectedAccount()) return;
   $('#greeting').textContent = nicknameGreeting(board.nickname, board.userId);
   const changed = JSON.stringify(state.tasks) !== JSON.stringify(board.tasks) || state.day !== board.day;
@@ -375,7 +375,10 @@ function applyBoard(board) {
 }
 
 // Show edits only after the device transaction commits. Sync runs independently.
-async function mutate(path, method, body, message) {
+function mutate(path: '/api/import/markdown', method: string, body?: unknown, message?: string): Promise<{imported: number; skipped: number}>;
+function mutate(path: '/api/tasks/archive-undo' | '/api/tasks/archive-completed', method: string, body?: unknown, message?: string): Promise<ArchiveResult>;
+function mutate(path: string, method: string, body?: unknown, message?: string): Promise<MutationResult>;
+async function mutate(path: string, method: string, body?: unknown, message?: string): Promise<unknown> {
   if (state.busy || state.loading) throw new Error('Your workspace is syncing. Please try again in a moment.');
   state.busy = true;
   connection('Saving…');
@@ -393,7 +396,7 @@ async function mutate(path, method, body, message) {
   } finally { state.busy = false; }
 }
 
-let editingTags = [];
+let editingTags: string[] = [];
 function knownTags() { return [...new Set(state.tasks.flatMap(task => task.tags || []))].sort(); }
 function renderTagSuggestions() {
   const query = $('#task-tag-input').value.trim().normalize('NFC').toLowerCase();
@@ -415,15 +418,15 @@ function addEditorTag() {
 }
 function addTagFromControl() {
   try { addEditorTag(); }
-  catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+  catch (error) { $('#form-error').textContent = errorMessage(error); $('#form-error').hidden = false; }
   $('#task-tag-input').focus();
 }
 $('#add-tag').addEventListener('click', addTagFromControl);
 $('#task-tag-input').addEventListener('input', renderTagSuggestions);
 $('#tag-suggestions').addEventListener('click', event => {
-  const button = event.target.closest('[data-suggest-tag]');
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-suggest-tag]');
   if (!button) return;
-  $('#task-tag-input').value = button.dataset.suggestTag;
+  $('#task-tag-input').value = button.dataset.suggestTag!;
   addTagFromControl();
 });
 $('#task-tag-input').addEventListener('keydown', event => {
@@ -433,7 +436,7 @@ $('#task-tag-input').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); addTagFromControl(); }
 });
 $('#task-tags').addEventListener('click', event => {
-  const button = event.target.closest('[data-remove-tag]');
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-remove-tag]');
   if (!button) return;
   editingTags.splice(Number(button.dataset.removeTag), 1);
   renderTagEditor();
@@ -449,7 +452,7 @@ function renderTagFilter() {
   if (document.activeElement === $('#task-tag-input')) renderTagSuggestions();
 }
 
-function taskMarkup(task, index, total) {
+function taskMarkup(task: Task, index: number, total: number) {
   const title = escape(task.title);
   const options = Object.entries(columns).map(([key, value]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${value.title}</option>`).join('');
   return `<article class="task-card ${task.status === 'done' ? 'is-done' : ''}" data-id="${task.id}" draggable="true" tabindex="0" aria-label="${title}. ${columns[task.status].title}.">
@@ -467,12 +470,12 @@ function taskMarkup(task, index, total) {
 
 function render() {
   closeTaskContextMenu(true);
-  const focus = document.activeElement;
+  const focus = document.activeElement as HTMLElement | null;
   const focusedId = focus?.id;
-  const focusedTask = focus?.closest('[data-id]')?.dataset.id;
+  const focusedTask = focus?.closest<HTMLElement>('[data-id]')?.dataset.id;
   const focusedAction = focus?.dataset.action;
   const focusedTag = focus?.dataset.tag;
-  const quickStatus = focus?.closest('.quick-add')?.dataset.status;
+  const quickStatus = focus?.closest<HTMLElement>('.quick-add')?.dataset.status;
   const quickValues = new Map($$('.quick-add').map(form => [form.dataset.status, $('input', form).value]));
   const selection = focus instanceof HTMLInputElement ? [focus.selectionStart, focus.selectionEnd] : null;
   renderTagFilter();
@@ -485,7 +488,7 @@ function render() {
   const completed = state.tasks.filter(t => !t.archivedAt && t.status === 'done').length;
   $('#archive-completed').textContent = `Archive all completed (${completed})`;
   $('#archive-completed').disabled = !completed;
-  board.innerHTML = state.view === 'archive' ? `<header class="archive-heading"><h2>Archive</h2><p>Out of the way, here when you need them.</p></header><div class="archive-list">${filtered.length ? filtered.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt) || a.id.localeCompare(b.id)).map(archiveMarkup).join('') : `<p class="archive-empty">${state.query || state.tag || state.category !== 'all' ? 'No matching archived tasks.' : 'No archived tasks yet. Archive a task from its menu.'}</p>`}</div>` : Object.keys(columns).map(status => {
+  board.innerHTML = state.view === 'archive' ? `<header class="archive-heading"><h2>Archive</h2><p>Out of the way, here when you need them.</p></header><div class="archive-list">${filtered.length ? filtered.sort((a, b) => b.archivedAt!.localeCompare(a.archivedAt!) || a.id.localeCompare(b.id)).map(archiveMarkup).join('') : `<p class="archive-empty">${state.query || state.tag || state.category !== 'all' ? 'No matching archived tasks.' : 'No archived tasks yet. Archive a task from its menu.'}</p>`}</div>` : (Object.keys(columns) as Status[]).map(status => {
     const column = columns[status];
     const tasks = filtered.filter(t => t.status === status);
     const isFiltered = !!query || state.category !== 'all' || !!state.tag;
@@ -494,13 +497,13 @@ function render() {
   $$('.quick-add').forEach(form => { $('input', form).value = quickValues.get(form.dataset.status) || ''; });
   const monday = new Date(`${state.week}T12:00:00Z`);
   const sunday = new Date(monday); sunday.setUTCDate(sunday.getUTCDate() + 6);
-  const format = d => d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+  const format = (d: Date) => d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
   $('#week-label').textContent = `${format(monday)} – ${format(sunday)}`;
   $('#guide-timezone').textContent = `Your planning timezone: ${state.timezone}. Weeks begin on Monday.`;
   if (quickStatus) {
     const input = $(`.quick-add[data-status="${quickStatus}"] input`);
     input?.focus({ preventScroll: true });
-    if (input && selection && selection[0] !== null) input.setSelectionRange(...selection);
+    if (input && selection && selection[0] !== null) input.setSelectionRange(selection[0]!, selection[1]!);
   } else if (focusedTask) {
     const card = $(`[data-id="${focusedTask}"]`);
     if (!card) board.focus({ preventScroll: true });
@@ -508,51 +511,51 @@ function render() {
   } else if (focusedId && document.activeElement !== focus) document.getElementById(focusedId)?.focus({ preventScroll: true });
 }
 
-function archiveMarkup(task) {
+function archiveMarkup(task: Task) {
   return `<article class="task-card archived-card" data-id="${task.id}" tabindex="0" aria-label="${escape(task.title)}. Archived.">
     <div class="archive-copy"><button class="task-title" data-action="edit">${escape(task.title)}</button><p class="archive-meta">${escape(columns[task.status].title)} · Archived <time datetime="${escape(task.archivedAt)}">${escape(reminderLabel(task.archivedAt))}</time></p>
     ${task.tags?.length ? `<div class="card-tags">${task.tags.map(tag => `<button class="tag-chip" data-action="tag" data-tag="${escape(tag)}">${escape(tag)}</button>`).join('')}</div>` : ''}</div>
     <div class="archive-actions"><button class="secondary-button" data-action="unarchive" aria-label="Restore ${escape(task.title)}">Restore</button><details class="task-menu"><summary class="icon-button" aria-label="More options for ${escape(task.title)}">${icon('more')}</summary><div class="menu-content"><button data-action="edit">View details</button><button class="danger" data-action="delete">Delete task</button></div></details></div>
   </article>`;
 }
-function archiveDetails(task, open = true) {
+function archiveDetails(task: Task, open = true) {
   closeTaskContextMenu(); state.archiveDetails = task.id;
   $('#archive-details-content').innerHTML = `<h3>${escape(task.title)}</h3><p class="archive-meta">${escape(columns[task.status].title)} · ${escape(task.category)} · Archived ${escape(reminderLabel(task.archivedAt))}</p>${task.notes ? `<p class="archive-notes">${escape(task.notes)}</p>` : ''}${task.tags?.length ? `<p>Tags: ${escape(task.tags.join(', '))}</p>` : ''}${task.dueDate ? `<p>Due: ${escape(task.dueDate)}</p>` : ''}${task.reminderAt ? `<p>Reminder: ${escape(reminderLabel(task.reminderAt))} (${task.reminderDismissedAt ? 'dismissed' : 'paused while archived'})</p>` : ''}`;
   if (open) $('#archive-details-dialog').showModal();
 }
-function archiveNotice(result) {
-  const count = result.undo.length;
+function archiveNotice(result: { undo?: ArchiveReceipt[] }) {
+  const count = result.undo?.length || 0;
   if (!count) { notify('No completed tasks to archive.'); return; }
   notify(count === 1 ? 'Task archived.' : `${count} tasks archived.`, async () => {
     try {
       const undone = await mutate('/api/tasks/archive-undo', 'POST', { undo: result.undo });
       notify(`${undone.restored} ${undone.restored === 1 ? 'task restored' : 'tasks restored'}.${undone.skipped ? ` ${undone.skipped} changed since archiving and were skipped.` : ''}`);
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(errorMessage(error)); }
   });
 }
-async function archiveTask(id) { archiveNotice(await mutate(`/api/tasks/${id}/archive`, 'POST')); }
+async function archiveTask(id: string) { archiveNotice(await mutate(`/api/tasks/${id}/archive`, 'POST')); }
 $('#archive-task').addEventListener('click', async () => {
   if (!state.editing) return;
   try { await archiveTask(state.editing); $('#task-dialog').close(); }
-  catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+  catch (error) { $('#form-error').textContent = errorMessage(error); $('#form-error').hidden = false; }
 });
 $('#archive-completed').addEventListener('click', async () => {
   $('.app-menu').open = false;
   try { archiveNotice(await mutate('/api/tasks/archive-completed', 'POST')); }
-  catch (error) { notify(error.message); }
+  catch (error) { notify(errorMessage(error)); }
 });
 $('#archive-restore').addEventListener('click', async () => {
   if (!state.archiveDetails) return;
   try { await mutate(`/api/tasks/${state.archiveDetails}/unarchive`, 'POST', {}, 'Task restored.'); $('#archive-details-dialog').close(); }
-  catch (error) { notify(error.message); }
+  catch (error) { notify(errorMessage(error)); }
 });
 $('#archive-delete').addEventListener('click', async () => {
   if (!state.archiveDetails) return;
   try { await deleteTask(state.archiveDetails); $('#archive-details-dialog').close(); }
-  catch (error) { notify(error.message); }
+  catch (error) { notify(errorMessage(error)); }
 });
 
-function openTask(status = 'later', task = null) {
+function openTask(status: Status = 'later', task: Task | null = null) {
   if (!isUnlocked()) return;
   if (task?.archivedAt) { archiveDetails(task); return; }
   if (!task && state.view === 'archive') nav.reset();
@@ -580,18 +583,18 @@ function openTask(status = 'later', task = null) {
   $('#task-title').focus();
 }
 
-async function moveTask(id, status, beforeId) {
-  const data = { status };
+async function moveTask(id: string, status: Status, beforeId?: string | null) {
+  const data: { status: Status; beforeId?: string | null } = { status };
   if (beforeId !== undefined) data.beforeId = beforeId;
   await mutate(`/api/tasks/${id}`, 'PATCH', data);
   announce(`Task moved to ${columns[status].title}.`);
 }
 
-async function deleteTask(id) {
+async function deleteTask(id: string) {
   await mutate(`/api/tasks/${id}`, 'DELETE');
   notify('Task deleted.', async () => {
     try { await mutate(`/api/tasks/${id}/restore`, 'POST', {}, 'Task restored.'); }
-    catch (error) { notify(error.message); }
+    catch (error) { notify(errorMessage(error)); }
   });
 }
 
@@ -604,19 +607,19 @@ $('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').val
 $('#enable-notifications').addEventListener('click', toggleNotifications);
 $('#notifications-button').addEventListener('click', () => { $('.app-menu').open = false; void toggleNotifications(); });
 $('#reminder-panel').addEventListener('click', async event => {
-  const button = event.target.closest('[data-reminder-action]');
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-reminder-action]');
   if (!button) return;
-  const id = button.closest('[data-reminder-id]').dataset.reminderId;
+  const id = button.closest<HTMLElement>('[data-reminder-id]')!.dataset.reminderId;
   const task = state.tasks.find(t => t.id === id);
   if (!task) return;
   const action = button.dataset.reminderAction;
   if (action === 'open') { openTask(task.status, task); return; }
   button.disabled = true;
   try { await mutate(`/api/tasks/${id}/reminder`, 'POST', { action, reminderAt: task.reminderAt }, action === 'snooze' ? 'Reminder snoozed for 10 minutes.' : 'Reminder dismissed.'); }
-  catch (error) { notify(error.message); await refresh({ quiet: true }); }
+  catch (error) { notify(errorMessage(error)); await refresh({ quiet: true }); }
   finally { button.disabled = false; }
 });
-$$('[data-close]').forEach(button => button.addEventListener('click', () => { if (button.dataset.close !== 'import-dialog' || !importBusy) $(`#${button.dataset.close}`).close(); }));
+$$('[data-close]').forEach(button => button.addEventListener('click', () => { if (button.dataset.close !== 'import-dialog' || !importBusy) ($(`#${button.dataset.close}`) as HTMLDialogElement).close(); }));
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => { if (event.target === dialog && !(dialog.id === 'import-dialog' && importBusy)) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } }));
 $('#show-guide').addEventListener('click', () => { $('.app-menu').open = false; $('#guide-dialog').showModal(); });
 $('#logout').addEventListener('click', async () => {
@@ -624,17 +627,17 @@ $('#logout').addEventListener('click', async () => {
   $('#logout').disabled = true;
   try {
     await lock();
-  } catch (error) { notify(error.message); }
+  } catch (error) { notify(errorMessage(error)); }
   finally { $('#logout').disabled = false; }
 });
 async function downloadTasks(markdown = false) {
   $('.app-menu').open = false;
   try {
-    const data = await request(markdown ? '/api/export?format=markdown' : '/api/export', 'GET', undefined, markdown ? 'text' : 'json');
-    const url = URL.createObjectURL(new Blob([markdown ? data : JSON.stringify(data, null, 2)], { type: markdown ? 'text/markdown;charset=utf-8' : 'application/json' }));
+    const data = markdown ? await request('/api/export?format=markdown') : JSON.stringify(await request('/api/export'), null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: markdown ? 'text/markdown;charset=utf-8' : 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `taskpath-${state.day || 'export'}.${markdown ? 'md' : 'json'}`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (error) { notify(error.message); }
+  } catch (error) { notify(errorMessage(error)); }
 }
 $('#export').addEventListener('click', () => downloadTasks());
 $('#export-markdown').addEventListener('click', () => downloadTasks(true));
@@ -646,7 +649,7 @@ function resetImportPreview() {
   $('#confirm-import').hidden = true;
   $('#import-error').hidden = true;
 }
-function importError(error) { $('#import-error').textContent = error.message; $('#import-error').hidden = false; }
+function importError(error: unknown) { $('#import-error').textContent = errorMessage(error); $('#import-error').hidden = false; }
 $('#import-markdown').addEventListener('click', () => {
   if (importBusy) return;
   $('.app-menu').open = false;
@@ -661,7 +664,7 @@ $('#import-dialog').addEventListener('cancel', event => { if (importBusy) event.
 $('#markdown-file').addEventListener('change', async event => {
   resetImportPreview();
   const revision = importRevision;
-  const file = event.target.files[0];
+  const file = $('#markdown-file').files?.[0];
   if (!file) return;
   $('#markdown-text').value = '';
   try {
@@ -709,9 +712,9 @@ $('#sign-in-again').addEventListener('click', event => { event.preventDefault();
 $('#retry').addEventListener('click', () => { void sync().catch(() => {}); void refresh(); });
 $('#toast-close').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); });
 $('#toast-action').addEventListener('click', () => { $('#toast').hidden = true; clearTimeout(toastTimer); toastAction?.(); });
-$('#tag-filter').addEventListener('change', event => { nav.filters({ tag: event.target.value }); });
-$('#category-filter').addEventListener('change', event => { nav.filters({ category: event.target.value }); });
-$('#search').addEventListener('input', event => { nav.filters({ query: event.target.value }); });
+$('#tag-filter').addEventListener('change', event => { nav.filters({ tag: (event.target as HTMLInputElement).value }); });
+$('#category-filter').addEventListener('change', event => { nav.filters({ category: (event.target as HTMLInputElement).value as Route['category'] }); });
+$('#search').addEventListener('input', event => { nav.filters({ query: (event.target as HTMLInputElement).value }); });
 
 $('#task-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -719,7 +722,7 @@ $('#task-form').addEventListener('submit', async event => {
   submit.disabled = true;
   $('#form-error').hidden = true;
   try {
-    const input = Object.fromEntries(new FormData(event.currentTarget));
+    const input: Record<string, unknown> = Object.fromEntries(new FormData(event.currentTarget as HTMLFormElement));
     addEditorTag();
     input.tags = [...editingTags];
     input.dueDate = input.dueDate || null;
@@ -728,35 +731,35 @@ $('#task-form').addEventListener('submit', async event => {
     input.reminderAt = reminderValue === localReminderValue(editingReminder) ? editingReminder : reminderFromInput(reminderValue);
     await mutate(state.editing ? `/api/tasks/${state.editing}` : '/api/tasks', state.editing ? 'PATCH' : 'POST', input);
     $('#task-dialog').close();
-    notify(state.editing ? 'Changes saved.' : `Task added to ${columns[input.status].title}.`);
-  } catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+    notify(state.editing ? 'Changes saved.' : `Task added to ${columns[input.status as Status].title}.`);
+  } catch (error) { $('#form-error').textContent = errorMessage(error); $('#form-error').hidden = false; }
   finally { submit.disabled = false; }
 });
 $('#delete-task').addEventListener('click', async () => {
   if (!state.editing) return;
   try { await deleteTask(state.editing); $('#task-dialog').close(); }
-  catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; }
+  catch (error) { $('#form-error').textContent = errorMessage(error); $('#form-error').hidden = false; }
 });
 
 $('#board').addEventListener('submit', async event => {
-  const form = event.target.closest('.quick-add');
+  const form = (event.target as HTMLElement).closest<HTMLElement>('.quick-add');
   if (!form) return;
   event.preventDefault();
   const input = $('input', form);
   const title = input.value.trim();
   if (!title) { input.focus(); return; }
-  const status = form.dataset.status;
+  const status = form.dataset.status as Status;
   input.disabled = true;
   try {
     await mutate('/api/tasks', 'POST', { title, status, category: state.category === 'work' ? 'work' : 'personal', tags: state.tag ? [state.tag] : [] });
     const current = $(`.quick-add[data-status="${status}"] input`);
     if (current) { current.value = ''; current.focus(); }
     announce(`Task added to ${columns[status].title}.`);
-  } catch (error) { notify(error.message); }
+  } catch (error) { notify(errorMessage(error)); }
   finally { input.disabled = false; }
 });
 
-async function runTaskAction(id, action) {
+async function runTaskAction(id: string, action: string) {
   const task = state.tasks.find(t => t.id === id);
   if (!task) throw new Error('That task is no longer on the board.');
   if (action === 'edit' || action === 'schedule') {
@@ -766,7 +769,7 @@ async function runTaskAction(id, action) {
   }
   if (action.startsWith('move:')) {
     const status = action.slice(5);
-    if (Object.hasOwn(columns, status)) await moveTask(id, status);
+    if (Object.hasOwn(columns, status)) await moveTask(id, status as Status);
     return;
   }
   if (action === 'archive') { await archiveTask(task.id); return; }
@@ -778,14 +781,14 @@ async function runTaskAction(id, action) {
     const next = previous === 'done' ? 'today' : 'done';
     await moveTask(task.id, next);
     notify(next === 'done' ? 'Task completed.' : 'Task moved to Today.', async () => {
-      try { await moveTask(task.id, previous); } catch (error) { notify(error.message); }
+      try { await moveTask(task.id, previous); } catch (error) { notify(errorMessage(error)); }
     });
   }
   if (action === 'up' || action === 'down') {
     // Reorder against visible neighbors; hidden tasks retain their relative order.
     const card = $(`[data-id="${id}"]`);
     if (!card) return;
-    const cards = $$('.task-card', card.closest('.column'));
+    const cards = $$('.task-card', card.closest<HTMLElement>('.column')!);
     const index = cards.findIndex(card => card.dataset.id === task.id);
     if ((action === 'up' && index === 0) || (action === 'down' && index === cards.length - 1)) return;
     const before = action === 'up' ? cards[index - 1]?.dataset.id : cards[index + 2]?.dataset.id || null;
@@ -794,13 +797,13 @@ async function runTaskAction(id, action) {
 }
 
 $('#board').addEventListener('click', async event => {
-  const button = event.target.closest('[data-action]');
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) return;
   if (button.dataset.action === 'tag') { nav.filters({ tag: button.dataset.tag }); return; }
-  const id = button.closest('[data-id]').dataset.id;
+  const id = button.closest<HTMLElement>('[data-id]')!.dataset.id!;
   button.disabled = true;
-  try { await runTaskAction(id, button.dataset.action); }
-  catch (error) { notify(error.message); }
+  try { await runTaskAction(id, button.dataset.action!); }
+  catch (error) { notify(errorMessage(error)); }
   finally { button.disabled = false; }
 });
 
@@ -813,7 +816,7 @@ function closeTaskContextMenu(restoreFocus = false) {
   contextReturnFocus = null;
 }
 
-function openTaskContextMenu(card, x, y) {
+function openTaskContextMenu(card: HTMLElement, x: number, y: number) {
   const task = state.tasks.find(t => t.id === card.dataset.id);
   if (!task || dragId) return;
   closeTaskContextMenu();
@@ -821,9 +824,9 @@ function openTaskContextMenu(card, x, y) {
   contextTaskId = task.id;
   contextReturnFocus = card;
   const menu = $('#task-context-menu');
-  const cards = task.archivedAt ? [] : $$('.task-card', card.closest('.column'));
+  const cards = task.archivedAt ? [] : $$('.task-card', card.closest<HTMLElement>('.column')!);
   const index = cards.indexOf(card);
-  const item = (action, label, symbol, disabled = false, danger = false) => `<button type="button" role="menuitem" tabindex="-1" data-context-action="${action}" ${disabled ? 'disabled aria-disabled="true"' : ''} ${danger ? 'class="danger"' : ''}>${icon(symbol)}${label}</button>`;
+  const item = (action: string, label: string, symbol: string, disabled = false, danger = false) => `<button type="button" role="menuitem" tabindex="-1" data-context-action="${action}" ${disabled ? 'disabled aria-disabled="true"' : ''} ${danger ? 'class="danger"' : ''}>${icon(symbol)}${label}</button>`;
   const separator = '<div role="separator"></div>';
   menu.innerHTML = task.archivedAt ? item('edit', 'View details', 'help') + item('unarchive', 'Restore task', 'arrow-right') + separator + item('delete', 'Delete task', 'trash', false, true) : item('edit', 'Edit task', 'edit') + item('schedule', 'Date & reminder…', 'calendar') +
     item('complete', task.status === 'done' ? 'Reopen in Today' : 'Mark as done', 'check') + separator +
@@ -838,35 +841,35 @@ function openTaskContextMenu(card, x, y) {
 }
 
 $('#board').addEventListener('contextmenu', event => {
-  const card = event.target.closest('.task-card');
+  const card = (event.target as HTMLElement).closest<HTMLElement>('.task-card');
   // Preserve the browser's text, link, and input context menus.
-  if (!card || event.target.closest('input,textarea,select,a,[contenteditable="true"]')) return;
-  if (window.getSelection()?.toString() && card.contains(window.getSelection().anchorNode)) return;
+  if (!card || (event.target as HTMLElement).closest<HTMLElement>('input,textarea,select,a,[contenteditable="true"]')) return;
+  if (window.getSelection()?.toString() && card.contains(window.getSelection()!.anchorNode)) return;
   event.preventDefault();
   const rect = card.getBoundingClientRect();
   openTaskContextMenu(card, event.clientX || rect.left + 20, event.clientY || rect.top + 20);
 });
 $('#board').addEventListener('keydown', event => {
   if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
-  const card = event.target.closest('.task-card');
-  if (!card || event.target.closest('input,textarea,select')) return;
+  const card = (event.target as HTMLElement).closest<HTMLElement>('.task-card');
+  if (!card || (event.target as HTMLElement).closest<HTMLElement>('input,textarea,select')) return;
   event.preventDefault();
   event.stopPropagation();
   const rect = card.getBoundingClientRect();
   openTaskContextMenu(card, rect.left + 20, rect.top + 20);
 });
 $('#task-context-menu').addEventListener('click', async event => {
-  const button = event.target.closest('[data-context-action]');
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-context-action]');
   if (!button || button.disabled || !contextTaskId) return;
   const id = contextTaskId;
   closeTaskContextMenu(true);
-  try { await runTaskAction(id, button.dataset.contextAction); }
-  catch (error) { notify(error.message); }
+  try { await runTaskAction(id, button.dataset.contextAction!); }
+  catch (error) { notify(errorMessage(error)); }
 });
 $('#task-context-menu').addEventListener('contextmenu', event => event.preventDefault());
 $('#task-context-menu').addEventListener('keydown', event => {
-  const items = $$('button:not(:disabled)', event.currentTarget);
-  const index = items.indexOf(document.activeElement);
+  const items = $$('button:not(:disabled)', event.currentTarget as HTMLElement);
+  const index = items.indexOf(document.activeElement as HTMLButtonElement);
   if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
     event.preventDefault();
     event.stopPropagation();
@@ -878,30 +881,30 @@ $('#task-context-menu').addEventListener('keydown', event => {
     closeTaskContextMenu(true);
   }
 });
-document.addEventListener('pointerdown', event => { if (!$('#task-context-menu').contains(event.target)) closeTaskContextMenu(); });
-document.addEventListener('contextmenu', event => { if (!event.target.closest('.task-card, #task-context-menu')) closeTaskContextMenu(); });
-document.addEventListener('scroll', event => { if (!$('#task-context-menu').contains(event.target)) closeTaskContextMenu(); }, true);
+document.addEventListener('pointerdown', event => { if (!$('#task-context-menu').contains(event.target as Node | null)) closeTaskContextMenu(); });
+document.addEventListener('contextmenu', event => { if (!(event.target as HTMLElement).closest<HTMLElement>('.task-card, #task-context-menu')) closeTaskContextMenu(); });
+document.addEventListener('scroll', event => { if (!$('#task-context-menu').contains(event.target as Node | null)) closeTaskContextMenu(); }, true);
 window.addEventListener('resize', () => closeTaskContextMenu());
 window.addEventListener('blur', () => closeTaskContextMenu());
 
 $('#board').addEventListener('change', async event => {
-  if (!event.target.matches('.move-select')) return;
-  const id = event.target.closest('[data-id]').dataset.id;
+  if (!(event.target as HTMLElement).matches('.move-select')) return;
+  const id = (event.target as HTMLElement).closest<HTMLElement>('[data-id]')!.dataset.id!;
   const previous = state.tasks.find(t => t.id === id)?.status;
-  try { await moveTask(id, event.target.value); }
-  catch (error) { event.target.value = previous; notify(error.message); }
+  try { await moveTask(id, (event.target as HTMLInputElement).value as Status); }
+  catch (error) { (event.target as HTMLInputElement).value = previous || ''; notify(errorMessage(error)); }
 });
 
-document.addEventListener('click', event => { $$('.task-menu[open], .app-menu[open]').forEach(menu => { if (!menu.contains(event.target)) menu.open = false; }); });
+document.addEventListener('click', event => { $$('.task-menu[open], .app-menu[open]').forEach(menu => { if (!menu.contains(event.target as Node | null)) menu.open = false; }); });
 document.addEventListener('keydown', event => {
   if (!isUnlocked()) return;
   if (!$('#task-context-menu').hidden) return;
   if (event.key === 'Escape') { $$('.task-menu[open], .app-menu[open]').forEach(menu => { menu.open = false; $('summary', menu).focus(); }); clearDrag(); }
-  if (event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[contenteditable="true"]') || $('dialog[open]')) return;
+  if (event.ctrlKey || event.metaKey || event.altKey || (event.target as HTMLElement).closest<HTMLElement>('input,textarea,select,[contenteditable="true"]') || $('dialog[open]')) return;
   if (event.key.toLowerCase() === 'n') { event.preventDefault(); openTask(); }
   if (event.key === '/') { event.preventDefault(); $('#search').focus(); }
-  if (event.key === 'Enter' && event.target.matches('.task-card')) {
-    const task = state.tasks.find(t => t.id === event.target.dataset.id);
+  if (event.key === 'Enter' && (event.target as HTMLElement).matches('.task-card')) {
+    const task = state.tasks.find(t => t.id === (event.target as HTMLElement).dataset.id);
     if (task) openTask(task.status, task);
   }
 });
@@ -917,20 +920,20 @@ function clearDrag() {
   touchDrag = null;
   cancelAnimationFrame(touchScrollFrame);
 }
-function markDrop(element, y) {
+function markDrop(element: Element | null, y: number) {
   clearDrop();
-  const column = element?.closest('.column');
+  const column = element?.closest<HTMLElement>('.column');
   if (!column) return;
   column.classList.add('drag-over');
-  const card = element.closest('.task-card');
+  const card = element!.closest<HTMLElement>('.task-card');
   if (card?.dataset.id === dragId) return;
-  const status = column.dataset.status;
-  let beforeId = null;
+  const status = column.dataset.status as Status;
+  let beforeId: string | null = null;
   if (card) {
     const before = y < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2;
     card.classList.add(before ? 'drop-before' : 'drop-after');
-    beforeId = before ? card.dataset.id : card.nextElementSibling?.dataset.id || null;
-    if (beforeId === dragId) beforeId = card.nextElementSibling?.nextElementSibling?.dataset.id || null;
+    beforeId = before ? card.dataset.id! : (card.nextElementSibling as HTMLElement | null)?.dataset.id || null;
+    if (beforeId === dragId) beforeId = (card.nextElementSibling?.nextElementSibling as HTMLElement | null)?.dataset.id || null;
   }
   dropTarget = { status, beforeId };
 }
@@ -940,30 +943,30 @@ async function finishDrop() {
   clearDrag();
   if (id && target) {
     try { await moveTask(id, target.status, target.beforeId); }
-    catch (error) { notify(error.message); }
+    catch (error) { notify(errorMessage(error)); }
   }
 }
 $('#board').addEventListener('dragstart', event => {
   closeTaskContextMenu();
-  const card = event.target.closest('.task-card');
+  const card = (event.target as HTMLElement).closest<HTMLElement>('.task-card');
   if (!card || state.view === 'archive' || state.busy || state.loading || touchDrag) { event.preventDefault(); return; }
-  dragId = card.dataset.id;
-  event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', dragId);
+  dragId = card.dataset.id!;
+  event.dataTransfer!.effectAllowed = 'move';
+  event.dataTransfer!.setData('text/plain', dragId);
   requestAnimationFrame(() => { if (dragId) card.classList.add('dragging'); });
   $$('.task-menu[open]').forEach(menu => { menu.open = false; });
 });
-$('#board').addEventListener('dragover', event => { if (!dragId) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; markDrop(event.target, event.clientY); });
-$('#board').addEventListener('dragleave', event => { if (!$('#board').contains(event.relatedTarget)) clearDrop(); });
-$('#board').addEventListener('drop', event => { if (!dragId) return; event.preventDefault(); markDrop(event.target, event.clientY); finishDrop(); });
+$('#board').addEventListener('dragover', event => { if (!dragId) return; event.preventDefault(); event.dataTransfer!.dropEffect = 'move'; markDrop(event.target as Element, event.clientY); });
+$('#board').addEventListener('dragleave', event => { if (!$('#board').contains(event.relatedTarget as Node | null)) clearDrop(); });
+$('#board').addEventListener('drop', event => { if (!dragId) return; event.preventDefault(); markDrop(event.target as Element, event.clientY); finishDrop(); });
 $('#board').addEventListener('dragend', clearDrag);
 
 // Touch dragging begins only on the handle, leaving normal page scrolling intact.
 $('#board').addEventListener('pointerdown', event => {
-  const handle = event.target.closest('.drag-handle');
+  const handle = (event.target as HTMLElement).closest<HTMLElement>('.drag-handle');
   if (!handle || event.pointerType === 'mouse' || state.busy || state.loading) return;
   handle.setPointerCapture(event.pointerId);
-  touchDrag = { id: handle.closest('[data-id]').dataset.id, pointer: event.pointerId, x: event.clientX, y: event.clientY, currentX: event.clientX, currentY: event.clientY, started: false };
+  touchDrag = { id: handle.closest<HTMLElement>('[data-id]')!.dataset.id!, pointer: event.pointerId, x: event.clientX, y: event.clientY, currentX: event.clientX, currentY: event.clientY, started: false };
 });
 function touchScroll() {
   if (!touchDrag?.started) return;
@@ -992,15 +995,15 @@ $('#board').addEventListener('pointercancel', event => {
 
 // Optional agent controls share the exact same persistence path as the interface.
 const context = document.modelContext;
-let toolsLifecycle;
+let toolsLifecycle: AbortController | undefined;
 function registerTools() {
 if (context?.registerTool && isUnlocked()) {
   toolsLifecycle?.abort();
   const lifecycle = toolsLifecycle = new AbortController();
-  const register = tool => { try { Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } };
+  const register = (tool: WebMCPTool) => { try { Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch { /* Unsupported experimental API. */ } };
   register({ name: 'list_tasks', description: 'Read the tasks in this Taskpath workspace.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute: async () => { const board = await request('/api/board'); if (!state.busy && !state.loading && !dragId) applyBoard(board); return { tasks: board.tasks.filter(task => !task.archivedAt) }; } });
   register({ name: 'create_task', description: 'Create a task and save it to the selected Taskpath column.', inputSchema: { type: 'object', properties: { title: { type: 'string', maxLength: 240 }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['title', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { const result = await mutate('/api/tasks', 'POST', input); return { task: result.task }; } });
-  register({ name: 'move_task', description: 'Move a saved Taskpath task into Later, This Week, Today, or Done.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['id', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { if (!input || typeof input.id !== 'string' || !/^[\w-]+$/.test(input.id) || !Object.hasOwn(columns, input.status)) throw new Error('Invalid task or column.'); await moveTask(input.id, input.status); return { id: input.id, status: input.status }; } });
+  register({ name: 'move_task', description: 'Move a saved Taskpath task into Later, This Week, Today, or Done.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: Object.keys(columns) } }, required: ['id', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: true }, execute: async input => { if (!input || typeof input.id !== 'string' || !/^[\w-]+$/.test(input.id) || typeof input.status !== 'string' || !Object.hasOwn(columns, input.status)) throw new Error('Invalid task or column.'); await moveTask(input.id, input.status as Status); return { id: input.id, status: input.status }; } });
 }
 }
 registerTools();
@@ -1014,7 +1017,6 @@ window.addEventListener('taskpath-locked', () => {
   for (const name of ['list_tasks', 'create_task', 'move_task']) { try { context?.unregisterTool?.(name); } catch {} }
   $('#greeting').textContent = ''; state.nickname = ''; greetingChoice = null;
   realtime.pause(); clearTimeout(reminderTimer); clearTimeout(toastTimer); clearDrag();
-  for (const key of Object.keys(state)) { if (Array.isArray(state[key])) state[key] = []; }
   Object.assign(state, { tasks: [], rows: [], reminders: [], editing: null, archiveDetails: null, view: 'board', ready: false, query: '', tag: '', loading: false });
   editingTags = []; editingReminder = null; importSource = null; importRevision++; toastAction = null; contextTaskId = null; contextReturnFocus = null;
   for (const selector of ['#board', '#archive-details-content', '#reminder-panel', '#task-context-menu', '#task-tags', '#tag-suggestions', '#import-tasks']) $(selector).replaceChildren();

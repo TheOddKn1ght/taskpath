@@ -1,10 +1,11 @@
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v11/offline.js';
-import { openDatabase, commit, rememberedKey } from '/assets/accounts-v11/persistence.js';
-import { unlockVault } from '/assets/accounts-v11/crypto.js';
-import { selectAccount } from '/assets/accounts-v11/persistence.js';
-const report = document.getElementById('result'), results = [], password = 'browser harness password 2026';
-const assert = (condition, message) => { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
-const originalFetch = window.fetch.bind(window); const requests = [];
+import type { VaultConfig } from '../public/types.js';
+import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v13/offline.js';
+import { openDatabase, commit, rememberedKey } from '/assets/accounts-v13/persistence.js';
+import { unlockVault } from '/assets/accounts-v13/crypto.js';
+import { selectAccount } from '/assets/accounts-v13/persistence.js';
+const report = document.getElementById('result')!, results: string[] = [], password = 'browser harness password 2026';
+function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
+const originalFetch = window.fetch.bind(window); const requests: string[] = [];
 let disconnected = false;
 window.fetch = async (url, options) => {
   if (options?.body) requests.push(String(options.body));
@@ -13,12 +14,12 @@ window.fetch = async (url, options) => {
 };
 try {
   // A legacy queue is deliberately left untouched, including operation identity and time.
-  const legacy = await new Promise((resolve, reject) => { const r = indexedDB.open('taskpath-offline-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('state'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+  const legacy = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('taskpath-offline-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('state'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
   const legacyValue = { pending: [{ changeId: 'legacy-id', editedAt: '2020-01-01T00:00:00.000Z', task: { title: 'LEGACY_PRIVATE_DATA' } }] };
   await new Promise(resolve => { const tx = legacy.transaction('state', 'readwrite'); tx.objectStore('state').put(legacyValue, 'workspace'); tx.oncomplete = resolve; });
-  const { userId, secondUserId } = await network('/test-account');
+  const { userId, secondUserId } = await network<{userId: string; secondUserId: string}>('/test-account');
   await selectAccount(userId);
-  const { config } = await network('/api/auth/config?userId=' + userId), unlocked = await unlockVault(password, config);
+  const { config } = await network<{config: VaultConfig}>('/api/auth/config?userId=' + userId), unlocked = await unlockVault(password, config);
   await network('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
   await activate(config, unlocked.key, false, (await localState()).lockEpoch); await sync();
   disconnected = true;
@@ -30,7 +31,7 @@ try {
   const immutable = JSON.stringify(saved.pending);
   clearMemory(); assert(!isUnlocked(), 'memory lock clears the active key');
   await readBoard().then(() => { throw new Error('Locked read succeeded'); }, () => {});
-  const offlineKey = await unlockVault(password, (await localState()).config);
+  const offlineKey = await unlockVault(password, (await localState()).config!);
   await activate(config, offlineKey.key, false, (await localState()).lockEpoch);
   assert((await readBoard()).tasks.some(t => t.title === marker), 'password unlocks offline edits after a lock');
   await sync().catch(() => {});
@@ -51,39 +52,39 @@ try {
   disconnected = true;
   const pushTask = (await offlineRequest('/api/tasks', 'POST', { title: 'PUSH_PRIVATE_BROWSER', notes: 'PUSH_PRIVATE_NOTE', reminderAt: new Date(Date.now() + 3600000).toISOString() })).task;
   const pushSaved = await localState(), pushQueue = JSON.stringify(pushSaved.pending);
-  assert(pushSaved.reminderOutbox[pushTask.id].token === pushTask.reminderToken && !JSON.stringify(pushSaved.reminderOutbox).includes('PUSH_PRIVATE'), 'offline push sidecar contains only IDs and time');
+  assert(pushSaved.reminderOutbox![pushTask.id].token === pushTask.reminderToken && !JSON.stringify(pushSaved.reminderOutbox).includes('PUSH_PRIVATE'), 'offline push sidecar contains only IDs and time');
   await sync().catch(() => {});
   assert(JSON.stringify((await localState()).pending) === pushQueue, 'push retries never rewrite ciphertext');
   disconnected = false; await syncAfterCurrent();
-  assert((await network('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'reconnect publishes the reminder schedule');
+  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'reconnect publishes the reminder schedule');
   await offlineRequest(`/api/tasks/${pushTask.id}/archive`, 'POST'); await syncAfterCurrent();
-  assert(!(await network('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'archiving cancels the server reminder');
+  assert(!(await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'archiving cancels the server reminder');
   await offlineRequest(`/api/tasks/${pushTask.id}/unarchive`, 'POST'); await syncAfterCurrent();
-  assert((await network('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'restoring republishes the paused reminder');
+  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'restoring republishes the paused reminder');
   await activate(config, unlocked.key, true, (await localState()).lockEpoch);
   const remembered = await rememberedKey();
-  assert(remembered.key.extractable === false, 'remembered CryptoKey is non-extractable');
+  assert(remembered?.key.extractable === false, 'remembered CryptoKey is non-extractable');
   clearMemory(); assert(await restoreRemembered(), 'remembered device unlocks after memory is cleared');
   const frame = document.createElement('iframe'); frame.src = '/frame';
-  const waitMessage = value => new Promise((resolve, reject) => { const timer = setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('Frame timed out: ' + value)); }, 10000); function handler(event) { if (event.origin !== location.origin || event.source !== frame.contentWindow) return; if (event.data === value || event.data?.error) { clearTimeout(timer); window.removeEventListener('message', handler); event.data?.error ? reject(new Error(event.data.error)) : resolve(); } } window.addEventListener('message', handler); });
+  const waitMessage = (value: string) => new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('Frame timed out: ' + value)); }, 10000); function handler(event: MessageEvent) { if (event.origin !== location.origin || event.source !== frame.contentWindow) return; if (event.data === value || event.data?.error) { clearTimeout(timer); window.removeEventListener('message', handler); event.data?.error ? reject(new Error(event.data.error)) : resolve(); } } window.addEventListener('message', handler); });
   const ready = waitMessage('ready'); document.body.append(frame); await ready;
-  const edited = waitMessage('edited'); frame.contentWindow.postMessage('edit', location.origin);
+  const edited = waitMessage('edited'); frame.contentWindow!.postMessage('edit', location.origin);
   await Promise.all(Array.from({ length: 4 }, (_, i) => offlineRequest('/api/tasks', 'POST', { title: `PARENT_PRIVATE_${i}` })));
   await edited; await sync();
   assert((await readBoard()).tasks.filter(t => /^(FRAME|PARENT)_PRIVATE_/.test(t.title)).length === 8, 'concurrent browser contexts preserve all edits');
   disconnected = true;
-  const archiveTarget = (await readBoard()).tasks.find(t => t.title === marker);
+  const archiveTarget = (await readBoard()).tasks.find(t => t.title === marker)!;
   const archiveResult = await offlineRequest(`/api/tasks/${archiveTarget.id}/archive`, 'POST');
   const archivePending = JSON.stringify((await localState()).pending);
-  assert(!archivePending.includes(marker) && (await readBoard()).tasks.find(t => t.id === archiveTarget.id).archivedAt, 'offline archive stays encrypted and visible in archive data');
+  assert(!archivePending.includes(marker) && (await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'offline archive stays encrypted and visible in archive data');
   await sync().catch(() => {});
   assert(JSON.stringify((await localState()).pending) === archivePending, 'archive retries retain exact ciphertext and operation IDs');
   clearMemory();
   await activate(config, (await unlockVault(password, config)).key, false, (await localState()).lockEpoch);
-  assert((await readBoard()).tasks.find(t => t.id === archiveTarget.id).archivedAt, 'archived tasks survive offline unlock and reopen');
+  assert((await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'archived tasks survive offline unlock and reopen');
   assert((await offlineRequest('/api/export?format=markdown')).includes('Archived:'), 'readable Markdown export includes archived tasks offline');
-  const unarchived = waitMessage('unarchived'); frame.contentWindow.postMessage({ type: 'unarchive', id: archiveTarget.id }, location.origin); await unarchived;
-  assert(!(await readBoard()).tasks.find(t => t.id === archiveTarget.id).archivedAt, 'restoring in another context propagates through shared encrypted storage');
+  const unarchived = waitMessage('unarchived'); frame.contentWindow!.postMessage({ type: 'unarchive', id: archiveTarget.id }, location.origin); await unarchived;
+  assert(!(await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'restoring in another context propagates through shared encrypted storage');
   const archiveUndo = await offlineRequest('/api/tasks/archive-undo', 'POST', { undo: archiveResult.undo });
   assert(archiveUndo.restored === 0 && archiveUndo.skipped === 1, 'archive Undo preserves a later edit from another browser context');
   disconnected = false; await syncAfterCurrent();
@@ -97,22 +98,22 @@ try {
   disconnected = true;
   const workerTask = (await offlineRequest('/api/tasks', 'POST', { title: 'LOCKED_WORKER_PRIVATE', reminderAt: new Date(Date.now() + 7200000).toISOString() })).task;
   const lockedPending = JSON.stringify((await localState()).pending);
-  await lock(); const locked = waitMessage('locked'); frame.contentWindow.postMessage('check-lock', location.origin); await locked;
+  await lock(); const locked = waitMessage('locked'); frame.contentWindow!.postMessage('check-lock', location.origin); await locked;
   assert(!await rememberedKey(), 'Lock clears remembered keys and locks other contexts');
   assert(JSON.stringify((await localState()).pending) === lockedPending, 'locking keeps the encrypted pending queue intact');
   disconnected = false;
   const worker = new Worker('/worker.js', { type: 'module' });
-  const workerResult = await new Promise((resolve, reject) => { worker.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data); worker.onerror = reject; });
+  const workerResult = await new Promise<{unlocked: boolean; remembered: null}>((resolve, reject) => { worker.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data); worker.onerror = reject; });
   worker.terminate();
   assert(!workerResult.unlocked && workerResult.remembered === null, 'background worker never loads decryption keys');
   assert((await localState()).pending.length === 0, 'background worker transfers pending ciphertext while the page is locked');
-  assert((await network('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
+  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
   const legacyCache = await caches.open('taskpath-shell-legacy-check');
   await legacyCache.put('/legacy-shell', new Response('legacy static shell'));
   const registration = await navigator.serviceWorker.register('/sw.js', { type: 'module' });
   await navigator.serviceWorker.ready;
   const cacheNames = await caches.keys(); let cacheText = '';
-  for (const name of cacheNames) { const cache = await caches.open(name); for (const url of await cache.keys()) { if (url.url.includes('/api/')) throw new Error('API response was cached'); const response = await cache.match(url); if (/text|javascript|json/.test(response.headers.get('content-type'))) cacheText += await response.text(); } }
+  for (const name of cacheNames) { const cache = await caches.open(name); for (const url of await cache.keys()) { if (url.url.includes('/api/')) throw new Error('API response was cached'); const response = await cache.match(url); if (/text|javascript|json/.test(response?.headers.get('content-type') || '')) cacheText += await response!.text(); } }
   assert(Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')), 'legacy shell cache remains untouched');
   assert(!/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText), 'PWA caches contain only static assets, not task plaintext');
   await registration.unregister();
@@ -136,7 +137,7 @@ try {
   await commit(oldRevision, accountA).then(() => { throw new Error('Cross-account commit succeeded'); }, () => {});
   assert((await localState()).config === null, 'new account never inherits the previous account cache');
   disconnected = false; await syncAfterCurrent().catch(() => {});
-  const configB = (await network('/api/auth/config?userId=' + secondUserId)).config;
+  const configB = (await network<{config: VaultConfig}>('/api/auth/config?userId=' + secondUserId)).config;
   const keyB = await unlockVault('browser second password 2026', configB);
   await network('/api/auth/login', 'POST', { userId: secondUserId, credential: keyB.credential, revision: 1 });
   await activate(configB, keyB.key, false, (await localState()).lockEpoch); await syncAfterCurrent();
@@ -158,4 +159,4 @@ try {
   assert(!isUnlocked(), 'account switch locks other browser contexts');
   frame.remove(); legacy.close();
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
-} catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error.stack || error.message}`; }
+} catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }

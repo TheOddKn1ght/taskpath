@@ -1,12 +1,13 @@
+import type { TaskInput } from './types.js';
 const columns = { later: 'Later', week: 'This Week', today: 'Today', done: 'Done' };
-const escapeText = (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const escapeText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/[\\`*~_{}\[\]()#+.!|\-]/g, '\\$&').replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
-export function exportMarkdown(tasks) {
+export function exportMarkdown(tasks: TaskInput[]) {
   const lines = ['# Taskpath', ''];
   for (const [status, heading] of Object.entries(columns)) {
     lines.push(`## ${heading}`, '');
     for (const task of tasks.filter(t => t.status === status)) {
-      lines.push(`- [${status === 'done' ? 'x' : ' '}] ${escapeText(task.title)}`);
+      lines.push(`- [${status === 'done' ? 'x' : ' '}] ${escapeText(task.title!)}`);
       lines.push(`  - Category: ${task.category === 'work' ? 'Work' : 'Personal'}`);
       if (task.tags?.length) lines.push(`  - Tags: ${escapeText(JSON.stringify(task.tags))}`);
       if (task.archivedAt) lines.push(`  - Archived: ${task.archivedAt}`);

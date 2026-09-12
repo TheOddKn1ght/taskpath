@@ -26,7 +26,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(426);
     const messages: string[][] = [[], [], []]; const closed: number[] = [];
     for (const [i, cookie] of [a, b, c].entries()) {
-      const socket = new WebSocket(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
+      const socket = new (WebSocket as unknown as { new(url: string, options: import('bun').WebSocketOptions): WebSocket })(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
       socket.onmessage = event => messages[i].push(String(event.data));
       socket.onclose = event => { closed[i] = event.code; }; sockets.push(socket);
     }
@@ -46,7 +46,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     await send(second, b); await Bun.sleep(100);
     expect(messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
     queueChange(device.record, `/api/tasks/${task.id}/archive`, 'POST');
-    const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1));
+    const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1)!);
     await send(archived, a);
     await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 3));
     const archivedSnapshot = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();

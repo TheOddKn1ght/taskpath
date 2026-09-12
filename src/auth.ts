@@ -21,7 +21,7 @@ export class AuthManager {
     this.accounts = new AccountRepository(connect(db));
   }
   private row(userId: string) { return this.accounts.get(userId); }
-  configuration(userId: string) { const row = this.row(userId); return row?.status === 'active' ? JSON.parse(row.config!) : null; }
+  configuration(userId: string) { const row = this.row(userId); return row?.status === 'active' ? validateConfig(JSON.parse(row.config!)) : null; }
   createInvitation() {
     return this.accounts.transaction(() => {
       const userId = 'u_' + randomBytes(16).toString('hex');
@@ -50,9 +50,10 @@ export class AuthManager {
   private validateCredential(credential: unknown) {
     try { unbase64(credential, 32); } catch { throw new InputError('Invalid authentication credential.'); }
   }
-  async setup(userId: string, token: unknown, config: any, credential: string) {
+  async setup(userId: string, token: unknown, rawConfig: unknown, credential: string) {
     if (!this.validSetup(userId, token)) throw new InputError('Invitation is invalid, used, or expired. Ask the administrator for a new invitation.', 403);
-    try { validateConfig(config); } catch { throw new InputError('Invalid vault configuration.'); }
+    let config: ReturnType<typeof validateConfig>;
+    try { config = validateConfig(rawConfig); } catch { throw new InputError('Invalid vault configuration.'); }
     if (config.revision !== 1) throw new InputError('Invalid initial revision.');
     this.validateCredential(credential);
     const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });
@@ -92,11 +93,12 @@ export class AuthManager {
     this.accounts.createSession(digest(token), userId, row.revision!, this.now() + this.sessionSeconds * 1000);
     return { token, maxAge: this.sessionSeconds };
   }
-  async changePassword(client: string, request: Request, currentCredential: string, credential: string, config: any, revision: number) {
+  async changePassword(client: string, request: Request, currentCredential: string, credential: string, rawConfig: unknown, revision: number) {
     const userId = this.identity(request);
     if (!userId) throw new InputError('Sign in again.', 401);
     const row = await this.verify(client, userId, currentCredential);
-    try { validateConfig(config); } catch { throw new InputError('Invalid vault configuration.'); }
+    let config: ReturnType<typeof validateConfig>;
+    try { config = validateConfig(rawConfig); } catch { throw new InputError('Invalid vault configuration.'); }
     this.validateCredential(credential);
     if (revision !== row.revision || config.revision !== revision + 1 || config.vaultId !== JSON.parse(row.config!).vaultId || config.kdf.salt === JSON.parse(row.config!).kdf.salt) throw new InputError('Credential revision changed. Try again.', 409);
     const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });

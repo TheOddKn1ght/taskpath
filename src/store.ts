@@ -1,15 +1,16 @@
+import type { Envelope, ReminderMetadata } from '../public/types.js';
 import type { Database } from 'bun:sqlite';
 import { connect, openDatabase, type AppDatabase } from './db/connection';
 import { AccountRepository } from './db/accounts';
 import { WorkspaceRepository } from './db/workspace';
-import { validateEnvelope, validId } from '../public/crypto.js';
+import { validateEnvelope, validateConfig, validId } from '../public/crypto.js';
 
 export class InputError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
-export function object(value: unknown): Record<string, any> {
+export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('Expected an object.');
-  return value;
+  return value as Record<string, unknown>;
 }
 export class Store {
   readonly db: Database;
@@ -26,30 +27,34 @@ export class Store {
   }
 
   close() { this.db.close(); }
-  config(userId: string): any { const row = this.accounts.get(userId); return row?.status === 'active' ? JSON.parse(row.config!) : null; }
+  config(userId: string) { const row = this.accounts.get(userId); return row?.status === 'active' ? validateConfig(JSON.parse(row.config!)) : null; }
   syncBoard(userId: string) {
-    return { format: 1, workspaceKey: this.config(userId)?.vaultId, pushEnabled: this.pushEnabled(userId), timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.workspace.envelopes(userId).map(row => JSON.parse(row.envelope)) };
+    return { format: 1, workspaceKey: this.config(userId)?.vaultId, pushEnabled: this.pushEnabled(userId), timezone: this.timezone, serverTime: this.now().toISOString(), rows: this.workspace.envelopes(userId).map(row => validateEnvelope(JSON.parse(row.envelope), this.config(userId)!.vaultId)) };
   }
-  sync(userId: string, input: any) {
+  sync(userId: string, raw: unknown) {
+    const input = object(raw);
     const vaultId = this.config(userId)?.vaultId;
     if (!vaultId) throw new InputError('Account unavailable.', 403);
     if (input.workspaceKey !== vaultId) throw new InputError('This server has a different workspace. Your encrypted changes remain on this device.', 409);
     if (Object.keys(input).some(k => !['workspaceKey', 'changes', 'reminders'].includes(k)) || !Array.isArray(input.changes) || input.changes.length > 50) throw new InputError('Send at most 50 encrypted changes.');
-    const reminders = input.reminders ?? [];
-    if (!Array.isArray(reminders) || reminders.length > 50) throw new InputError('Send at most 50 reminder schedules.');
-    for (const r of reminders) {
-      object(r);
+    const rawReminders: unknown = input.reminders ?? [];
+    if (!Array.isArray(rawReminders) || rawReminders.length > 50) throw new InputError('Send at most 50 reminder schedules.');
+    const reminders = rawReminders.map((raw: unknown) => {
+      const r = object(raw);
       if (Object.keys(r).some(k => !['taskId', 'changeId', 'token', 'dueAt'].includes(k)) || !validId(r.taskId) || !validId(r.changeId)
-        || (r.token === null ? r.dueAt !== null : !validId(r.token) || r.token.length < 32 || typeof r.dueAt !== 'string' || !Number.isFinite(Date.parse(r.dueAt)) || new Date(r.dueAt).toISOString() !== r.dueAt)) throw new InputError('Use only opaque reminder IDs and an ISO reminder time.');
-    }
-    for (const envelope of input.changes) {
-      try { validateEnvelope(envelope, vaultId); } catch { throw new InputError('Invalid encrypted change. Plaintext sync is unsupported.'); }
+        || (r.token === null ? r.dueAt !== null : !validId(r.token) || (r.token as string).length < 32 || typeof r.dueAt !== 'string' || !Number.isFinite(Date.parse(r.dueAt)) || new Date(r.dueAt).toISOString() !== r.dueAt)) throw new InputError('Use only opaque reminder IDs and an ISO reminder time.');
+      return r as unknown as ReminderMetadata;
+    });
+    const changes = (input.changes as unknown[]).map(raw => {
+      let envelope: Envelope;
+      try { envelope = validateEnvelope(raw, vaultId); } catch { throw new InputError('Invalid encrypted change. Plaintext sync is unsupported.'); }
       if (Date.parse(envelope.editedAt) > this.now().getTime() + 300000) throw new InputError('Edit time is too far in the future. Check this device’s clock.');
-    }
+      return envelope;
+    });
     return this.workspace.transaction(() => {
       const acknowledged: string[] = [];
       let conflicts = 0, changed = false;
-      for (const e of input.changes) {
+      for (const e of changes) {
         const current = this.workspace.revision(userId, e.taskId);
         acknowledged.push(e.changeId);
         if (current && (current.editedAt > e.editedAt || (current.editedAt === e.editedAt && current.changeId >= e.changeId))) {
@@ -65,7 +70,7 @@ export class Store {
         const current = this.workspace.revision(userId, r.taskId);
         if (current?.changeId !== r.changeId) continue;
         if (r.token === null) this.workspace.cancelReminder(userId, r.taskId);
-        else this.workspace.saveReminder({ userId, taskId: r.taskId, changeId: r.changeId, token: r.token, dueAt: Date.parse(r.dueAt) });
+        else this.workspace.saveReminder({ userId, taskId: r.taskId, changeId: r.changeId, token: r.token, dueAt: Date.parse(r.dueAt!) });
       }
       return { ...this.syncBoard(userId), acknowledged, reminderAcknowledged: reminders.map(r => ({ taskId: r.taskId, changeId: r.changeId })), conflicts, changed };
     });

@@ -30,12 +30,15 @@ test('public shells use versioned assets and every service-worker shell resource
       expect((await (await get(base + 'apple-touch-icon.png'))!.arrayBuffer()).byteLength).toBeGreaterThan(100);
       expect(await (await get(base + 'favicon.svg'))!.text()).toContain('<svg');
     }
-    expect((await get('/app.js'))!.status).not.toBe(200);
+    for (const path of ['/app.js', '/app.ts', '/assets/' + ASSET_VERSION + '/app.ts', '/assets/' + ASSET_VERSION + '/types.d.ts', '/src/server.ts']) expect((await get(path))!.status).not.toBe(200);
+    const script = await (await get(`/assets/${ASSET_VERSION}/app.js`))!.text();
+    expect(() => new Bun.Transpiler({ loader: 'js' }).scan(script)).not.toThrow();
+    expect(script).not.toContain('import type');
     const worker = await (await get('/sw.js'))!.text();
     expect(worker).toContain(`/assets/${ASSET_VERSION}/offline.js`);
     expect(worker).toContain('taskpath-shell-' + ASSET_VERSION);
     expect(worker).not.toContain('skipWaiting');
-    expect(worker).toContain("name.startsWith('taskpath-shell-accounts-')");
+    expect(worker).toMatch(/name\.startsWith\(['"]taskpath-shell-accounts-['"]\)/);
     expect(await Bun.file('public/vendor/marked.LICENSE.md').exists()).toBe(true);
     expect(await Bun.file('.dockerignore').text()).toContain('!public/vendor/marked.LICENSE.md');
   } finally { store.close(); }

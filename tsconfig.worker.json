@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.base.json","compilerOptions":{"lib":["ESNext","WebWorker"]},"files":["public/sw.ts","tests/browser-worker.ts","types/worker.d.ts","types/experimental.d.ts"]}

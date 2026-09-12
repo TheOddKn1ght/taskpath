@@ -85,7 +85,7 @@ test('login rate limit and bounded JSON bodies remain enforced behind proxy', as
     expect(blocked.response.status).toBe(429); expect(blocked.response.headers.get('retry-after')).toBe('900');
     expect((await login(handle)).response.status).toBe(429);
     expect((await request(handle, '', '/api/auth/login', { credential: 'x'.repeat(40000) })).status).toBe(413);
-    expect((await handle(new Request(`${origin}/api/auth/login`, { method: 'POST', headers: { origin, 'content-type': 'text/plain' }, body: '{}' }))).status).toBe(415);
+    expect((await handle(new Request(`${origin}/api/auth/login`, { method: 'POST', headers: { origin, 'content-type': 'text/plain' }, body: '{}' })))!.status).toBe(415);
     expect((await request(handle, '', '/api/auth/setup', {}, 'https://evil.example')).status).toBe(403);
   } finally { store.close(); }
 });

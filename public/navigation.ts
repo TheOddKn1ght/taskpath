@@ -1,23 +1,24 @@
+import type { Route } from './types.js';
 import { normalizeTags } from './tags.js';
 // View and filters live only after #; never put search text in the HTTP query string.
-export function navigation(onChange) {
-  const root = document.getElementById('main');
-  const toggle = document.getElementById('sidebar-toggle');
-  const drawer = document.getElementById('navigation-dialog');
-  const menu = document.getElementById('navigation-open');
+export function navigation(onChange: (view: Route['view'], filters: Omit<Route,'view'>) => void) {
+  const root = document.getElementById('main')!;
+  const toggle = document.getElementById('sidebar-toggle')!;
+  const drawer = document.getElementById('navigation-dialog') as HTMLDialogElement;
+  const menu = document.getElementById('navigation-open')!;
   const mobile = matchMedia('(max-width: 760px)');
   const key = 'taskpath-sidebar-collapsed';
-  let current = { view: 'board', query: '', category: 'all', tag: '' };
-  function readRoute() {
+  let current: Route = { view: 'board', query: '', category: 'all', tag: '' };
+  function readRoute(): Route | null {
     const match = location.hash.match(/^#(board|archive)(?:\?(.*))?$/);
     if (!match) return location.hash ? null : { view: 'board', query: '', category: 'all', tag: '' };
     const params = new URLSearchParams(match[2] || '');
-    const category = ['work', 'personal'].includes(params.get('category')) ? params.get('category') : 'all';
+    const category = ['work', 'personal'].includes(params.get('category') || '') ? params.get('category') as Route['category'] : 'all';
     let tag = '';
     try { if (params.get('tag')) tag = normalizeTags([params.get('tag')])[0]; } catch { /* Ignore invalid tag filters in external links. */ }
-    return { view: match[1], query: params.get('q') || '', category, tag };
+    return { view: match[1] as Route['view'], query: params.get('q') || '', category, tag };
   }
-  function hashFor(route) {
+  function hashFor(route: Route) {
     const params = new URLSearchParams();
     if (route.query) params.set('q', route.query);
     if (route.category !== 'all') params.set('category', route.category);
@@ -34,14 +35,14 @@ export function navigation(onChange) {
     toggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
   }
   function close() { if (drawer.open) drawer.close(); }
-  function select(view, updateURL = false, filters = current) {
+  function select(view: Route['view'], updateURL: boolean | 'replace' = false, filters = current) {
     current = { view, query: filters.query, category: filters.category, tag: filters.tag };
     const hash = hashFor(current);
     if (updateURL && location.hash !== hash) {
       const method = updateURL === 'replace' ? 'replaceState' : 'pushState';
       history[method](null, '', location.pathname + location.search + hash);
     }
-    for (const button of document.querySelectorAll('[data-view]')) {
+    for (const button of document.querySelectorAll<HTMLElement>('[data-view]')) {
       if (button.dataset.view === view) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
@@ -54,14 +55,14 @@ export function navigation(onChange) {
   });
   menu.addEventListener('click', () => {
     drawer.showModal(); menu.setAttribute('aria-expanded', 'true');
-    drawer.querySelector('[aria-current="page"]')?.focus();
+    drawer.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
   });
-  document.getElementById('navigation-close').addEventListener('click', close);
+  document.getElementById('navigation-close')!.addEventListener('click', close);
   drawer.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
-    const buttons = [...drawer.querySelectorAll('button:not(:disabled)')];
+    const buttons = [...drawer.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
     const first = buttons[0], last = buttons.at(-1);
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
   drawer.addEventListener('click', event => {
@@ -69,9 +70,9 @@ export function navigation(onChange) {
     if (event.target === drawer && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) close();
   });
   drawer.addEventListener('close', () => { menu.setAttribute('aria-expanded', 'false'); if (!root.inert && mobile.matches) menu.focus(); });
-  for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => select(button.dataset.view, true));
+  for (const button of document.querySelectorAll<HTMLElement>('[data-view]')) button.addEventListener('click', () => select(button.dataset.view as Route['view'], true));
   const restore = () => {
-    const route = readRoute() || { view: 'board', query: '', category: 'all', tag: '' };
+    const route: Route = readRoute() || { view: 'board', query: '', category: 'all', tag: '' };
     select(route.view, false, route);
   };
   window.addEventListener('hashchange', () => {
@@ -85,5 +86,5 @@ export function navigation(onChange) {
   });
   appearance();
   restore();
-  return { restore, reset: () => select('board', true), filters: patch => select(current.view, 'replace', { ...current, ...patch }), close };
+  return { restore, reset: () => select('board', true), filters: (patch: Partial<Omit<Route,'view'>>) => select(current.view, 'replace', { ...current, ...patch }), close };
 }

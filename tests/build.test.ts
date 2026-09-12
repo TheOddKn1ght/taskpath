@@ -5,6 +5,7 @@ import { createHandler, ASSET_VERSION } from '../src/server';
 import { Store } from '../src/store';
 
 const root = resolve(import.meta.dir, '..');
+const sourceName = (name: string) => name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
 const built = resolve(root, 'dist/public');
 const hasBuild = await Bun.file(resolve(built, 'index.html')).exists() && (await Bun.file(resolve(built, 'index.html')).text()).includes(`/assets/${ASSET_VERSION}/`);
 
@@ -20,11 +21,11 @@ test('HTML compaction preserves inline spacing, entities, attributes and literal
 test.skipIf(!hasBuild)('minified client preserves module exports, reachable imports, PWA assets and CSP', async () => {
   const scan = new Bun.Transpiler({ loader: 'js' });
   const files = [...new Bun.Glob('**/*').scanSync({ cwd: built, onlyFiles: true })];
-  expect(files.some(name => name.endsWith('.map'))).toBe(false);
+  expect(files.some(name => name.endsWith('.map') || name.endsWith('.ts'))).toBe(false);
   for (const name of files.filter(name => name.endsWith('.js'))) {
     const output = await Bun.file(resolve(built, name)).text();
-    const source = await Bun.file(resolve(root, 'public', name)).text();
-    expect(scan.scan(output).exports.sort()).toEqual(scan.scan(source).exports.sort());
+    const source = await Bun.file(resolve(root, 'public', sourceName(name))).text();
+    expect(scan.scan(output).exports.sort()).toEqual(new Bun.Transpiler({loader: name.startsWith('vendor/') ? 'js' : 'ts'}).scan(source).exports.sort());
     for (const { path } of scan.scan(output).imports) {
       const target = path.startsWith(`/assets/${ASSET_VERSION}/`)
         ? resolve(built, path.slice(`/assets/${ASSET_VERSION}/`.length))
@@ -53,7 +54,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(await Bun.file(resolve(root, 'public/manifest.webmanifest')).json());
     expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
     for (const name of ['app.js', 'style.css', 'index.html', 'sw.js', 'manifest.webmanifest']) {
-      expect(Bun.file(resolve(built, name)).size).toBeLessThan(Bun.file(resolve(root, 'public', name)).size);
+      expect(Bun.file(resolve(built, name)).size).toBeLessThan(Bun.file(resolve(root, 'public', sourceName(name))).size);
     }
   } finally { store.close(); }
 });
