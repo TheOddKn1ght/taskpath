@@ -6,6 +6,7 @@
   "lang": "en",
   "start_url": "/",
   "scope": "/",
+  "gcm_sender_id": "103953800507",
   "display": "standalone",
   "background_color": "#fafaf8",
   "theme_color": "#fafaf8",

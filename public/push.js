@@ -44,7 +44,16 @@ export function setupPush() {
         if (typeof config.publicKey !== 'string' || !/^[\w-]{80,100}$/.test(config.publicKey)) throw new Error('Background notifications are unavailable. Reopen Taskpath online after updating, then try again.');
         const unpadded = config.publicKey.replace(/-/g, '+').replace(/_/g, '/');
         const key = Uint8Array.from(atob(unpadded + '='.repeat((4 - unpadded.length % 4) % 4)), c => c.charCodeAt(0));
-        existing = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        // Subscribe on the live active registration, not a possibly stale cached one.
+        const live = await navigator.serviceWorker.ready;
+        if (!live.active) throw new Error('The offline app is still installing. Close this dialog, wait a moment, and try again.');
+        registration = live;
+        try {
+          existing = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+        } catch (error) {
+          if (error?.name === 'NotAllowedError') throw new Error('Notifications were not allowed. You can change this in your browser or device settings.');
+          throw new Error(`Could not reach the browser push service (${error?.name || 'push service error'}). Check connection, VPN/ad-blocker, and that this browser can reach its push provider, then try again.`, { cause: error });
+        }
         check();
         await network('/api/push', 'POST', { subscription: existing.toJSON() }, account);
         check();
