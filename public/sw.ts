@@ -1,8 +1,8 @@
 declare const self: ServiceWorkerGlobalScope;
-import { sync } from '/assets/accounts-v13/offline.js';
-const CACHE = 'taskpath-shell-accounts-v13';
-const ROOT = '/assets/accounts-v13/';
-const FILES = ['dom.js', 'errors.js', 'style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
+import { sync } from '/assets/accounts-v16/offline.js';
+const CACHE = 'taskpath-shell-accounts-v16';
+const ROOT = '/assets/accounts-v16/';
+const FILES = ['pickers.js', 'picker-model.js', 'dom.js', 'errors.js', 'style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
   'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'push.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);

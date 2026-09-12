@@ -2,7 +2,7 @@
 
 This guide deploys an invite-only Taskpath installation with private per-user vaults on Ubuntu 24.04 or 22.04. Docker Compose runs Taskpath and SQLite. Nginx runs on the VPS host, terminates HTTPS, and proxies to Taskpath on `127.0.0.1:3000`. The database is kept in a Docker named volume.
 
-**Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. The TypeScript update (`accounts-v13`) preserves the database and encrypted browser storage; it does not require a new vault, password, or migration command. Only older plaintext/single-owner installations need the separate fresh-start procedure.
+**Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. The picker update (`accounts-v16`) preserves the database and encrypted browser storage; it does not require a new vault, password, or migration command. Only older plaintext/single-owner installations need the separate fresh-start procedure.
 
 The image uses Bun **1.4.2**. Docker installs the versions in `bun.lock`, including the server's Drizzle ORM and `web-push` dependencies, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
 
@@ -319,7 +319,7 @@ sudo docker compose logs --tail=50 taskpath
 curl -f http://127.0.0.1:3000/healthz
 ```
 
-Continue only if the image build succeeds. The named volume survives image replacement, including accounts, task ciphertext and push signing keys. The TypeScript migration keeps the existing SQLite schema and encrypted browser queues unchanged. No account invitation or password change is needed for this update. Docker performs the frozen dependency install and client minification; a container restart alone will not pick up new source files or `.env` values.
+Continue only if the image build succeeds. The named volume survives image replacement, including accounts, task ciphertext and push signing keys. The picker update keeps the existing SQLite schema and encrypted browser queues unchanged. No account invitation or password change is needed for this update. Docker performs the frozen dependency install and client minification; a container restart alone will not pick up new source files or `.env` values.
 
 6. Repeat the HTTPS checks in step 8. Existing Nginx `/api/sync` and `/api/events` configuration is sufficient for this update.
 7. With changes synchronized on all devices before upgrading, on **every device**, open Taskpath online so it can download the new PWA shell, close all Taskpath tabs and installed-app windows, then reopen and unlock. Keep browser storage intact. The worker waits for old windows to close before activating; refreshing one tab may not be enough.

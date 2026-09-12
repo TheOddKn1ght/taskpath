@@ -12,7 +12,7 @@
       "ESNext"
     ],
     "paths": {
-      "/assets/accounts-v13/*": [
+      "/assets/accounts-v16/*": [
         "./public/*"
       ]
     }

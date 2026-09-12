@@ -6,8 +6,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
 import { PushService } from './push';
-export const ASSET_VERSION = 'accounts-v13';
+export const ASSET_VERSION = 'accounts-v16';
 const assets = new Map<string, [string, string]>([
+  ["/pickers.js", ["pickers.js", "text/javascript; charset=utf-8"]],
+  ["/picker-model.js", ["picker-model.js", "text/javascript; charset=utf-8"]],
   ["/dom.js", ["dom.js", "text/javascript; charset=utf-8"]],
   ["/errors.js", ["errors.js", "text/javascript; charset=utf-8"]],
   ["/", ["index.html", "text/html; charset=utf-8"]],

@@ -1,7 +1,7 @@
 // Apply appearance before styles load. Preferences belong to this browser, not a vault.
 (() => {
   const key = 'taskpath-theme';
-  const root = '/assets/accounts-v13/';
+  const root = '/assets/accounts-v16/';
   const themes = [
     { id: 'light', name: 'Light', color: '#fafaf8' },
     { id: 'dark', name: 'Dark', color: '#171c19' },

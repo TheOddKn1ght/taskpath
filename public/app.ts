@@ -1,3 +1,4 @@
+import { mountPickers, refreshPickers, openTagPicker, closePicker } from './pickers.js';
 import type { Task, Board, Status, Route, ArchiveReceipt, ArchiveResult, MutationResult } from './types.js';
 import { select as $, selectAll as $$ } from './dom.js';
 import { errorMessage } from './errors.js';
@@ -398,12 +399,10 @@ async function mutate(path: string, method: string, body?: unknown, message?: st
 
 let editingTags: string[] = [];
 function knownTags() { return [...new Set(state.tasks.flatMap(task => task.tags || []))].sort(); }
-function renderTagSuggestions() {
-  const query = $('#task-tag-input').value.trim().normalize('NFC').toLowerCase();
-  const matches = query ? knownTags().filter(tag => !editingTags.includes(tag) && tag.includes(query)).slice(0, 6) : [];
-  $('#tag-suggestions').innerHTML = matches.map(tag => `<button type="button" class="tag-chip" data-suggest-tag="${escape(tag)}" aria-label="Add tag ${escape(tag)}">${escape(tag)}</button>`).join('');
-  $('#tag-suggestions').hidden = !matches.length;
-}
+function renderTagSuggestions() { refreshPickers(); }
+$('#browse-tags').addEventListener('click', () => openTagPicker($('#browse-tags'), knownTags, () => editingTags, tags => {
+  editingTags = tags; renderTagEditor();
+}));
 function renderTagEditor() {
   $('#task-tags').innerHTML = editingTags.map((tag, index) => `<button type="button" class="tag-chip" data-remove-tag="${index}" aria-label="Remove tag ${escape(tag)}">${escape(tag)}<span aria-hidden="true">×</span></button>`).join('');
   renderTagSuggestions();
@@ -423,16 +422,8 @@ function addTagFromControl() {
 }
 $('#add-tag').addEventListener('click', addTagFromControl);
 $('#task-tag-input').addEventListener('input', renderTagSuggestions);
-$('#tag-suggestions').addEventListener('click', event => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-suggest-tag]');
-  if (!button) return;
-  $('#task-tag-input').value = button.dataset.suggestTag!;
-  addTagFromControl();
-});
 $('#task-tag-input').addEventListener('keydown', event => {
-  if (event.key === 'ArrowDown' && !$('#tag-suggestions').hidden) {
-    event.preventDefault(); $('#tag-suggestions button')?.focus();
-  }
+  if (event.key === 'ArrowDown') { event.preventDefault(); $('#browse-tags').click(); }
   if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); addTagFromControl(); }
 });
 $('#task-tags').addEventListener('click', event => {
@@ -494,6 +485,7 @@ function render() {
     const isFiltered = !!query || state.category !== 'all' || !!state.tag;
     return `<section class="column ${status}" data-status="${status}" aria-labelledby="column-${status}"><header class="column-header"><div class="column-title"><h2 id="column-${status}">${column.title}</h2><span class="column-count">${tasks.length}</span></div></header><div class="task-list">${tasks.length ? tasks.map((task, index) => taskMarkup(task, index, tasks.length)).join('') : `<div class="empty-state">${isFiltered ? 'No matching tasks' : 'Drop tasks here'}</div>`}</div><form class="quick-add" data-status="${status}">${icon('plus')}<input aria-label="Quick add task to ${column.title}" placeholder="Add task" required maxlength="240" autocomplete="off"><button type="submit" aria-label="Save task to ${column.title}" title="Add task">${icon('arrow-right')}</button></form></section>`;
   }).join('');
+  mountPickers();
   $$('.quick-add').forEach(form => { $('input', form).value = quickValues.get(form.dataset.status) || ''; });
   const monday = new Date(`${state.week}T12:00:00Z`);
   const sunday = new Date(monday); sunday.setUTCDate(sunday.getUTCDate() + 6);
@@ -559,7 +551,7 @@ function openTask(status: Status = 'later', task: Task | null = null) {
   if (!isUnlocked()) return;
   if (task?.archivedAt) { archiveDetails(task); return; }
   if (!task && state.view === 'archive') nav.reset();
-  closeTaskContextMenu();
+  closePicker(false); closeTaskContextMenu();
   state.editing = task?.id || null;
   $('#task-form').reset();
   $('#form-error').hidden = true;
@@ -579,6 +571,7 @@ function openTask(status: Status = 'later', task: Task | null = null) {
   $('#save-task').innerHTML = `${task ? 'Save changes' : 'Add task'}${icon('arrow-right')}`;
   $('#delete-task').hidden = !task;
   $('#archive-task').hidden = !task;
+  mountPickers();
   $('#task-dialog').showModal();
   $('#task-title').focus();
 }
@@ -603,7 +596,7 @@ $('.skip-link').addEventListener('click', event => {
   event.preventDefault();
   $('#board').focus(); $('#board').scrollIntoView({ block: 'start' });
 });
-$('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').value = ''; $('#task-reminder').value = ''; });
+$('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').value = ''; $('#task-reminder').value = ''; refreshPickers(); });
 $('#enable-notifications').addEventListener('click', toggleNotifications);
 $('#notifications-button').addEventListener('click', () => { $('.app-menu').open = false; void toggleNotifications(); });
 $('#reminder-panel').addEventListener('click', async event => {
@@ -1010,6 +1003,7 @@ registerTools();
 
 const realtime = createRealtime({ sync: syncAfterCurrent, localState, url: location.href });
 notificationControls();
+mountPickers();
 
 window.addEventListener('taskpath-password-changed', () => notify('Password changed. Other devices must sign in to sync again.'));
 window.addEventListener('taskpath-locked', () => {

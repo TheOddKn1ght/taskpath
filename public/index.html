@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v13/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v13/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v16/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v16/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v13/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v13/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v13/style.css">
-  <script src="/assets/accounts-v13/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v13/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v16/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v16/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v16/style.css">
+  <script src="/assets/accounts-v16/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v16/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -92,8 +92,8 @@
       <div class="field tag-field">
         <label for="task-tag-input">Tags <span class="optional">optional</span></label>
         <div id="task-tags" class="tag-chips" aria-label="Selected tags"></div>
-        <div class="tag-entry"><input id="task-tag-input" autocomplete="off" placeholder="Add a tag" aria-describedby="tag-hint"><button type="button" id="add-tag" class="secondary-button">Add</button></div>
-        <div id="tag-suggestions" class="tag-suggestions" role="group" aria-label="Suggested tags" hidden></div>
+        <div class="tag-entry"><input id="task-tag-input" autocomplete="off" placeholder="Add a tag" aria-describedby="tag-hint"><button type="button" id="add-tag" class="secondary-button">Add</button><button type="button" id="browse-tags" class="secondary-button" aria-haspopup="dialog" aria-expanded="false">Choose tags</button></div>
+        <div id="tag-suggestions" hidden></div>
         <small id="tag-hint">Press Enter to add · up to 10 tags</small>
       </div>
       <div class="field-row"><label class="field">Column<select id="task-status" name="status"><option value="later">Later</option><option value="week">This Week</option><option value="today">Today</option><option value="done">Done</option></select></label><label class="field">Category<select id="task-category" name="category"><option value="personal">Personal</option><option value="work">Work</option></select></label></div>

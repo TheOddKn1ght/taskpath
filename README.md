@@ -179,3 +179,17 @@ The [Tests workflow](.github/workflows/tests.yml) runs on pushes, pull requests,
 ### TypeScript update (accounts-v13)
 
 This update preserves existing multi-user accounts, passwords, SQLite/IndexedDB storage, settings, archived tasks and reminders. It does not rewrite ciphertext, pending operations, IDs or timestamps. Calendar code from the separate branch is not included. Asset URLs and the PWA cache move to `accounts-v13`; storage names and versions stay unchanged. Sync all devices first, download the update online, close **all** tabs and PWA windows, then reopen. **Do not clear site data.**
+
+### Consistent pickers (accounts-v14)
+
+Category, column, tag and date controls use themed selectors on desktop and bottom sheets on screens up to 760px. Tag lists support local search; the editor also supports multiple tags and creating names with Enter. Date pickers provide a Monday-first calendar and manual `YYYY-MM-DD` entry; reminders use device-local `HH:mm` time. Apply updates the editor draft, Clear empties the field, and Cancel leaves it unchanged. Save the task to persist the changes. Escape closes only the top picker and restores focus. File imports still use the system file chooser.
+
+This update preserves accounts, encrypted tasks, pending operations and browser storage. Download it online, close all tabs and installed PWA windows, then reopen. Do not clear site data.
+
+The browser harness also checks picker keyboard behavior, draft validation, tag creation, cleanup, viewport bounds and all seven palettes. Open `/picker-checks` on the test server to run just those checks. See [picker regression results](docs/pickers-regression.md) for the source/build results and device limitations.
+
+Reminders show the calendar and custom Hour (00–23) / Minute (00–59) lists together: side by side on desktop and stacked on phones. Due dates use only the calendar. Choose both time parts for a new reminder, or type `HH:mm` directly. Arrow keys, Home/End and typing digits navigate the lists; Enter/Space selects. Apply stages the chosen date/time in the task editor; Cancel or Escape discards it. The action buttons remain available while scrolling the reminder panel.
+
+The centering fix uses new `accounts-v15` asset URLs and a fresh PWA shell cache. The reminder dialog is centered in the desktop viewport; phones retain the bottom sheet. After updating the server, open online, close all Taskpath tabs/PWA windows, then reopen. Existing tasks, storage and pending changes are preserved; do not clear site data.
+
+The combined picker cleanup uses `accounts-v16` asset URLs and removes the redundant clock button; hour/minute lists and manual entry remain available.

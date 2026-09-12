@@ -1,8 +1,9 @@
+import { pickerChecks } from './browser-picker-checks.js';
 import type { VaultConfig } from '../public/types.js';
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v13/offline.js';
-import { openDatabase, commit, rememberedKey } from '/assets/accounts-v13/persistence.js';
-import { unlockVault } from '/assets/accounts-v13/crypto.js';
-import { selectAccount } from '/assets/accounts-v13/persistence.js';
+import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v16/offline.js';
+import { openDatabase, commit, rememberedKey } from '/assets/accounts-v16/persistence.js';
+import { unlockVault } from '/assets/accounts-v16/crypto.js';
+import { selectAccount } from '/assets/accounts-v16/persistence.js';
 const report = document.getElementById('result')!, results: string[] = [], password = 'browser harness password 2026';
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
 const originalFetch = window.fetch.bind(window); const requests: string[] = [];
@@ -158,5 +159,6 @@ try {
   const switched = waitMessage('locked'); await switchAccount(secondUserId); await switched;
   assert(!isUnlocked(), 'account switch locks other browser contexts');
   frame.remove(); legacy.close();
+  await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
 } catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }
