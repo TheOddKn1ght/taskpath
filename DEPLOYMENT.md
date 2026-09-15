@@ -441,3 +441,24 @@ There is no reset or recovery mechanism. The server cannot decrypt your tasks. A
 - [Nginx request limiting module](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html)
 - [Web Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
 - [Web Push for Home Screen apps on iOS and iPadOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
+
+## Enable the encrypted file vault (accounts-v17)
+
+1. Back up the existing SQLite database using the normal backup procedure. Keep the existing volume and account configuration.
+2. Add `TASKPATH_FILE_QUOTA_MB=10` to `.env`. This is a per-user allowance shared by all accounts, in decimal MB (1 MB = 1,000,000 bytes). Use a nonnegative whole number; `0` blocks new uploads. Each individual file remains limited to 10 MB, or the allowance when lower. Invalid settings prevent startup.
+3. Update the host Nginx configuration from `deploy/nginx/taskpath.conf.example`. Its HTTPS server now includes this exception; leave existing sync and small-request limits in place:
+
+   ```nginx
+   location = /api/files {
+       client_max_body_size 11m;
+       proxy_pass http://127.0.0.1:3000;
+   }
+   ```
+
+4. Validate and reload Nginx using your usual `nginx -t` / service reload procedure. Rebuild and recreate Taskpath using the existing update instructions so Compose passes the new quota setting. The server adds file tables transactionally. No reset, new account or new volume is needed.
+5. Open Taskpath online on each device, close all tabs and PWA windows, then reopen. The browser storage upgrade may ask you to close another tab. Never clear site data to resolve an update.
+6. Open **Files**, upload a small sample and wait until it is synced and marked **Available offline**. Disconnect and confirm you can download it. Reconnect before testing on another device.
+
+Quota changes require recreating the container after editing `.env`. Lowering the allowance preserves files and blocks new uploads until usage fits; retries of accepted uploads do not charge twice. Pending files rejected by a changed quota remain on their originating browser with **Waiting for space**. They are not yet in server backups.
+
+The existing SQLite backup now contains file ciphertext, wrapped file keys, metadata and deletion markers. The allowance measures original file bytes, not physical SQLite/WAL/backup disk usage. Deletion does not retroactively erase old backups. Task Markdown/JSON exports do not include files. Allow browser storage for offline access and keep originals until sync completes. Image previews work only in the unlocked app; downloaded copies are ordinary readable files outside Taskpath.

@@ -11,6 +11,7 @@
     "public/**/*.ts",
     "tests/browser-checks.ts",
     "tests/browser-frame.ts",
+    "tests/browser-files-checks.ts",
     "tests/browser-picker-checks.ts",
     "tests/browser-picker-entry.ts",
     "types/experimental.d.ts",

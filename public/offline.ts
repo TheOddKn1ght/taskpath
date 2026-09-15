@@ -6,6 +6,7 @@ import { exportMarkdown } from './export-markdown.js';
 import { parseMarkdown } from './markdown.js';
 import { decryptEnvelope, encryptChange, validateConfig, validateEnvelope, PROFILE_ID, normalizeNickname } from './crypto.js';
 import { localState, commit, rememberedKey, saveUnlock, forgetKeys, selectedAccount, selectAccount, loadAccount } from './persistence.js';
+import { syncFiles } from './file-sync.js';
 export { localState, selectedAccount } from './persistence.js';
 let vaultKey: CryptoKey | null = null, epoch = -1, generation = 0;
 const page = typeof window !== 'undefined';
@@ -53,6 +54,15 @@ function assertUnlocked(record: EncryptedRecord, token = generation): asserts re
     if (vaultKey && token === generation && (record.inactive || epoch !== record.lockEpoch)) clearMemory();
     throw new RequestError('Unlock your workspace to continue.', 423);
   }
+}
+// File operations receive a scoped key only in an unlocked page. Never persist it.
+export async function withFileKey<T>(work:(key:CryptoKey, userId:string, vaultId:string, lockEpoch:number)=>Promise<T>):Promise<T> {
+  const started = generation, record = await localState();
+  if (!page) throw new Error('Unlock the workspace in a page.');
+  assertUnlocked(record,started);
+  const result = await work(vaultKey!,record.userId!,record.config.vaultId,record.lockEpoch);
+  assertUnlocked(await localState(),started);
+  return result;
 }
 export async function switchAccount(userId: string | null) {
   clearMemory();
@@ -158,7 +168,8 @@ export function sync() {
       changed(); throw error;
     }
   };
-  syncing = (globalThis.navigator?.locks ? navigator.locks.request('taskpath-accounts-sync', run) : run()).finally(() => { syncing = null; });
+  const combined = async () => { await run(); await syncFiles(); };
+  syncing = (globalThis.navigator?.locks ? navigator.locks.request('taskpath-accounts-sync', combined) : combined()).finally(() => { syncing = null; });
   return syncing;
 }
 async function plaintext(record: EncryptedRecord, token: number) {

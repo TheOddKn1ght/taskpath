@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v16/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v16/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/accounts-v17/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/accounts-v17/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v16/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v16/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v16/style.css">
-  <script src="/assets/accounts-v16/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v16/app.js" type="module"></script>
+  <link rel="icon" href="/assets/accounts-v17/favicon.svg" type="image/svg+xml">
+  <script src="/assets/accounts-v17/theme.js"></script>
+  <link rel="stylesheet" href="/assets/accounts-v17/style.css">
+  <script src="/assets/accounts-v17/pwa.js" type="module"></script>
+  <script src="/assets/accounts-v17/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -62,7 +62,7 @@
   </dialog>
   <a class="skip-link" href="#main">Skip to your tasks</a>
   <main id="main" inert>
-    <aside id="sidebar"><button type="button" id="sidebar-toggle" class="icon-button" aria-expanded="true" aria-label="Collapse sidebar" aria-controls="sidebar"><span data-icon="sidebar"></span></button><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button></nav></aside>
+    <aside id="sidebar"><button type="button" id="sidebar-toggle" class="icon-button" aria-expanded="true" aria-label="Collapse sidebar" aria-controls="sidebar"><span data-icon="sidebar"></span></button><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button><button type="button" data-view="files" aria-label="Files" title="Files"><span data-icon="files"></span><span class="nav-label">Files</span></button></nav></aside>
     <div class="workspace-content">
     <header class="app-header">
       <div class="app-heading"><button type="button" id="navigation-open" class="icon-button" aria-label="Open navigation" aria-haspopup="dialog" aria-controls="navigation-dialog" aria-expanded="false"><span data-icon="sidebar"></span></button><h1>taskpath<span>.</span></h1><span id="greeting" class="week-label"></span><span id="week-label" class="week-label">This week</span></div>
@@ -78,10 +78,11 @@
     <div class="error-banner" id="error-banner" role="alert" hidden><span id="error-text"></span><button class="subtle-button" id="retry">Try again</button></div>
     <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
     <section class="board" id="board" tabindex="-1" aria-label="Task planning board" aria-busy="true"><p class="loading-message loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span>Opening your tasks…</p></section>
+    <section id="files-view" aria-label="Encrypted files" hidden></section>
     <footer class="board-footer"><p>Plan your week. Pick your day.</p><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
     </div>
   </main>
-  <dialog id="navigation-dialog" aria-label="Navigation"><div class="dialog-top"><h2>taskpath<span>.</span></h2><button type="button" id="navigation-close" class="icon-button" aria-label="Close navigation"><span data-icon="x"></span></button></div><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button></nav></dialog>
+  <dialog id="navigation-dialog" aria-label="Navigation"><div class="dialog-top"><h2>taskpath<span>.</span></h2><button type="button" id="navigation-close" class="icon-button" aria-label="Close navigation"><span data-icon="x"></span></button></div><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button><button type="button" data-view="files" aria-label="Files" title="Files"><span data-icon="files"></span><span class="nav-label">Files</span></button></nav></dialog>
   <dialog id="archive-details-dialog" aria-labelledby="archive-details-title"><div class="dialog-top"><h2 id="archive-details-title">Archived task</h2><button type="button" class="icon-button" data-close="archive-details-dialog" aria-label="Close archived task"><span data-icon="x"></span></button></div><div id="archive-details-content"></div><div class="dialog-actions"><button type="button" id="archive-delete" class="subtle-button danger">Delete task</button><button type="button" id="archive-restore" class="primary-button">Restore task</button></div></dialog>
 
   <dialog id="task-dialog" class="task-dialog" aria-labelledby="dialog-title">

@@ -9,10 +9,11 @@ export const selectedAccount = () => selected;
 export const empty = (): EncryptedRecord => ({ revision: 0, lockEpoch: 0, config: null, board: null, pending: [], offset: 0, lastEdit: 0 });
 export function openDatabase() {
   if (!database) database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => { request.result.createObjectStore('state'); request.result.createObjectStore('keys'); };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(new Error('Device storage is unavailable. Enable browser storage to save encrypted changes.'));
+    const request = indexedDB.open(DB_NAME, 2); let blocked = false;
+    request.onupgradeneeded = () => { for (const name of ['state','keys','files','fileBlobs']) if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name); };
+    request.onblocked = () => { blocked = true; database = undefined; reject(new Error('Close other Taskpath tabs and reopen to finish updating browser storage. Do not clear site data.')); };
+    request.onsuccess = () => { if (blocked) { request.result.close(); return; } request.result.onversionchange = () => { request.result.close(); database = undefined; }; resolve(request.result); };
+    request.onerror = () => { database = undefined; reject(new Error('Device storage is unavailable. Enable browser storage to save encrypted changes.')); };
   });
   return database;
 }

@@ -18,8 +18,9 @@ const mode = process.env.QA_ASSETS || 'source';
 if (!['source', 'built'].includes(mode)) throw new Error('QA_ASSETS must be source or built');
 const hub = new Realtime();
 const app = createHandler(store, auth, undefined, hub, resolve(import.meta.dir, mode === 'built' ? '../dist/public' : '../public'));
-const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PORT || 3195), websocket: hub.websocket, async fetch(request, server) {
+const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PORT || 3195), maxRequestBodySize:11_000_000, websocket: hub.websocket, async fetch(request, server) {
   const path = new URL(request.url).pathname;
+  if (path === '/browser-files-checks.js') return new Response(await clientAsset(import.meta.dir, 'browser-files-checks.js'), { headers: { 'content-type': 'text/javascript' } });
   // A test-only same-origin frame supplies a real 390px layout viewport when
   // browser automation cannot resize hidden tabs. Production CSP stays unchanged.
   if (path === '/phone-preview') return new Response('<!doctype html><meta charset="utf-8"><title>Taskpath phone preview</title><iframe title="Phone viewport" src="/preview-shell" width="390" height="844" style="border:0"></iframe>', { headers: { 'content-type': 'text/html' } });

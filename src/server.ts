@@ -6,8 +6,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
 import { PushService } from './push';
-export const ASSET_VERSION = 'accounts-v16';
+import { FileRepository } from './db/files';
+import { decodeFile, fileEnvelope, fileQuota, FILE_MAX, FILE_HEADER_MAX } from '../public/file-format';
+import { validId } from '../public/crypto';
+export const ASSET_VERSION = 'accounts-v17';
 const assets = new Map<string, [string, string]>([
+  ["/file-format.js", ["file-format.js", "text/javascript; charset=utf-8"]],
+  ["/file-crypto.js", ["file-crypto.js", "text/javascript; charset=utf-8"]],
+  ["/file-persistence.js", ["file-persistence.js", "text/javascript; charset=utf-8"]],
+  ["/file-sync.js", ["file-sync.js", "text/javascript; charset=utf-8"]],
+  ["/file-client.js", ["file-client.js", "text/javascript; charset=utf-8"]],
+  ["/files-ui.js", ["files-ui.js", "text/javascript; charset=utf-8"]],
+
   ["/pickers.js", ["pickers.js", "text/javascript; charset=utf-8"]],
   ["/picker-model.js", ["picker-model.js", "text/javascript; charset=utf-8"]],
   ["/dom.js", ["dom.js", "text/javascript; charset=utf-8"]],
@@ -48,12 +58,13 @@ for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', '
   }
 }
 
-export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public'), push = new PushService(store)) {
+export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public'), push = new PushService(store), quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB)) {
+  const files = new FileRepository(store.orm,quota);
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && (!['http:', 'https:'].includes(trustedOrigin.protocol) || trustedOrigin.pathname !== '/' || trustedOrigin.search || trustedOrigin.hash || trustedOrigin.username || trustedOrigin.password)) throw new Error('TASKPATH_ORIGIN must be an HTTP(S) origin.');
   const headers = {
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   };
   const json = (value: unknown, status = 200, extra = {}) => Response.json(value, { status, headers: { ...headers, ...extra } });
   return async (request: Request, server?: Pick<Server<RealtimeData>, 'upgrade'>) => {
@@ -63,7 +74,8 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       const secure = origin.startsWith('https:');
       const read = ['GET', 'HEAD'].includes(request.method);
       if (!read && (request.headers.get('origin') !== origin || request.headers.get('sec-fetch-site') === 'cross-site')) throw new InputError('Cross-origin requests are not allowed.', 403);
-      if (!read && request.headers.get('content-type')?.split(';')[0] !== 'application/json') throw new InputError('Use application/json.', 415);
+      const fileUpload = path === '/api/files' && request.method === 'PUT';
+      if (!read && request.headers.get('content-type')?.split(';')[0] !== (fileUpload ? 'application/octet-stream' : 'application/json')) throw new InputError(fileUpload ? 'Use application/octet-stream.' : 'Use application/json.', 415);
       const body = async () => {
         const limit = path === '/api/sync' ? 2 * 1024 * 1024 : 32768;
         if (Number(request.headers.get('content-length')) > limit) throw new InputError('Request is too large.', 413);
@@ -108,6 +120,30 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
       const userId = auth.identity(request);
       if (!userId) return json({ error: 'Sign in to sync. Encrypted pending changes remain on this device.' }, 401);
       if (request.headers.get('x-taskpath-user') && request.headers.get('x-taskpath-user') !== userId) return json({ error: 'Another account is signed in. Unlock this account to sync.' }, 401);
+      if (path === '/api/files' || path.startsWith('/api/files/')) {
+        if (request.headers.get('x-taskpath-user') !== userId) throw new InputError('File requests require the active account.',401);
+        const vaultId = store.config(userId)!.vaultId;
+        if (path === '/api/files' && request.method === 'GET') return json(files.manifest(userId,vaultId));
+        if (fileUpload) {
+          const limit = FILE_MAX + FILE_HEADER_MAX + 20;
+          if (Number(request.headers.get('content-length')) > limit) throw new InputError('File is too large.',413);
+          const chunks:Uint8Array[] = []; let size = 0;
+          const reader = request.body?.getReader();
+          if (reader) while (true) { const {value,done} = await reader.read(); if (done) break; size += value.length; if (size > limit) { await reader.cancel(); throw new InputError('File is too large.',413); } chunks.push(value); }
+          let decoded;
+          try { decoded = decodeFile(new Uint8Array(Buffer.concat(chunks)),userId,vaultId); } catch { throw new InputError('Invalid encrypted file.'); }
+          files.upload(decoded.envelope,decoded.ciphertext); realtime?.notify(userId); return json({ok:true});
+        }
+        const id = path.slice('/api/files/'.length);
+        if (!validId(id)) throw new InputError('Invalid file ID.');
+        if (request.method === 'GET') return new Response(files.content(userId,id),{headers:{...headers,'Content-Type':'application/octet-stream','Content-Disposition':'attachment'}});
+        if (request.method === 'PATCH') {
+          let e; try { e = fileEnvelope(await body(),userId,vaultId); } catch { throw new InputError('Invalid encrypted file metadata.'); }
+          if (e.fileId !== id) throw new InputError('File ID mismatch.');
+          files.rename(e); realtime?.notify(userId); return json({ok:true});
+        }
+        if (request.method === 'DELETE') { files.delete(userId,id); realtime?.notify(userId); return json({ok:true}); }
+      }
       if (path === '/api/auth/logout' && request.method === 'POST') {
         auth.logout(request); realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
@@ -160,6 +196,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
   };
 }
 if (import.meta.main) {
+  const quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB);
   if (process.env.NODE_ENV === 'production') {
     const shell = resolve(import.meta.dir, '../dist/public/index.html');
     if (!existsSync(shell) || !readFileSync(shell, 'utf8').includes(`/assets/${ASSET_VERSION}/`)) throw new Error('Client build missing or outdated. Run bun run build before starting production.');
@@ -169,8 +206,8 @@ if (import.meta.main) {
   const auth = new AuthManager(store.db, Number(process.env.TASKPATH_SESSION_DAYS || 30));
   const realtime = new Realtime();
   const push = new PushService(store, process.env.TASKPATH_PUSH_SUBJECT || (process.env.TASKPATH_ORIGIN?.startsWith('https:') ? process.env.TASKPATH_ORIGIN : undefined));
-  const server = Bun.serve({ hostname: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000), maxRequestBodySize: 2 * 1024 * 1024,
-    fetch: createHandler(store, auth, process.env.TASKPATH_ORIGIN, realtime, undefined, push), websocket: realtime.websocket });
+  const server = Bun.serve({ hostname: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000), maxRequestBodySize: 11_000_000,
+    fetch: createHandler(store, auth, process.env.TASKPATH_ORIGIN, realtime, undefined, push, quota), websocket: realtime.websocket });
   push.start();
   const launchURL = new URL('/', process.env.TASKPATH_ORIGIN || server.url);
   if (!process.env.TASKPATH_ORIGIN && ['0.0.0.0', '[::]'].includes(launchURL.hostname)) launchURL.hostname = 'localhost';

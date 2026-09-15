@@ -10,7 +10,7 @@ export function navigation(onChange: (view: Route['view'], filters: Omit<Route,'
   const key = 'taskpath-sidebar-collapsed';
   let current: Route = { view: 'board', query: '', category: 'all', tag: '' };
   function readRoute(): Route | null {
-    const match = location.hash.match(/^#(board|archive)(?:\?(.*))?$/);
+    const match = location.hash.match(/^#(board|archive|files)(?:\?(.*))?$/);
     if (!match) return location.hash ? null : { view: 'board', query: '', category: 'all', tag: '' };
     const params = new URLSearchParams(match[2] || '');
     const category = ['work', 'personal'].includes(params.get('category') || '') ? params.get('category') as Route['category'] : 'all';
@@ -19,6 +19,7 @@ export function navigation(onChange: (view: Route['view'], filters: Omit<Route,'
     return { view: match[1] as Route['view'], query: params.get('q') || '', category, tag };
   }
   function hashFor(route: Route) {
+    if (route.view === 'files') return '#files';
     const params = new URLSearchParams();
     if (route.query) params.set('q', route.query);
     if (route.category !== 'all') params.set('category', route.category);

@@ -1,3 +1,4 @@
+import { showFiles } from './files-ui.js';
 import { mountPickers, refreshPickers, openTagPicker, closePicker } from './pickers.js';
 import type { Task, Board, Status, Route, ArchiveReceipt, ArchiveResult, MutationResult } from './types.js';
 import { select as $, selectAll as $$ } from './dom.js';
@@ -14,6 +15,7 @@ await startVault();
 setupPush();
 
 const paths: Record<string, string> = {
+  files: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/>',
   archive: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
@@ -131,7 +133,7 @@ function renderReminders(board: Board) {
     panel.innerHTML = html;
     if (board.reminders?.length > previous) announce(`${board.reminders.length} ${board.reminders.length === 1 ? 'reminder is' : 'reminders are'} due.`);
   }
-  panel.hidden = !html || state.view === 'archive';
+  panel.hidden = !html || state.view !== 'board';
   clearTimeout(reminderTimer);
   const upcoming = board.tasks.filter(t => !t.archivedAt && t.reminderAt && !t.reminderDismissedAt && t.status !== 'done' && t.reminderAt > board.serverTime);
   if (upcoming.length) {
@@ -460,6 +462,9 @@ function taskMarkup(task: Task, index: number, total: number) {
 }
 
 function render() {
+  showFiles(state.view === 'files');
+  $('#board').hidden = state.view === 'files';
+  if (state.view === 'files') { $('#new-task').hidden = true; $('#reminder-panel').hidden = true; return; }
   closeTaskContextMenu(true);
   const focus = document.activeElement as HTMLElement | null;
   const focusedId = focus?.id;

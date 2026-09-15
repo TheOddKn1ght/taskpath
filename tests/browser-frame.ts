@@ -1,10 +1,19 @@
-import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v16/offline.js';
-import { loadAccount } from '/assets/accounts-v16/persistence.js';
-import { unlockVault } from '/assets/accounts-v16/crypto.js';
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v17/offline.js';
+import { addFile } from '/assets/accounts-v17/file-client.js';
+import { loadAccount } from '/assets/accounts-v17/persistence.js';
+import { unlockVault } from '/assets/accounts-v17/crypto.js';
 window.addEventListener('message', async event => {
   if (event.origin !== location.origin) return;
   try {
   await loadAccount();
+    if (event.data === 'file-edit') {
+      const record=await localState(), unlocked=await unlockVault('browser second password 2026',record.config!);
+      await activate(record.config!,unlocked.key,false,record.lockEpoch);
+      const original=window.fetch;window.fetch=async()=>{throw new TypeError('Offline frame');};
+      try { await addFile(new File(['frame'],'frame-concurrent.txt')); }
+      finally { window.fetch=original; }
+      parent.postMessage('file-edited',location.origin);
+    }
     if (event.data === 'edit') {
       const record = await localState(), unlocked = await unlockVault('browser harness password 2026', record.config!);
       await activate(record.config!, unlocked.key, false, record.lockEpoch);

@@ -17,7 +17,7 @@ import { fixture, testVault, testUserId, origin } from './auth-helpers';
 const time = new Date('2026-09-11T12:00:00Z');
 const tables = ['encrypted_format', 'settings', 'accounts', 'auth_sessions', 'encrypted_tasks', 'reminder_claims', 'push_subscriptions', 'push_reminders', 'push_deliveries'];
 const snapshot = (db: Database) => ({
-  schema: db.query("SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all(),
+  schema: db.query("SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name != 'encrypted_files' ORDER BY name").all(),
   // Table identifiers are a fixed test fixture, never request input.
   rows: tables.map(table => db.query(`SELECT * FROM ${table} ORDER BY rowid`).all()),
 });

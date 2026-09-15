@@ -31,5 +31,5 @@ export interface MutationResult { ok: boolean; task: Task; undo?: ArchiveReceipt
 export interface ArchiveResult { archived:number; restored:number; skipped:number; undo:ArchiveReceipt[] }
 export interface ImportPreview { tasks:Task[]; skipped:number }
 export type TaskInput = Partial<Task> & { beforeId?:string | null; action?:string };
-export interface Route { view:'board'|'archive'; query:string; category:'all'|Category; tag:string }
+export interface Route { view:'board'|'archive'|'files'; query:string; category:'all'|Category; tag:string }
 export interface PushStatus { available:boolean; publicKey:string | null; subscriptionIds:string[]; enabled?:boolean }

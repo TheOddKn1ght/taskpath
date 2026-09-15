@@ -1,9 +1,10 @@
+import { fileChecks } from './browser-files-checks.js';
 import { pickerChecks } from './browser-picker-checks.js';
 import type { VaultConfig } from '../public/types.js';
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v16/offline.js';
-import { openDatabase, commit, rememberedKey } from '/assets/accounts-v16/persistence.js';
-import { unlockVault } from '/assets/accounts-v16/crypto.js';
-import { selectAccount } from '/assets/accounts-v16/persistence.js';
+import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v17/offline.js';
+import { openDatabase, commit, rememberedKey } from '/assets/accounts-v17/persistence.js';
+import { unlockVault } from '/assets/accounts-v17/crypto.js';
+import { selectAccount } from '/assets/accounts-v17/persistence.js';
 const report = document.getElementById('result')!, results: string[] = [], password = 'browser harness password 2026';
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
 const originalFetch = window.fetch.bind(window); const requests: string[] = [];
@@ -14,6 +15,15 @@ window.fetch = async (url, options) => {
   return originalFetch(url, options);
 };
 try {
+  // Seed the prior account database before the additive Files upgrade. Only the
+  // isolated harness origin is used; production storage is never reset.
+  const upgradeMarker = { pending: [{ changeId: 'upgrade-identity', editedAt: '2020-01-01T00:00:00.000Z', ciphertext: 'opaque-upgrade-fixture' }] };
+  const prior = await new Promise<IDBDatabase>((resolve,reject) => { const r=indexedDB.open('taskpath-accounts-v1'); r.onupgradeneeded=()=>{r.result.createObjectStore('state');r.result.createObjectStore('keys');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error); });
+  await new Promise<void>((resolve,reject)=>{const tx=prior.transaction('state','readwrite');tx.objectStore('state').put(upgradeMarker,'upgrade-fixture');tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});prior.close();
+  const upgraded=await openDatabase();
+  const preserved=await new Promise(resolve=>{const r=upgraded.transaction('state').objectStore('state').get('upgrade-fixture');r.onsuccess=()=>resolve(r.result);});
+  assert(upgraded.version===2 && upgraded.objectStoreNames.contains('fileBlobs'),'file stores upgrade the account database additively');
+  assert(JSON.stringify(preserved)===JSON.stringify(upgradeMarker),'file storage upgrade preserves pending ciphertext, IDs and timestamps');
   // A legacy queue is deliberately left untouched, including operation identity and time.
   const legacy = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('taskpath-offline-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('state'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
   const legacyValue = { pending: [{ changeId: 'legacy-id', editedAt: '2020-01-01T00:00:00.000Z', task: { title: 'LEGACY_PRIVATE_DATA' } }] };
@@ -159,6 +169,7 @@ try {
   const switched = waitMessage('locked'); await switchAccount(secondUserId); await switched;
   assert(!isUnlocked(), 'account switch locks other browser contexts');
   frame.remove(); legacy.close();
+  await fileChecks(assert);
   await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
 } catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }

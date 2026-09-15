@@ -1,9 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const encryptedFormat = sqliteTable('encrypted_format', {
   version: integer().notNull(),
 });
+export const encryptedFiles = sqliteTable('encrypted_files', {
+  userId:text().notNull(), fileId:text().notNull(), bytes:integer().notNull(),
+  envelope:text(), ciphertext:blob({mode:'buffer'}), deleted:integer({mode:'boolean'}).notNull(),
+}, table => [primaryKey({columns:[table.userId,table.fileId]})]);
 
 export const settings = sqliteTable('settings', {
   key: text().primaryKey(),

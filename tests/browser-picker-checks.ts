@@ -1,4 +1,4 @@
-import { closePicker, mountPickers, openTagPicker, refreshPickers } from '/assets/accounts-v16/pickers.js';
+import { closePicker, mountPickers, openTagPicker, refreshPickers } from '/assets/accounts-v17/pickers.js';
 
 export async function pickerChecks(assert: (condition: unknown, message: string) => void) {
   const host = document.createElement('dialog'); host.setAttribute('aria-label', 'Picker fixture');

@@ -162,7 +162,7 @@ docker compose logs taskpath
 
 Compose binds to `127.0.0.1:3000` and uses a new `taskpath-accounts-data` volume. Set `TASKPATH_START_SCRIPT=start:smol` for optional reduced-memory mode. Authentication is mandatory; remove old `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` settings. Create invitations with `docker compose exec taskpath bun run admin invite`; recipients choose passwords in their browsers.
 
-For public access, use the included [Nginx template](deploy/nginx/taskpath.conf.example), valid HTTPS, `TASKPATH_ORIGIN=https://your-domain`, and cookie/Origin forwarding. Keep the application port private. Existing WebSocket and 2 MB sync proxy configuration works with encryption; no new Nginx directives are required. See the [step-by-step VPS guide](DEPLOYMENT.md).
+For public access, use the included [Nginx template](deploy/nginx/taskpath.conf.example), valid HTTPS, `TASKPATH_ORIGIN=https://your-domain`, and cookie/Origin forwarding. Keep the application port private. Keep the existing WebSocket and 2 MB sync proxy configuration, and add the 11 MB `/api/files` exception from the updated template. See the [step-by-step VPS guide](DEPLOYMENT.md).
 
 ## Verification and GitHub CI
 
@@ -193,3 +193,15 @@ Reminders show the calendar and custom Hour (00–23) / Minute (00–59) lists t
 The centering fix uses new `accounts-v15` asset URLs and a fresh PWA shell cache. The reminder dialog is centered in the desktop viewport; phones retain the bottom sheet. After updating the server, open online, close all Taskpath tabs/PWA windows, then reopen. Existing tasks, storage and pending changes are preserved; do not clear site data.
 
 The combined picker cleanup uses `accounts-v16` asset URLs and removes the redundant clock button; hour/minute lists and manual entry remain available.
+
+### Encrypted Files (accounts-v17)
+
+Open **Files** in the sidebar or phone drawer. Upload one or more files, rename them, download originals, or preview PNG/JPEG/WebP/GIF images. Other types—including HTML and SVG—are download-only. Files have no sharing, folders or task attachments. Deletion asks for confirmation and is permanent; deleting offline frees server storage after sync. A deletion wins over stale uploads and renames on other devices.
+
+Files use your existing vault password and remembered-device setting. Contents and filenames are encrypted in the browser, stored as ciphertext in SQLite and IndexedDB, and automatically downloaded for offline use. **Available offline** means the download completed. Uploads/renames/deletions queue offline; **Waiting for space** keeps the encrypted upload locally so you can download it or discard it. An expired session requires sign-in before syncing. Browser eviction, clearing site data and interrupted background execution can still affect offline availability. Keep original files until uploads are synced.
+
+Set `TASKPATH_FILE_QUOTA_MB=10` to configure the allowance **per user** for all accounts. One MB is 1,000,000 bytes of original file contents, excluding bounded encryption metadata. The value must be a nonnegative whole number; `0` blocks new uploads. Restart the server (recreate the Docker container) to apply changes. Lowering the allowance never deletes existing files: over-quota accounts can still read, rename and delete. Each file is limited to 10 MB or the configured allowance when lower, and each account supports up to 1,000 live files. Increasing the total allowance does not raise the single-file limit. The interface displays both local usage and authoritative server usage; offline figures can be stale.
+
+Each file has a random key wrapped by the vault key. Password changes do not re-encrypt files. Lock removes decrypted names and previews and revokes their Blob URLs; encrypted transfers may continue while locked without loading keys. Copies already downloaded outside Taskpath remain outside its control. The server can see file sizes, opaque identifiers, deletion markers and traffic patterns, but not filenames or contents. A compromised host serving malicious JavaScript remains outside E2EE's protection.
+
+This release adds file tables and browser stores without rewriting tasks or pending task operations. Sync devices, update online, close all Taskpath tabs/PWA windows, then reopen. Do not clear site data. SQLite backups now include encrypted files; task Markdown/JSON exports still contain tasks only. Download files individually for readable copies.

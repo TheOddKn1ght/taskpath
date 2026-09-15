@@ -34,6 +34,7 @@ export function openDatabase(path: string, timezone: string) {
     CREATE INDEX IF NOT EXISTS push_due ON push_reminders(dueAt);
   `);
   db.exec('CREATE TABLE IF NOT EXISTS auth_sessions (tokenHash TEXT PRIMARY KEY, userId TEXT NOT NULL, revision INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
+  db.transaction(() => db.exec('CREATE TABLE IF NOT EXISTS encrypted_files (userId TEXT NOT NULL, fileId TEXT NOT NULL, bytes INTEGER NOT NULL CHECK(bytes >= 0), envelope TEXT, ciphertext BLOB, deleted INTEGER NOT NULL CHECK(deleted IN (0,1)), PRIMARY KEY(userId,fileId))'))();
   return db;
 }
 
