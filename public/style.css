@@ -511,3 +511,13 @@ dialog.picker-surface { position:fixed; margin:0; padding:16px; border-radius:12
 .file-action-dialog p { margin:16px 0; overflow-wrap:anywhere; }.file-action-dialog input { width:100%; min-height:44px; padding:10px; background:var(--surface); border:1px solid var(--line); border-radius:6px; }
 body.vault-locked #files-view { display:none; }
 @media(max-width:760px) { .file-row { align-items:stretch; flex-direction:column; }.file-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }.file-actions button { width:100%; }#files-view > input,.file-action-dialog input { font-size:16px; } }
+
+/* The public notice is available without unlocking or leaving the workspace. */
+.privacy-entry { text-align:center; margin-top:8px; }
+[data-privacy-open],#privacy-close { min-height:44px; min-width:44px; }
+.board-footer { align-items:center; }
+#privacy-dialog { width:640px; margin:auto; overscroll-behavior:contain; }
+.privacy-copy { font-size:14px; line-height:1.7; color:var(--muted); overflow-wrap:anywhere; }
+.privacy-copy h3 { margin-top:24px; margin-bottom:8px; font-size:15px; color:var(--text); }
+.privacy-copy p { margin-top:12px; }
+.privacy-copy strong { color:var(--text); }

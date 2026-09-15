@@ -1,5 +1,6 @@
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { resolve, dirname, extname } from 'node:path';
+import { sourceRelease, stampRelease, digest, BUILD_MANIFEST, type BuildManifest } from '../src/client-release';
 
 const root = resolve(import.meta.dir, '..');
 
@@ -28,6 +29,7 @@ export async function compactHTML(source: string) {
 }
 
 export async function buildClient() {
+  const release = sourceRelease('built');
   const source = resolve(root, 'public'), output = resolve(root, 'dist/public');
   const staging = resolve(root, 'dist/.client-build');
   await rm(staging, { recursive: true, force: true });
@@ -51,14 +53,14 @@ export async function buildClient() {
         });
         if (!result.success) throw new AggregateError(result.logs, `Could not minify ${name}`);
         if (result.outputs.length !== 1) throw new Error(`Unexpected outputs for ${name}`);
-        await Bun.write(destination, result.outputs[0]);
+        await Bun.write(destination, stampRelease(await result.outputs[0].text(), release));
       } else if (extension === '.html') {
-        await Bun.write(destination, (await compactHTML(await input.text())).trim());
+        await Bun.write(destination, stampRelease((await compactHTML(await input.text())).trim(), release));
       } else if (extension === '.webmanifest' || extension === '.json') {
-        await Bun.write(destination, JSON.stringify(await input.json()));
+        await Bun.write(destination, stampRelease(JSON.stringify(await input.json()), release));
       } else if (extension === '.svg') {
         // Our SVG is already compact; do not alter path geometry or attributes.
-        await Bun.write(destination, (await input.text()).trim());
+        await Bun.write(destination, stampRelease((await input.text()).trim(), release));
       } else {
         // Keep binary icons and the vendored license/provenance intact.
         await Bun.write(destination, input);
@@ -68,10 +70,16 @@ export async function buildClient() {
         after += Bun.file(destination).size;
       }
     }
+    if (sourceRelease('built').version !== release.version) throw new Error('Client inputs changed during the build. Run bun run build again.');
+    const manifest: BuildManifest = { format: 1, version: release.version, files: {} };
+    for (const name of [...new Bun.Glob('**/*').scanSync({ cwd: staging, onlyFiles: true })].sort()) {
+      manifest.files[name] = digest(new Uint8Array(await Bun.file(resolve(staging, name)).arrayBuffer()));
+    }
+    await Bun.write(resolve(staging, BUILD_MANIFEST), JSON.stringify(manifest));
     // Never leave a partially minified tree after a compilation failure.
     await rm(output, { recursive: true, force: true });
     await rename(staging, output);
-    console.log(`Client built: ${(before / 1024).toFixed(1)} → ${(after / 1024).toFixed(1)} KiB (${Math.round((1 - after / before) * 100)}% smaller).`);
+    console.log(`Client ${release.version} built: ${(before / 1024).toFixed(1)} → ${(after / 1024).toFixed(1)} KiB (${Math.round((1 - after / before) * 100)}% smaller).`);
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

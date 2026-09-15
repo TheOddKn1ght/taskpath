@@ -1,7 +1,7 @@
-import { activate, localState, offlineRequest, isUnlocked } from '/assets/accounts-v17/offline.js';
-import { addFile } from '/assets/accounts-v17/file-client.js';
-import { loadAccount } from '/assets/accounts-v17/persistence.js';
-import { unlockVault } from '/assets/accounts-v17/crypto.js';
+import { activate, localState, offlineRequest, isUnlocked } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import { addFile } from '/assets/__TASKPATH_RELEASE__/file-client.js';
+import { loadAccount } from '/assets/__TASKPATH_RELEASE__/persistence.js';
+import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
 window.addEventListener('message', async event => {
   if (event.origin !== location.origin) return;
   try {

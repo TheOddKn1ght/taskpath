@@ -387,7 +387,7 @@ If `docker compose` is unrecognized, install `docker-compose-plugin` from the Do
 
 Confirm `bun.lock` and `scripts/build.ts` were uploaded, then rebuild the image. Do not copy host `node_modules` into the container. A frozen-lockfile failure means `package.json` and `bun.lock` do not match; upload both from the same project revision. Do not delete the lockfile to bypass the check.
 
-For non-Docker production, **Client build missing or outdated** means you must run `bun run build` before starting the server. If the server is updated but the UI is still old, follow the close-all-windows PWA update procedure. Do not clear site storage as the first fix.
+For non-Docker production, **Client build missing, outdated or damaged** means you must run `bun run build` before starting the server. If the server is updated but the UI is still old, follow the close-all-windows PWA update procedure. Do not clear site storage as the first fix.
 
 ### Background notifications do not arrive
 
@@ -462,3 +462,10 @@ There is no reset or recovery mechanism. The server cannot decrypt your tasks. A
 Quota changes require recreating the container after editing `.env`. Lowering the allowance preserves files and blocks new uploads until usage fits; retries of accepted uploads do not charge twice. Pending files rejected by a changed quota remain on their originating browser with **Waiting for space**. They are not yet in server backups.
 
 The existing SQLite backup now contains file ciphertext, wrapped file keys, metadata and deletion markers. The allowance measures original file bytes, not physical SQLite/WAL/backup disk usage. Deletion does not retroactively erase old backups. Task Markdown/JSON exports do not include files. Allow browser storage for offline access and keep originals until sync completes. Image previews work only in the unlocked app; downloaded copies are ordinary readable files outside Taskpath.
+
+
+## Client updates and automatic fingerprints
+
+Asset URLs and PWA caches now receive an automatic content fingerprint. Do not edit release numbers. Docker generates the fingerprint during its normal build; for a direct installation, run `bun run build` and restart the server. Keep the generated `dist/public/.taskpath-build.json` together with the complete `dist/public` directory when copying a build. The manifest is internal and is not served over HTTP. Production validates file checksums and serves one fixed release until restart.
+
+Open the update online, then close every Taskpath tab and PWA window and reopen. This activation rule also applies when upgrading from `accounts-v18` or earlier. Do not clear browser storage, replace database volumes or recreate accounts. Backend-only changes do not inherently require a new client cache. No Nginx changes are needed for fingerprinted URLs.

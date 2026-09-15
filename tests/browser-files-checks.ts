@@ -1,9 +1,9 @@
 import type { VaultConfig } from '../public/types.js';
-import { network, activate, localState, lock, switchAccount, isUnlocked } from '/assets/accounts-v17/offline.js';
-import { unlockVault } from '/assets/accounts-v17/crypto.js';
-import { addFile, listFiles, readStoredFile, renameStoredFile, deleteStoredFile } from '/assets/accounts-v17/file-client.js';
-import { fileState, fileBlob, writeFiles } from '/assets/accounts-v17/file-persistence.js';
-import { syncFiles } from '/assets/accounts-v17/file-sync.js';
+import { network, activate, localState, lock, switchAccount, isUnlocked } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
+import { addFile, listFiles, readStoredFile, renameStoredFile, deleteStoredFile } from '/assets/__TASKPATH_RELEASE__/file-client.js';
+import { fileState, fileBlob, writeFiles } from '/assets/__TASKPATH_RELEASE__/file-persistence.js';
+import { syncFiles } from '/assets/__TASKPATH_RELEASE__/file-sync.js';
 export async function fileChecks(assert:(value:unknown,message:string)=>void) {
   const nativeFetch=window.fetch.bind(window);
   let offline=false,full=false,loseReply=false,failBefore=false;

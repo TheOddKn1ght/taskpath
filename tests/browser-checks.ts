@@ -1,10 +1,10 @@
 import { fileChecks } from './browser-files-checks.js';
 import { pickerChecks } from './browser-picker-checks.js';
 import type { VaultConfig } from '../public/types.js';
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/accounts-v17/offline.js';
-import { openDatabase, commit, rememberedKey } from '/assets/accounts-v17/persistence.js';
-import { unlockVault } from '/assets/accounts-v17/crypto.js';
-import { selectAccount } from '/assets/accounts-v17/persistence.js';
+import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import { openDatabase, commit, rememberedKey } from '/assets/__TASKPATH_RELEASE__/persistence.js';
+import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
+import { selectAccount } from '/assets/__TASKPATH_RELEASE__/persistence.js';
 const report = document.getElementById('result')!, results: string[] = [], password = 'browser harness password 2026';
 function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
 const originalFetch = window.fetch.bind(window); const requests: string[] = [];
@@ -121,10 +121,21 @@ try {
   assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
   const legacyCache = await caches.open('taskpath-shell-legacy-check');
   await legacyCache.put('/legacy-shell', new Response('legacy static shell'));
+  const previousReleaseCache = await caches.open('taskpath-shell-accounts-v18');
+  await previousReleaseCache.put('/previous-shell', new Response('previous numbered shell'));
   const registration = await navigator.serviceWorker.register('/sw.js', { type: 'module' });
   await navigator.serviceWorker.ready;
+  // ready can resolve while activation's waitUntil cleanup is still running.
+  const activeWorker = registration.active;
+  if (activeWorker && activeWorker.state !== 'activated') await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => { activeWorker.removeEventListener('statechange', changed); reject(new Error('Worker activation timed out')); }, 10000);
+    function changed() { if (activeWorker!.state === 'activated') { clearTimeout(timer); activeWorker!.removeEventListener('statechange', changed); resolve(); } }
+    activeWorker.addEventListener('statechange', changed); changed();
+  });
   const cacheNames = await caches.keys(); let cacheText = '';
   for (const name of cacheNames) { const cache = await caches.open(name); for (const url of await cache.keys()) { if (url.url.includes('/api/')) throw new Error('API response was cached'); const response = await cache.match(url); if (/text|javascript|json/.test(response?.headers.get('content-type') || '')) cacheText += await response!.text(); } }
+  assert(cacheNames.includes('taskpath-shell-__TASKPATH_RELEASE__'), 'PWA installs the generated fingerprint cache');
+  assert(!cacheNames.includes('taskpath-shell-accounts-v18'), 'PWA activation retires numbered caches without resetting browser storage');
   assert(Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')), 'legacy shell cache remains untouched');
   assert(!/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText), 'PWA caches contain only static assets, not task plaintext');
   await registration.unregister();

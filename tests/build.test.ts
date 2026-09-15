@@ -1,13 +1,16 @@
 import { test, expect } from 'bun:test';
 import { resolve, dirname } from 'node:path';
 import { compactHTML } from '../scripts/build';
-import { createHandler, ASSET_VERSION } from '../src/server';
+import { createHandler } from '../src/server';
 import { Store } from '../src/store';
+import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release';
 
 const root = resolve(import.meta.dir, '..');
 const sourceName = (name: string) => name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
 const built = resolve(root, 'dist/public');
-const hasBuild = await Bun.file(resolve(built, 'index.html')).exists() && (await Bun.file(resolve(built, 'index.html')).text()).includes(`/assets/${ASSET_VERSION}/`);
+const hasBuild = await Bun.file(resolve(built, BUILD_MANIFEST)).exists();
+const release = hasBuild ? releaseForDirectory(built) : sourceRelease('built');
+const ASSET_VERSION = release.version;
 
 test('HTML compaction preserves inline spacing, entities, attributes and literal text', async () => {
   const source = '<!doctype html>\n<p title="a  b">Hello \n <strong>world</strong> &amp; friends&nbsp;!</p><!-- discard -->\n<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea><script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>';
@@ -33,6 +36,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
       expect(await Bun.file(target).exists()).toBe(true);
     }
     expect(output).not.toContain('sourceMappingURL');
+    expect(output).not.toContain('__TASKPATH_RELEASE__');
   }
   expect(scan.scan(await Bun.file(resolve(built, 'app.js')).text()).imports.some(i => i.path === './offline.js')).toBe(true);
   expect(scan.scan(await Bun.file(resolve(built, 'vault-ui.js')).text()).imports.some(i => i.path === './offline.js')).toBe(true);
@@ -47,11 +51,12 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
       expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
       expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(await Bun.file(resolve(built, name)).arrayBuffer()));
     }
+    expect((await handler(new Request(`http://localhost/assets/${ASSET_VERSION}/.taskpath-build.json`)))!.status).not.toBe(200);
     const html = await Bun.file(resolve(built, 'index.html')).text();
     for (const [, url] of html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)) {
       expect((await handler(new Request('http://localhost' + url)))!.status).toBe(200);
     }
-    expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(await Bun.file(resolve(root, 'public/manifest.webmanifest')).json());
+    expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
     expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
     for (const name of ['app.js', 'style.css', 'index.html', 'sw.js', 'manifest.webmanifest']) {
       expect(Bun.file(resolve(built, name)).size).toBeLessThan(Bun.file(resolve(root, 'public', sourceName(name))).size);

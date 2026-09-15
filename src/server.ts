@@ -2,15 +2,15 @@ import { clientAsset } from './client-assets';
 import type { Server } from 'bun';
 import { Realtime, type RealtimeData } from './realtime';
 import { resolve } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { SOURCE_DIRECTORY, sourceRelease, releaseForDirectory } from './client-release';
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
 import { PushService } from './push';
 import { FileRepository } from './db/files';
 import { decodeFile, fileEnvelope, fileQuota, FILE_MAX, FILE_HEADER_MAX } from '../public/file-format';
 import { validId } from '../public/crypto';
-export const ASSET_VERSION = 'accounts-v17';
 const assets = new Map<string, [string, string]>([
+  ["/privacy.js", ["privacy.js", "text/javascript; charset=utf-8"]],
   ["/file-format.js", ["file-format.js", "text/javascript; charset=utf-8"]],
   ["/file-crypto.js", ["file-crypto.js", "text/javascript; charset=utf-8"]],
   ["/file-persistence.js", ["file-persistence.js", "text/javascript; charset=utf-8"]],
@@ -59,6 +59,7 @@ for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', '
 }
 
 export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public'), push = new PushService(store), quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB)) {
+  const fixedRelease = resolve(assetDirectory) === SOURCE_DIRECTORY ? null : releaseForDirectory(assetDirectory);
   const files = new FileRepository(store.orm,quota);
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && (!['http:', 'https:'].includes(trustedOrigin.protocol) || trustedOrigin.pathname !== '/' || trustedOrigin.search || trustedOrigin.hash || trustedOrigin.username || trustedOrigin.password)) throw new Error('TASKPATH_ORIGIN must be an HTTP(S) origin.');
@@ -109,13 +110,16 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie(session.token, session.maxAge, secure) });
       }
       // Every shell is public and contains no task data. Unlock happens in the page.
-      const assetPath = path.startsWith(`/assets/${ASSET_VERSION}/`) ? path.slice(`/assets/${ASSET_VERSION}`.length) : path;
       const shell = ['/', '/login', '/offline-shell', '/login-shell'].includes(path);
-      if (read && assets.has(assetPath) && (shell || path === '/sw.js' || path.startsWith(`/assets/${ASSET_VERSION}/`))) {
-        const [file, type] = assets.get(assetPath)!;
-        const socketOrigin = origin.replace(/^http/, 'ws');
-        return new Response(request.method === 'HEAD' ? null : await clientAsset(assetDirectory, file), { headers: { ...headers, 'Content-Type': type,
-          'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
+      if (read && (shell || path === '/sw.js' || path.startsWith('/assets/'))) {
+        const release = fixedRelease || sourceRelease(), assetVersion = release.version;
+        const assetPath = path.startsWith(`/assets/${assetVersion}/`) ? path.slice(`/assets/${assetVersion}`.length) : path;
+        if (assets.has(assetPath) && (shell || path === '/sw.js' || path.startsWith(`/assets/${assetVersion}/`))) {
+          const [file, type] = assets.get(assetPath)!;
+          const socketOrigin = origin.replace(/^http/, 'ws');
+          return new Response(request.method === 'HEAD' ? null : await clientAsset(assetDirectory, file, release), { headers: { ...headers, 'Content-Type': type,
+            'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
+        }
       }
       const userId = auth.identity(request);
       if (!userId) return json({ error: 'Sign in to sync. Encrypted pending changes remain on this device.' }, 401);
@@ -198,8 +202,7 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
 if (import.meta.main) {
   const quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB);
   if (process.env.NODE_ENV === 'production') {
-    const shell = resolve(import.meta.dir, '../dist/public/index.html');
-    if (!existsSync(shell) || !readFileSync(shell, 'utf8').includes(`/assets/${ASSET_VERSION}/`)) throw new Error('Client build missing or outdated. Run bun run build before starting production.');
+    releaseForDirectory(resolve(import.meta.dir, '../dist/public'));
   }
   if (process.env.TASKPATH_PASSWORD || process.env.TASKPATH_PASSWORD_HASH || process.env.TASKPATH_USERNAME) throw new Error('Remove legacy authentication environment variables. This version uses browser-based encrypted setup and a fresh database.');
   const store = new Store(process.env.DATABASE_PATH || './data/taskpath-accounts.sqlite', undefined, process.env.TASKPATH_TIMEZONE);

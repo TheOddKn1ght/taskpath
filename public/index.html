@@ -3,18 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <link rel="manifest" href="/assets/accounts-v17/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/accounts-v17/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/__TASKPATH_RELEASE__/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/__TASKPATH_RELEASE__/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fafaf8">
   <meta name="description" content="A little space to plan your week and focus your day. A private, simple task manager.">
   <title>Taskpath</title>
-  <link rel="icon" href="/assets/accounts-v17/favicon.svg" type="image/svg+xml">
-  <script src="/assets/accounts-v17/theme.js"></script>
-  <link rel="stylesheet" href="/assets/accounts-v17/style.css">
-  <script src="/assets/accounts-v17/pwa.js" type="module"></script>
-  <script src="/assets/accounts-v17/app.js" type="module"></script>
+  <link rel="icon" href="/assets/__TASKPATH_RELEASE__/favicon.svg" type="image/svg+xml">
+  <script src="/assets/__TASKPATH_RELEASE__/theme.js"></script>
+  <link rel="stylesheet" href="/assets/__TASKPATH_RELEASE__/style.css">
+  <script src="/assets/__TASKPATH_RELEASE__/pwa.js" type="module"></script>
+  <script src="/assets/__TASKPATH_RELEASE__/privacy.js" type="module"></script>
+  <script src="/assets/__TASKPATH_RELEASE__/app.js" type="module"></script>
 </head>
 <body class="vault-locked">
 
@@ -39,7 +40,33 @@
       </form>
     </div>
     <p class="auth-note">Use 15–1,024 characters. A password manager is recommended. Forgotten passwords cannot be recovered by the server.</p>
+    <p class="privacy-entry"><button type="button" class="subtle-button" data-privacy-open aria-haspopup="dialog" aria-controls="privacy-dialog">Privacy notice</button></p>
   </section>
+
+  <dialog id="privacy-dialog" aria-labelledby="privacy-title">
+    <div class="dialog-top"><h2 id="privacy-title" tabindex="-1">Privacy notice</h2><button type="button" id="privacy-close" class="secondary-button">Close</button></div>
+    <div class="privacy-copy">
+      <p>Taskpath is a private, invite-only task manager and file vault. This notice describes the app; the person operating this instance controls its hosting, logs and backups.</p>
+      <h3>What stays encrypted</h3>
+      <p>Your browser encrypts task contents, tags, dates, nickname, file contents, filenames, file types and original modification dates before sending them to the server. Your vault password unlocks this data. The server stores ciphertext and wrapped keys, with no administrator decryption key.</p>
+      <h3>What the operator can see</h3>
+      <p>The server handles user IDs, invitations, authentication verifiers, sessions, opaque record IDs, file sizes, storage usage, sync timestamps and deletion markers. The hosting server or reverse proxy may log IP addresses, request paths, browser information and access times. Encryption does not hide this metadata or traffic patterns.</p>
+      <h3>Signing in and this browser</h3>
+      <p>The browser sends a password-derived login credential over HTTPS, not your vault password. The server stores a hash of that credential and uses an essential session cookie for sign-in. That cookie does not contain your password or decryption key.</p>
+      <p>Taskpath keeps encrypted tasks, files and pending changes in browser storage for offline use, and caches app assets. Appearance preferences are stored locally. With <strong>Remember this device</strong> enabled, a decryption key is also saved in this browser profile; anyone using it may be able to open your workspace.</p>
+      <p><strong>Lock</strong> removes decrypted content and remembered keys from this browser's Taskpath tabs, while keeping encrypted offline data and pending changes. Browser storage can be evicted. Downloaded files and readable exports are outside Taskpath's control.</p>
+      <h3>Optional notifications</h3>
+      <p>Background reminders share scheduled reminder times, random identifiers and this device's push subscription with the server. Delivery uses your browser's push provider. Background notification text is generic and contains no task title or notes. Disable background reminders in workspace options when you no longer want them.</p>
+      <h3>Deletion, backups and recovery</h3>
+      <p>Data remains on the server and your devices until removed. Deleted tasks may remain as encrypted sync records. Permanently deleting a file removes its live server copy after sync; deletion markers, backups and copies on devices that have not synced may remain. The operator controls backup and log retention. Old plaintext backups from earlier versions remain plaintext.</p>
+      <p>There is no password reset or recovery key. If you forget your password, an already unlocked or remembered device may still let you export data; otherwise it cannot be recovered by the server. Changing a password cannot revoke decryption keys someone has already copied.</p>
+      <h3>Limits of encryption</h3>
+      <p>An administrator cannot read your tasks or files from the database alone. Someone controlling the server could, however, serve malicious JavaScript that captures an entered password or unlocked data. A compromised device or browser extension can also expose it. Only use an instance and devices you trust.</p>
+      <h3>Tracking and questions</h3>
+      <p>Taskpath itself includes no advertising or analytics trackers. Hosting infrastructure and optional push providers have their own data practices. Contact the person who invited you or operates this instance for questions about hosting, logs, retention or account deletion.</p>
+    </div>
+  </dialog>
+
   <dialog id="push-dialog" aria-labelledby="push-title">
     <div class="dialog-top"><h2 id="push-title">Background reminders</h2><button type="button" class="secondary-button" data-close="push-dialog">Close</button></div>
     <div class="guide-copy"><p>Get “You have a reminder in Taskpath” even when the app is closed or locked. Task titles and notes never appear in these notifications.</p>
@@ -79,7 +106,7 @@
     <section id="reminder-panel" class="reminder-panel" aria-label="Due reminders" hidden></section>
     <section class="board" id="board" tabindex="-1" aria-label="Task planning board" aria-busy="true"><p class="loading-message loading-status" role="status"><span class="loading-spinner" aria-hidden="true"></span>Opening your tasks…</p></section>
     <section id="files-view" aria-label="Encrypted files" hidden></section>
-    <footer class="board-footer"><p>Plan your week. Pick your day.</p><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
+    <footer class="board-footer"><p>Plan your week. Pick your day.</p><button type="button" class="subtle-button" data-privacy-open aria-haspopup="dialog" aria-controls="privacy-dialog">Privacy notice</button><a id="sign-in-again" href="/login" hidden>Sign in to sync</a><span class="save-status" id="save-status" role="status">Connecting…</span></footer>
     </div>
   </main>
   <dialog id="navigation-dialog" aria-label="Navigation"><div class="dialog-top"><h2>taskpath<span>.</span></h2><button type="button" id="navigation-close" class="icon-button" aria-label="Close navigation"><span data-icon="x"></span></button></div><nav aria-label="Workspace"><button type="button" data-view="board" aria-label="Board" title="Board" aria-current="page"><span data-icon="board"></span><span class="nav-label">Board</span></button><button type="button" data-view="archive" aria-label="Archive" title="Archive"><span data-icon="archive"></span><span class="nav-label">Archive</span></button><button type="button" data-view="files" aria-label="Files" title="Files"><span data-icon="files"></span><span class="nav-label">Files</span></button></nav></dialog>

@@ -1,6 +1,8 @@
 import { test, expect } from 'bun:test';
 import { Store } from '../src/store';
-import { createHandler, ASSET_VERSION } from '../src/server';
+import { createHandler } from '../src/server';
+import { sourceRelease } from '../src/client-release';
+const ASSET_VERSION = sourceRelease().version;
 
 test('public shells use versioned assets and every service-worker shell resource exists', async () => {
   const store = new Store();
@@ -8,6 +10,9 @@ test('public shells use versioned assets and every service-worker shell resource
     const handle = createHandler(store), get = (path: string) => handle(new Request('http://localhost' + path));
     const shell = await get('/'), html = await shell!.text();
     expect(html).toContain('vault-locked');
+    expect(html).not.toContain('__TASKPATH_RELEASE__');
+    expect((await get('/assets/accounts-v18/app.js'))!.status).not.toBe(200);
+    expect((await get('/assets/__TASKPATH_RELEASE__/app.js'))!.status).not.toBe(200);
     expect(shell!.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     const urls = [...html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)].map(m => m[1]).filter(u => u !== '/login');
     for (const url of urls) { expect(url).toStartWith(`/assets/${ASSET_VERSION}/`); expect((await get(url))!.status).toBe(200); }
