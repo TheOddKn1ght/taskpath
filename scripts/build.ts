@@ -44,12 +44,23 @@ export async function buildClient() {
       await mkdir(dirname(destination), { recursive: true });
       const extension = extname(name);
       if (extension === '.ts' || extension === '.js' || extension === '.css') {
+        const bundled = name === 'app.ts' || name === 'sw.ts';
         const result = await Bun.build({
           entrypoints: [resolve(source, name)], target: 'browser',
           format: name === 'theme.ts' ? 'iife' : 'esm',
-          // Preserve the module graph: the page and worker must each have one
-          // offline-state module, not independent copies inside every bundle.
-          external: ['*'], minify: true, sourcemap: 'none', env: 'disable',
+          // Bundle each runtime once, so all app consumers share one offline
+          // state. Individual module URLs remain available for the harness,
+          // but are neither imported by the production app nor precached.
+          external: bundled ? [] : ['*'], minify: true, sourcemap: 'none', env: 'disable',
+          define: name === 'sw.ts' ? { TASKPATH_SHELL_FILES: JSON.stringify([
+            'app.js', 'theme.js', 'pwa.js', 'privacy.js',
+            ...files.filter(file => !file.includes('/') && ['.css', '.webmanifest', '.svg', '.png'].includes(extname(file))),
+          ]) } : {},
+          plugins: name === 'sw.ts' ? [{ name: 'worker-local-imports', setup(build) {
+            // The source worker uses an absolute, versioned URL because it is
+            // served from /sw.js. Resolve that URL only while bundling.
+            build.onResolve({ filter: /^\/assets\/__TASKPATH_RELEASE__\/offline\.js$/ }, () => ({ path: resolve(source, 'offline.ts') }));
+          } }] : [],
         });
         if (!result.success) throw new AggregateError(result.logs, `Could not minify ${name}`);
         if (result.outputs.length !== 1) throw new Error(`Unexpected outputs for ${name}`);
@@ -79,7 +90,7 @@ export async function buildClient() {
     // Never leave a partially minified tree after a compilation failure.
     await rm(output, { recursive: true, force: true });
     await rename(staging, output);
-    console.log(`Client ${release.version} built: ${(before / 1024).toFixed(1)} → ${(after / 1024).toFixed(1)} KiB (${Math.round((1 - after / before) * 100)}% smaller).`);
+    console.log(`Client ${release.version} built: standalone app and worker bundles; ${(after / 1024).toFixed(1)} KiB total text assets (including standalone modules for checks; ${(before / 1024).toFixed(1)} KiB source).`);
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

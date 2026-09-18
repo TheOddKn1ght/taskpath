@@ -2,31 +2,35 @@ import { test, expect } from 'bun:test';
 import { normalizeTags } from '../public/tags.js';
 import { runInNewContext } from 'node:vm';
 const source = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/navigation.ts').text()).replace(/^import .*\n/gm, '').replace('export function navigation', 'function navigation'));
-function fixture(hash = '') {
+function fixture(hash = '', mobile = false) {
   const listeners = new Map<string, Function>();
   const node = (view?: string) => ({
     dataset: { view }, attributes: new Map<string, string>(), listeners: new Map<string, Function>(), open: false,
-    classList: { toggle() {} }, setAttribute(name: string, value: string) { this.attributes.set(name, value); },
+    classList: { values: new Set<string>(), toggle(name: string, enabled: boolean) { if (enabled) this.values.add(name); else this.values.delete(name); } }, setAttribute(name: string, value: string) { this.attributes.set(name, value); },
     removeAttribute(name: string) { this.attributes.delete(name); }, addEventListener(name: string, fn: Function) { this.listeners.set(name, fn); },
     close() { this.open = false; },
   });
-  const ids = new Map(['main', 'sidebar-toggle', 'navigation-dialog', 'navigation-open', 'navigation-close'].map(id => [id, node()]));
-  const buttons = [node('board'), node('archive')], views: string[] = [], urls: string[] = [], routes: any[] = [], methods: string[] = [];
+  const ids = new Map(['main', 'sidebar-toggle'].map(id => [id, node()]));
+  const buttons = [node('board'), node('archive'), node('files')], views: string[] = [], urls: string[] = [], routes: any[] = [], methods: string[] = [];
   const location = { pathname: '/login', search: '?source=saved', hash };
+  let scrolls = 0;
+  const viewportListeners = new Map<string, Function>();
+  const viewport = { height: 844, scale: 1, addEventListener: (name: string, fn: Function) => viewportListeners.set(name, fn) };
+  const document = { activeElement: null as null | { matches: () => boolean }, getElementById: (id: string) => ids.get(id), querySelectorAll: () => buttons };
   const controller = runInNewContext(source + '\nnavigation;', {
-    document: { getElementById: (id: string) => ids.get(id), querySelectorAll: () => buttons },
+    document,
     URLSearchParams, normalizeTags, location, history: Object.fromEntries(['pushState', 'replaceState'].map(method => [method, (_state: unknown, _title: string, url: string) => { methods.push(method); urls.push(url); location.hash = new URL(url, 'https://test.example').hash; }])),
-    localStorage: { getItem: () => null }, matchMedia: () => ({ matches: false, addEventListener() {} }),
-    window: { addEventListener: (name: string, fn: Function) => listeners.set(name, fn) },
+    localStorage: { getItem: () => null }, matchMedia: () => ({ matches: mobile, addEventListener() {} }),
+    window: { innerHeight:844, visualViewport:viewport, scrollTo: () => scrolls++, addEventListener: (name: string, fn: Function) => listeners.set(name, fn) },
   })((view: string, filters: any) => { views.push(view); routes.push({ view, ...filters }); });
-  return { views, urls, routes, methods, buttons, location, controller, hashchange: () => listeners.get('hashchange')!() };
+  return { views, urls, routes, methods, buttons, location, controller, ids, listeners, scrolls: () => scrolls, keyboard: (height: number, editing: boolean) => { viewport.height = height; document.activeElement = editing ? { matches: () => true } : null; viewportListeners.get("resize")!(); }, hashchange: () => listeners.get('hashchange')!() };
 }
 
 test('archive URLs select Archive on startup and after unlocking without rewriting the URL', () => {
   const f = fixture('#archive');
   expect(f.views).toEqual(['archive']);
   expect(f.buttons[1].attributes.get('aria-current')).toBe('page');
-  f.controller.close(); f.controller.restore();
+  f.controller.restore();
   expect(f.views).toEqual(['archive', 'archive']);
   expect(f.location.hash).toBe('#archive'); expect(f.urls).toEqual([]);
 });
@@ -100,4 +104,28 @@ test('fragment search text is absent from actual HTTP requests on navigation and
       expect(request).not.toContain('private-tag');
     }
   } finally { await server.stop(true); }
+});
+
+
+test('mobile tabs share URL navigation, mark Files selected and reset scroll only when the view changes', () => {
+  const f = fixture('', true);
+  f.buttons[2].listeners.get('click')!();
+  expect(f.location.hash).toBe('#files');
+  expect(f.buttons[2].attributes.get('aria-current')).toBe('page');
+  expect(f.buttons[0].attributes.has('aria-current')).toBe(false);
+  expect(f.scrolls()).toBe(1);
+  f.buttons[2].listeners.get('click')!(); expect(f.scrolls()).toBe(1);
+  f.location.hash = '#archive'; f.hashchange();
+  expect(f.buttons[1].attributes.get('aria-current')).toBe('page');
+});
+
+test('bottom tabs hide for the software keyboard, return on blur and clear their hidden state on lock', () => {
+  const f = fixture('', true), classes = f.ids.get('main')!.classList.values;
+  f.keyboard(844, true); expect(classes.has('mobile-keyboard')).toBe(false);
+  f.keyboard(480, true); expect(classes.has('mobile-keyboard')).toBe(true);
+  f.keyboard(480, false); expect(classes.has('mobile-keyboard')).toBe(false);
+  f.keyboard(480, true); f.listeners.get('taskpath-locked')!();
+  expect(classes.has('mobile-keyboard')).toBe(false);
+  const desktop = fixture(); desktop.keyboard(480, true);
+  expect(desktop.ids.get('main')!.classList.values.has('mobile-keyboard')).toBe(false);
 });

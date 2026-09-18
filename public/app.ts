@@ -1025,7 +1025,6 @@ window.addEventListener('taskpath-locked', () => {
   $('#error-banner').hidden = true; $('#toast').hidden = true;
   $('#tag-filter').innerHTML = '<option value="">All tags</option>';
   $('#archive-completed').textContent = 'Archive all completed (0)'; $('#archive-completed').disabled = true;
-  nav.close();
 });
 window.addEventListener('taskpath-unlocked', () => { nav.restore(); registerTools(); void refresh(); realtime.resume(); });
 window.addEventListener('taskpath-storage', () => { void refresh({ quiet: true }); void realtime.reconcile(); });

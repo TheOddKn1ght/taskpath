@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
 import { resolve, dirname } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { compactHTML } from '../scripts/build';
 import { createHandler } from '../src/server';
 import { Store } from '../src/store';
@@ -38,7 +39,9 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     expect(output).not.toContain('sourceMappingURL');
     expect(output).not.toContain('__TASKPATH_RELEASE__');
   }
-  expect(scan.scan(await Bun.file(resolve(built, 'app.js')).text()).imports.some(i => i.path === './offline.js')).toBe(true);
+  // These are separate runtimes: one shared state inside the page bundle and
+  // ciphertext-only state inside the worker. Neither fetches child modules.
+  for (const name of ['app.js', 'sw.js']) expect(scan.scan(await Bun.file(resolve(built, name)).text()).imports).toEqual([]);
   expect(scan.scan(await Bun.file(resolve(built, 'vault-ui.js')).text()).imports.some(i => i.path === './offline.js')).toBe(true);
   expect(scan.scan(await Bun.file(resolve(built, 'theme.js')).text()).exports).toEqual([]);
   const store = new Store();
@@ -58,8 +61,44 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     }
     expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
     expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
-    for (const name of ['app.js', 'style.css', 'index.html', 'sw.js', 'manifest.webmanifest']) {
+    for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
       expect(Bun.file(resolve(built, name)).size).toBeLessThan(Bun.file(resolve(root, 'public', sourceName(name))).size);
+    }
+  } finally { store.close(); }
+});
+
+test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell without standalone JavaScript modules', async () => {
+  type WorkerEvent = { waitUntil(promise: Promise<void>): void; request?: Pick<Request, 'url' | 'method' | 'mode'>; respondWith?(promise: Promise<Response>): void };
+  const handlers = new Map<string, (event: WorkerEvent) => void>();
+  const fetched: string[] = [], cached: string[] = [];
+  const responses = new Map<string, Response>();
+  let offline = false;
+  const store = new Store();
+  try {
+    const handler = createHandler(store, undefined, undefined, undefined, built);
+    runInNewContext(await Bun.file(resolve(built, 'sw.js')).text(), {
+      TextEncoder, TextDecoder, URL, Response, AbortSignal, setTimeout,
+      self: { location: { origin: 'http://localhost' }, addEventListener: (name: string, callback: (event: WorkerEvent) => void) => handlers.set(name, callback) },
+      caches: { open: async () => ({ put: async (path: string, response: Response) => { cached.push(path); responses.set(path, response); }, match: async (path: string) => responses.get(path)?.clone() }) },
+      fetch: async (path: string) => { if (offline) throw new TypeError('Offline'); fetched.push(path); return handler(new Request('http://localhost' + path)); },
+    });
+    let installation: Promise<void> | undefined;
+    handlers.get('install')!({ waitUntil(promise) { installation = promise; } });
+    await installation;
+    const prefix = `/assets/${ASSET_VERSION}/`;
+    expect(fetched.filter(path => path.endsWith('.js')).sort()).toEqual(['app.js', 'privacy.js', 'pwa.js', 'theme.js'].map(name => prefix + name));
+    expect(cached.sort()).toEqual(fetched.sort());
+    expect(cached).toContain('/offline-shell');
+    expect(cached).toContain(prefix + 'style.css');
+    expect(cached).toContain(prefix + 'themes/nord/manifest.webmanifest');
+    const shell = await Bun.file(resolve(built, 'index.html')).text();
+    for (const [, url] of shell.matchAll(/(?:src|href)="(\/assets\/[^"#]+)"/g)) expect(cached).toContain(url);
+    offline = true;
+    for (const path of ['/', '/login', prefix + 'app.js', prefix + 'theme.js']) {
+      let response: Promise<Response> | undefined;
+      handlers.get('fetch')!({ request: { url: 'http://localhost' + path, method: 'GET', mode: path.endsWith('.js') ? 'cors' : 'navigate' }, waitUntil() {}, respondWith(promise) { response = promise; } });
+      expect(response).toBeDefined();
+      expect(await (await response!).text()).toBe(path.endsWith('.js') ? await Bun.file(resolve(built, path.slice(prefix.length))).text() : shell);
     }
   } finally { store.close(); }
 });

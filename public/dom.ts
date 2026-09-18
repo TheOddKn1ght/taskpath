@@ -43,7 +43,6 @@ interface Elements {
   '#main': HTMLElementTagNameMap['main'];
   '#sidebar': HTMLElementTagNameMap['aside'];
   '#sidebar-toggle': HTMLElementTagNameMap['button'];
-  '#navigation-open': HTMLElementTagNameMap['button'];
   '#greeting': HTMLElementTagNameMap['span'];
   '#week-label': HTMLElementTagNameMap['span'];
   '#search': HTMLElementTagNameMap['input'];
@@ -70,8 +69,6 @@ interface Elements {
   '#board': HTMLElementTagNameMap['section'];
   '#sign-in-again': HTMLElementTagNameMap['a'];
   '#save-status': HTMLElementTagNameMap['span'];
-  '#navigation-dialog': HTMLElementTagNameMap['dialog'];
-  '#navigation-close': HTMLElementTagNameMap['button'];
   '#archive-details-dialog': HTMLElementTagNameMap['dialog'];
   '#archive-details-title': HTMLElementTagNameMap['h2'];
   '#archive-details-content': HTMLElementTagNameMap['div'];
