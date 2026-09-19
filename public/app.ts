@@ -52,6 +52,7 @@ const columns = {
   today: { title: 'Today' },
   done: { title: 'Done' },
 };
+const boardColumnOrder: Status[] = ['today', 'week', 'later', 'done'];
 type AppState = Route & Board & { archiveDetails: string | null; ready: boolean; busy: boolean; loading: boolean; editing: string | null };
 const state: AppState = { rows: [], reminders: [], changeIds: {}, serverTime: '', view: 'board', archiveDetails: null, tasks: [], category: 'all', tag: '', query: '', day: '', week: '', timezone: 'UTC', ready: false, busy: false, loading: false, editing: null };
 const nav = navigation((view, filters) => {
@@ -486,7 +487,7 @@ function render() {
   const completed = state.tasks.filter(t => !t.archivedAt && t.status === 'done').length;
   $('#archive-completed').textContent = `Archive all completed (${completed})`;
   $('#archive-completed').disabled = !completed;
-  board.innerHTML = state.view === 'archive' ? `<header class="archive-heading"><h2>Archive</h2><p>Out of the way, here when you need them.</p></header><div class="archive-list">${filtered.length ? filtered.sort((a, b) => b.archivedAt!.localeCompare(a.archivedAt!) || a.id.localeCompare(b.id)).map(archiveMarkup).join('') : `<p class="archive-empty">${state.query || state.tag || state.category !== 'all' ? 'No matching archived tasks.' : 'No archived tasks yet. Archive a task from its menu.'}</p>`}</div>` : (Object.keys(columns) as Status[]).map(status => {
+  board.innerHTML = state.view === 'archive' ? `<header class="archive-heading"><h2>Archive</h2><p>Out of the way, here when you need them.</p></header><div class="archive-list">${filtered.length ? filtered.sort((a, b) => b.archivedAt!.localeCompare(a.archivedAt!) || a.id.localeCompare(b.id)).map(archiveMarkup).join('') : `<p class="archive-empty">${state.query || state.tag || state.category !== 'all' ? 'No matching archived tasks.' : 'No archived tasks yet. Archive a task from its menu.'}</p>`}</div>` : boardColumnOrder.map(status => {
     const column = columns[status];
     const tasks = filtered.filter(t => t.status === status);
     const isFiltered = !!query || state.category !== 'all' || !!state.tag;
