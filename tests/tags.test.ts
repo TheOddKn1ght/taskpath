@@ -24,7 +24,7 @@ test('tags survive task lifecycle, reminders and calendar rollover', () => {
     store.update(task.id, { status: 'done' });
     store.remove(task.id);
     expect(store.restore(task.id).tags).toEqual(['home']);
-    store.update(task.id, { status: 'today' });
+    store.update(task.id, { status: 'today', reminderAt: null });
     store.record.pending.at(-1)!.task.plannedWeek = '2026-08-31';
     expect(store.board().tasks[0]).toMatchObject({ status: 'later', tags: ['home'] });
   } finally { store.close(); }

@@ -9,6 +9,11 @@ export function calendarAt(time: number, timezone: string) {
   monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
   return { day, week: monday.toISOString().slice(0, 10) };
 }
+export const REMINDER_TODAY_MOVE_ERROR = 'This task has a reminder today. Change or clear the reminder to move it.';
+export function reminderIsToday(task: Pick<Task, 'status' | 'reminderAt' | 'archivedAt' | 'deletedAt'>, day: string, timezone: string) {
+  return !task.deletedAt && !task.archivedAt && task.status !== 'done' && !!task.reminderAt &&
+    Number.isFinite(Date.parse(task.reminderAt)) && calendarAt(Date.parse(task.reminderAt), timezone).day === day;
+}
 export function project(record: PlainRecord & {board:PlainBoard}, time?: number): Board;
 export function project(record: PlainRecord | null, time?: number): Board | null;
 export function project(record: PlainRecord | null, time = Date.now() + (record?.offset || 0)) {
@@ -21,7 +26,8 @@ export function project(record: PlainRecord | null, time = Date.now() + (record?
     rows.set(change.task.id, { ...change.task, tags: change.task.tags ?? previous?.tags ?? [] });
   }
   for (const task of rows.values()) { task.tags = [...(task.tags ?? [])]; task.archivedAt ??= null; }
-  const { day, week } = calendarAt(time, record.board.timezone);
+  const timezone = record.board.timezone;
+  const { day, week } = calendarAt(time, timezone);
   const order = (a: Task, b: Task) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
   const moving = [...rows.values()].filter(task => !task.archivedAt && ['today', 'week'].includes(task.status) && (task.plannedWeek !== week || (task.status === 'today' && task.plannedDay !== day))).sort(order);
   const ids = new Set(moving.map(t => t.id));
@@ -30,6 +36,11 @@ export function project(record: PlainRecord | null, time = Date.now() + (record?
     if (task.plannedWeek !== week) { task.status = 'later'; task.plannedDay = null; task.plannedWeek = null; }
     else { task.status = 'week'; task.plannedDay = null; }
     task.position = ++ends[task.status];
+  }
+  let todayEnd = Math.max(-1, ...[...rows.values()].filter(t => !t.deletedAt && !t.archivedAt && t.status === 'today').map(t => t.position));
+  for (const task of [...rows.values()].filter(t => t.status !== 'today' && reminderIsToday(t, day, timezone)).sort(order)) {
+    task.status = 'today'; task.plannedDay = day; task.plannedWeek = week;
+    task.position = ++todayEnd;
   }
   const tasks = [...rows.values()].filter(t => !t.deletedAt).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   const serverTime = new Date(time).toISOString();
@@ -109,6 +120,11 @@ export function queueChange(record: PlainRecord, path: string, method: string, r
     task.plannedDay = task.status === 'today' ? board.day : null;
     task.plannedWeek = ['week', 'today'].includes(task.status) ? board.week : null;
     task.completedAt = task.status === 'done' ? task.completedAt || editedAt : null;
+  }
+  validate(task);
+  if (reminderIsToday(task, board.day, board.timezone)) {
+    if (!creating && !action && ['later', 'week'].includes(String(input.status)) && task.reminderAt === oldReminder) throw new Error(REMINDER_TODAY_MOVE_ERROR);
+    task.status = 'today'; task.plannedDay = board.day; task.plannedWeek = board.week;
   }
   if (!task.archivedAt && (creating || oldStatus !== task.status || 'beforeId' in input || action === 'restore' || action === 'unarchive')) {
     const peers = board.tasks.filter(t => !t.archivedAt && t.status === task.status && t.id !== task.id);

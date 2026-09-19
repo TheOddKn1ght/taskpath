@@ -90,6 +90,7 @@ interface Elements {
   '#task-due-date': HTMLElementTagNameMap['input'];
   '#task-reminder': HTMLElementTagNameMap['input'];
   '#reminder-timezone': HTMLElementTagNameMap['p'];
+  '#reminder-column-hint': HTMLElementTagNameMap['p'];
   '#enable-notifications': HTMLElementTagNameMap['button'];
   '#clear-task-dates': HTMLElementTagNameMap['button'];
   '#notification-status': HTMLElementTagNameMap['p'];

@@ -181,6 +181,22 @@ try {
   assert(!isUnlocked(), 'account switch locks other browser contexts');
   frame.remove(); legacy.close();
   await fileChecks(assert);
+  disconnected = true;
+  const todayReminder = (await offlineRequest('/api/tasks', 'POST', { title: 'Today reminder browser check', status: 'later', reminderAt: new Date().toISOString() })).task;
+  assert(todayReminder.status === 'today', 'today reminder creates directly in Today while offline');
+  const reminderQueue = JSON.stringify((await localState()).pending);
+  await syncAfterCurrent().catch(() => {});
+  assert(JSON.stringify((await localState()).pending) === reminderQueue, 'today placement preserves immutable encrypted retries');
+  let blocked = false;
+  try { await offlineRequest(`/api/tasks/${todayReminder.id}`, 'PATCH', { status: 'later' }); }
+  catch (error) { blocked = error instanceof Error && error.message === 'This task has a reminder today. Change or clear the reminder to move it.'; }
+  assert(blocked && JSON.stringify((await localState()).pending) === reminderQueue, 'rejected reminder movement leaves the encrypted queue unchanged');
+  await lock();
+  const reminderRecord = await localState(), reminderKey = await unlockVault('browser second password 2026', reminderRecord.config!);
+  await activate(reminderRecord.config!, reminderKey.key, false, reminderRecord.lockEpoch);
+  assert((await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'offline unlock preserves Today placement');
+  disconnected = false; await syncAfterCurrent();
+  assert(!(await localState()).pending.length && (await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'reconnection acknowledges and retains Today reminder placement');
   await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
 } catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }

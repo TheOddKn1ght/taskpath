@@ -10,6 +10,7 @@ import { startVault } from './vault-ui.js';
 import { createRealtime } from './realtime.js';
 import { setupPush } from './push.js';
 import { localReminderValue, reminderFromInput, dueLabel } from './dates.js';
+import { reminderIsToday } from './offline-model.js';
 
 await startVault();
 setupPush();
@@ -462,6 +463,7 @@ function taskMarkup(task: Task, index: number, total: number) {
 }
 
 function render() {
+  if ($('#task-dialog').open) updateReminderColumn();
   showFiles(state.view === 'files');
   $('#board').hidden = state.view === 'files';
   if (state.view === 'files') { $('#new-task').hidden = true; $('#reminder-panel').hidden = true; return; }
@@ -552,6 +554,26 @@ $('#archive-delete').addEventListener('click', async () => {
   catch (error) { notify(errorMessage(error)); }
 });
 
+function updateReminderColumn() {
+  const status = $('#task-status');
+  const value = $('#task-reminder').value;
+  let today = false;
+  try {
+    const reminderAt = value === localReminderValue(editingReminder) ? editingReminder : reminderFromInput(value);
+    today = reminderIsToday({ reminderAt, status: 'today', archivedAt: null, deletedAt: null }, state.day, state.timezone);
+  } catch { /* Date validation belongs to the picker and Save action. */ }
+  for (const option of status.options) option.disabled = today && ['later', 'week'].includes(option.value);
+  if (today && status.value !== 'done') status.value = 'today';
+  $('#reminder-column-hint').hidden = !today;
+  refreshPickers();
+}
+$('#task-reminder').addEventListener('change', updateReminderColumn);
+$('#task-status').addEventListener('change', updateReminderColumn);
+$('#task-dialog').addEventListener('close', () => {
+  for (const option of $('#task-status').options) option.disabled = false;
+  $('#reminder-column-hint').hidden = true;
+});
+
 function openTask(status: Status = 'later', task: Task | null = null) {
   if (!isUnlocked()) return;
   if (task?.archivedAt) { archiveDetails(task); return; }
@@ -577,6 +599,7 @@ function openTask(status: Status = 'later', task: Task | null = null) {
   $('#delete-task').hidden = !task;
   $('#archive-task').hidden = !task;
   mountPickers();
+  updateReminderColumn();
   $('#task-dialog').showModal();
   $('#task-title').focus();
 }
@@ -601,7 +624,7 @@ $('.skip-link').addEventListener('click', event => {
   event.preventDefault();
   $('#board').focus(); $('#board').scrollIntoView({ block: 'start' });
 });
-$('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').value = ''; $('#task-reminder').value = ''; refreshPickers(); });
+$('#clear-task-dates').addEventListener('click', () => { $('#task-due-date').value = ''; $('#task-reminder').value = ''; updateReminderColumn(); });
 $('#enable-notifications').addEventListener('click', toggleNotifications);
 $('#notifications-button').addEventListener('click', () => { $('.app-menu').open = false; void toggleNotifications(); });
 $('#reminder-panel').addEventListener('click', async event => {
@@ -720,6 +743,7 @@ $('#task-form').addEventListener('submit', async event => {
   submit.disabled = true;
   $('#form-error').hidden = true;
   try {
+    updateReminderColumn();
     const input: Record<string, unknown> = Object.fromEntries(new FormData(event.currentTarget as HTMLFormElement));
     addEditorTag();
     input.tags = [...editingTags];
@@ -890,7 +914,7 @@ $('#board').addEventListener('change', async event => {
   const id = (event.target as HTMLElement).closest<HTMLElement>('[data-id]')!.dataset.id!;
   const previous = state.tasks.find(t => t.id === id)?.status;
   try { await moveTask(id, (event.target as HTMLInputElement).value as Status); }
-  catch (error) { (event.target as HTMLInputElement).value = previous || ''; notify(errorMessage(error)); }
+  catch (error) { (event.target as HTMLInputElement).value = previous || ''; refreshPickers(); notify(errorMessage(error)); }
 });
 
 document.addEventListener('click', event => { $$('.task-menu[open], .app-menu[open]').forEach(menu => { if (!menu.contains(event.target as Node | null)) menu.open = false; }); });

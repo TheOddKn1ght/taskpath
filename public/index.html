@@ -124,6 +124,7 @@
         <small id="tag-hint">Press Enter to add · up to 10 tags</small>
       </div>
       <div class="field-row"><label class="field">Column<select id="task-status" name="status"><option value="later">Later</option><option value="week">This Week</option><option value="today">Today</option><option value="done">Done</option></select></label><label class="field">Category<select id="task-category" name="category"><option value="personal">Personal</option><option value="work">Work</option></select></label></div>
+      <p id="reminder-column-hint" class="schedule-hint" role="status" hidden>Tasks with a reminder today stay in Today. Change or clear the reminder to move to Later or This Week.</p>
       <details id="task-schedule" class="task-schedule"><summary>Date &amp; reminder <span>optional</span></summary>
         <div class="field-row schedule-fields"><label class="field">Due date<input type="date" id="task-due-date" name="dueDate" min="0001-01-01" max="9999-12-31"></label><label class="field">Remind me<input type="datetime-local" id="task-reminder" min="0001-01-01T00:00" max="9999-12-31T23:59" step="60"></label></div>
         <p class="schedule-hint" id="reminder-timezone"></p>

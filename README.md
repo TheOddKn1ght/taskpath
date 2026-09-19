@@ -105,6 +105,10 @@ Reference: [Web Crypto derivation APIs](https://developer.mozilla.org/en-US/docs
 
 ## Offline use and phone installation
 
+Unfinished tasks with a reminder dated today appear in **Today** immediately, even before the reminder time. This uses the board's planning timezone and also applies to existing tasks when the day changes. Later and This Week are unavailable until you change or clear today's reminder; completion, archive and deletion still work. Dismissing a reminder keeps the task in Today. Other reminder dates and due dates do not automatically choose a column, and overdue reminders do not keep tasks in Today forever. Notification delivery still waits until the reminder time. Existing ciphertext and pending operations are not rewritten just to display the task in Today.
+
+After updating, open online, close all Taskpath tabs/PWA windows and reopen to activate the new client. Do not clear site data.
+
 Unlock online once and allow the board and offline shell to download. Edits, moves, completion, deletion/undo, tags, dates, snoozing, Markdown previews/imports, and readable exports work offline. Each change is encrypted before IndexedDB commits; retries reuse the same operation ID, timestamp, nonce, and ciphertext. Concurrent tabs serialize writes and use revision checks to avoid losing edits.
 
 Reconnection transfers encrypted batches. The most recent edit wins for the **whole task**, including deletion; equal edit times use operation IDs as a stable tie-break. Field changes aren't merged. Keep device clocks accurate. WebSockets announce changes; authenticated HTTP handles ciphertext transfer, with polling as fallback. Background activity is limited by the browser, especially on iOS: reopen the app online to finish syncing.
