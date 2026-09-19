@@ -1,6 +1,8 @@
 # Taskpath
 
-An invite-only task board with a private encrypted vault for each person: collect in **Later**, plan **This Week**, and choose **Today**. Built with Bun 1.4.2+, SQLite, and HTML/CSS/TypeScript. The client has no package dependencies; the server uses pinned Drizzle ORM 0.45.2 and `web-push` 3.6.7. The offline Markdown lexer is vendored Marked 18.0.12 (MIT).
+Taskpath is an invite-only task board with a separate encrypted vault for each account. Collect tasks in Later, plan This Week, and choose Today. The board displays Today, This Week, Later, then Done.
+
+It uses Bun 1.4.2+, SQLite and TypeScript. The server uses Drizzle and Web Push. The client has no package dependencies and includes a vendored Marked lexer for offline Markdown imports.
 
 ## Start locally
 
@@ -10,141 +12,37 @@ bun run build
 bun run start
 ```
 
-In another terminal, create your own account (the owner uses the same invitation flow as friends):
+In another terminal, create an invitation for yourself or a friend:
 
 ```sh
 bun run admin invite
 ```
 
-The command prints a permanent user ID and a one-use setup link valid for **24 hours**. Open the link, choose and confirm a password of 15–1,024 characters, and optionally set a nickname. Save the user ID and password in your password manager. Future logins require **user ID + password**; nicknames never work as login IDs. HTTPS is required outside localhost.
+The command prints a permanent user ID and a one-use setup link valid for 24 hours. Open it, choose a password of 15 to 1,024 characters, and save both the ID and password. You can also set a nickname. Sign-in requires the user ID and password, never the nickname. Restarting the server does not issue invitations.
 
-Restarting the server never creates or replaces invitations. An administrator must explicitly issue one.
+Use HTTPS outside localhost. See the [VPS deployment guide](DEPLOYMENT.md) for Docker, Nginx, certificates and backups.
 
-Use `bun run dev` for watch mode: Bun transpiles allowlisted TypeScript client sources on demand and keeps the existing `.js` resource URLs. There is no preliminary development build, and arbitrary source files and declarations are not served. `bun run build` bundles the app and all its dependencies into one minified `app.js`, with a separate self-contained `sw.js` for the service worker. The early theme script and tiny PWA/privacy entry scripts remain separate: all four page scripts load directly from HTML, with no JavaScript import waterfall. Development source files stay modular. The build also minifies CSS, HTML, and the web manifest into `dist/public`; compact SVG icons are trimmed and binary icons are copied unchanged. `bun run start` serves only that built client. Rebuild after updating client sources; Docker builds it automatically. No source maps or environment secrets are included. Optional `bun run start:smol` and `bun run dev:smol` enable Bun's `--smol` mode, trading more frequent garbage collection for lower memory use.
+## Plan tasks
 
-Production PWA caching fetches only the entry scripts and static shell assets, not the original JavaScript module graph. Standalone minified module URLs are retained for the browser regression harness; normal production pages never import or precache them. The app bundle has one shared offline-state instance, while workers retain their own ciphertext-only runtime. Bundling does not change browser storage, encryption or pending operations. After updating, close all Taskpath tabs/PWA windows and reopen; do not clear site data.
+Drag tasks between columns or use a card's move control or right-click menu. At midnight, unfinished Today tasks return to This Week. On Monday, weekly tasks return to Later. Rollover uses the workspace timezone. Completed tasks stay in Done.
 
-**Upgrading from a plaintext or single-owner release requires a fresh multi-user database.** Those older databases are rejected before modification; no old files are deleted or accounts migrated. Existing multi-user installations retain their accounts and data. See [deployment and upgrading](DEPLOYMENT.md#10-update-taskpath) and [enabling background reminders on a VPS](DEPLOYMENT.md#enable-background-reminders).
+An unfinished task with a reminder today appears in Today immediately, even if its reminder time is hours away. Change or clear the reminder before moving it to Later or This Week. Clearing it leaves the task in Today. Dismissing the notification also leaves it there. Completion, archiving and deletion remain available. Notifications still wait until the reminder time. Other reminder dates and due dates do not choose a column.
 
-## Database code
+Tasks support up to 10 tags, each up to 32 Unicode characters. Type a name and press Enter, or choose an existing tag. Names are trimmed, normalized, lowercased and deduplicated. Combine text search, category and one tag filter. New tasks inherit the selected tag.
 
-Drizzle uses the native `bun:sqlite` connection. `src/db/schema.ts` defines typed tables; the account/session, workspace, and push repositories in `src/db/` contain database operations. Auth, sync conflict resolution, and notification delivery remain in their respective services. Complex push queue queries use parameterized SQL where it makes the account and revision checks clearer. Query logging is disabled.
+Date and time pickers keep changes as a draft until you save the task. Reminders use device-local time. Choose both an hour and a minute, or type `HH:mm`. Escape closes the top picker. Due dates use `YYYY-MM-DD`.
 
-The ORM refactor preserves the existing multi-user database format, accounts, sessions, ciphertext, and push keys. No new vault, migration command, database reset, or frontend dependency is required. `src/db/connection.ts` retains explicit, idempotent schema initialization and rejects unsupported legacy databases before writes. Table definitions do not automatically modify deployed databases; update initialization deliberately when changing the schema. Drizzle Kit and automatic schema push are not part of deployment.
+Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Views and filters survive refresh through the URL fragment, such as `#archive?q=trip&category=personal&tag=travel`. Search stays local and never reaches the server, but remains visible in browser history and copied links.
 
-Run `bun install --frozen-lockfile --ignore-scripts` after updating a local checkout; Docker and CI install the pinned dependency automatically. The test suite includes a pre-Drizzle database fixture and failure-injection checks for transaction rollback.
+The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha and Rosé Pine Dawn. Follow system chooses Light or Dark. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
 
-## Appearance
+## Archive and export
 
-Open the theme icon in the toolbar, or **Switch theme** on the sign-in screen. Choose Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha, or Rosé Pine Dawn. **Follow system** switches between Light and Dark automatically. Preferences are saved for this browser, work offline, and apply across its Taskpath tabs and accounts.
+Archive a task through its menu or editor. In workspace options, Archive all completed includes every completed task regardless of filters. Nothing is archived automatically.
 
-Each theme has matching tab, notification, and install icons; dark palettes have a crescent detail. Choose your theme before installing the PWA. Already installed home-screen icons may stay unchanged until you reinstall, depending on the browser and OS. Close all Taskpath windows and reopen online to activate this update.
+Archived tasks retain their contents and column but pause reminders and rollover. Restore them before editing. Restoration applies current rollover and today's reminder rule, then appends the task to its column. An overdue reminder can become eligible again. Archive Undo preserves subsequent edits and reports skipped tasks. Deleting an archived task and undoing deletion keeps it archived.
 
-Views, menus, dialogs, the sidebar, and theme colors use brief, subtle transitions. Your system's reduced-motion preference disables them. Locking hides workspace content immediately.
-
-Startup and task loading show a gentle indicator only if loading lasts long enough to need it. Unlocking and vault creation show progress in the button. Background sync keeps the existing board visible; loading never adds an artificial wait.
-
-Palette references: [Gruvbox](https://github.com/morhetz/gruvbox), [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Catppuccin](https://github.com/catppuccin/catppuccin), and [Rosé Pine](https://rosepinetheme.com/palette/). Taskpath icons are original artwork.
-
-## Archive and navigation
-
-Use **Board**, **Archive** and **Files** in the sidebar. Collapse it to icons with its toggle; this preference stays in your browser. On phones, the same destinations sit in a persistent bottom tab bar, with labels and a selected state. It respects the home-indicator safe area and moves out of the way when the software keyboard opens. Archive uses `#archive` in the URL, so refreshing or opening a saved link returns there after unlocking. Board uses the normal URL; browser Back and Forward switch between views. Search, category, and tag filters also live in the fragment, for example `#archive?q=trip&category=personal&tag=travel`. They survive refresh/unlock and stay selected when switching views. Typing or changing filters updates the current history entry; switching views adds an entry for Back/Forward. Search remains entirely local: these values never become HTTP query parameters or API payloads. They are readable in the address bar, browser history, and links you copy.
-
-Archive any task from its menu, right-click menu, or editor. **Workspace options → Archive all completed (N)** archives every completed task, regardless of filters. Archiving is manual: nothing is automatically archived or deleted. The Archive list is newest first and supports search, read-only details, Restore, and Delete. Restore a task before editing it.
-
-Archived tasks retain their contents and previous column, disappear from the board, and pause reminders and calendar rollover. Restoring appends them to their previous column after normal rollover: an old Today task can return to This Week or Later; Done stays Done. Reminder dates and dismissal state are preserved, so an overdue, undismissed reminder may become due again after restoration. Deleting an archived task and undoing deletion keeps it archived.
-
-The archive Undo toast restores only tasks that still match the archiving operation; subsequent changes from another tab or device are kept and reported as skipped. Archive and restore work offline using the existing encrypted sync queue. Server storage contains no readable archive state.
-
-Full-workspace JSON and Markdown exports include archived tasks even when filters are active. Markdown records archive dates with nested `Archived: <ISO timestamp>` metadata beneath the original column heading. Imports preview and preserve that state; files without the field remain compatible. Duplicate detection distinguishes active and archived versions of a task.
-
-Update all your devices before using Archive. Open online, close all Taskpath tabs and installed-app windows, then reopen to activate the new PWA shell. Existing vaults and encrypted pending operations are retained; no database migration is needed.
-
-## Accounts and invitations
-
-One private vault per account, with no shared boards, roles, public registration, or email service. User IDs are random permanent identifiers, not secrets. Each account has independent encryption keys, sessions, task storage, reminder claims, and WebSocket notifications.
-
-```sh
-bun run admin invite
-bun run admin list
-bun run admin reinvite USER_ID
-bun run admin revoke USER_ID
-bun run admin disable USER_ID
-```
-
-`reinvite` replaces a pending invitation and invalidates its previous link. `revoke` cancels a pending invitation. Neither can reopen an activated vault. `disable` stops server access and revokes that user's sessions while retaining encrypted data; existing WebSockets close at the next authorization check (within the heartbeat interval). Other users stay signed in. Disabling cannot erase downloaded data or revoke copied decryption keys. There is no password reset, recovery key, or account deletion command.
-
-Send invitations privately: whoever claims a link first gets that pending account. Tokens are stored only as hashes, bound to one account, carried in URL fragments, and consumed atomically. The admin command uses the same `DATABASE_PATH` and `TASKPATH_ORIGIN` as the server; it can run while the server is online.
-
-An optional nickname of up to 40 characters is encrypted inside the vault and appears in one of 120 randomized greetings after unlocking, such as “Good morning, Alex” or “Welcome to the night shift, Alex”. Greetings use the device’s local time and stay steady through sync and task edits, changing on a new unlock or time-of-day period. Change or clear it through **Workspace options → Nickname**; this works offline. Nicknames need not be unique and are never used for login.
-
-One account is active per browser profile. **Switch account** locks all Taskpath tabs, clears remembered keys, and preserves each account's encrypted cache and pending edits separately. Returning to a previously downloaded account works offline with its user ID and password. Background sync transfers only the active account's ciphertext and refuses a mismatched server session.
-
-## One password per vault, encrypted tasks
-
-The same password signs in and unlocks the workspace. It is never sent to the server. There is no separate vault password, recovery key, password-reset endpoint, or administrator bypass. **The server cannot recover a forgotten password.** An already unlocked or remembered browser may still export readable tasks; otherwise the encrypted data is inaccessible.
-
-By default, keys stay in memory and closing, reloading, or navigating away locks the page, including back/forward-cache restoration. There is no inactivity timer. **Remember this device** is off by default. Enabling it stores a non-extractable decryption key in IndexedDB: anyone using that browser profile may access your tasks. Non-extractable means the browser won't export the raw key; scripts with access to the key can still use it.
-
-**Workspace options → Lock** clears remembered keys across this browser's tabs, removes decrypted content, and retains encrypted pending changes. Other devices remain unlocked. Lock does not end the server session: a background worker may continue transferring ciphertext, without loading a decryption key.
-
-**Change password** requires the current password and an online connection. It rewraps the existing data key, leaving task ciphertext intact, and revokes all existing server sessions. The changing page receives a fresh session; other devices sign in again to resume syncing. Previously copied decryption keys cannot be revoked. A device kept offline may still unlock its cached copy with the old password until it signs in with the new one.
-
-## Encryption design and limits
-
-- PBKDF2-HMAC-SHA-256, 600,000 iterations, a random 16-byte salt, and a 256-bit master secret. Password contents are exact: no trimming or Unicode normalization.
-- HKDF-SHA-256 separates authentication and vault-wrapping purposes with versioned labels. Only the derived authentication credential is sent over HTTPS; the server stores its Argon2id verifier. This credential is a replayable login secret, and this design depends on TLS. It is not a PAKE.
-- A random 256-bit vault key is wrapped with the password-derived key. Complete tasks, including titles, notes, tags, dates, planning fields, and tombstones, use AES-256-GCM with a fresh random 96-bit nonce and 128-bit authentication tag. Additional authenticated data binds the format version, vault identity, task identity, edit timestamp, and operation identity.
-- SQLite and the new `taskpath-accounts-v1` browser database store ciphertext and public wrapping/sync metadata. Decrypted tasks remain in page memory. The worker never reads the separate remembered-key store.
-
-The server can still see task identifiers, edit times, ciphertext sizes, traffic patterns, timezone, and opaque reminder-claim activity. It cannot validate encrypted task contents. Opting into background reminders additionally exposes reminder times, random reminder tokens and device push subscriptions, allowing the server to schedule generic alerts. This scheduling metadata is also stored beside ciphertext in IndexedDB, so a locked worker can transfer it. Existing plaintext backups and legacy browser data remain plaintext. Exported Markdown/JSON is deliberately readable and should be protected accordingly.
-
-This is a custom, unaudited implementation using standard Web Crypto primitives. A compromised host could serve malicious JavaScript that captures an entered password or unlocked data. HTTPS and E2EE do not protect against that active host attack or a compromised browser/device. Use a strong generated password, keep the host updated, and retain secure backups.
-
-Reference: [Web Crypto derivation APIs](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey).
-
-## Offline use and phone installation
-
-Unfinished tasks with a reminder dated today appear in **Today** immediately, even before the reminder time. This uses the board's planning timezone and also applies to existing tasks when the day changes. Later and This Week are unavailable until you change or clear today's reminder; completion, archive and deletion still work. Dismissing a reminder keeps the task in Today. Other reminder dates and due dates do not automatically choose a column, and overdue reminders do not keep tasks in Today forever. Notification delivery still waits until the reminder time. Existing ciphertext and pending operations are not rewritten just to display the task in Today.
-
-After updating, open online, close all Taskpath tabs/PWA windows and reopen to activate the new client. Do not clear site data.
-
-Unlock online once and allow the board and offline shell to download. Edits, moves, completion, deletion/undo, tags, dates, snoozing, Markdown previews/imports, and readable exports work offline. Each change is encrypted before IndexedDB commits; retries reuse the same operation ID, timestamp, nonce, and ciphertext. Concurrent tabs serialize writes and use revision checks to avoid losing edits.
-
-Reconnection transfers encrypted batches. The most recent edit wins for the **whole task**, including deletion; equal edit times use operation IDs as a stable tie-break. Field changes aren't merged. Keep device clocks accurate. WebSockets announce changes; authenticated HTTP handles ciphertext transfer, with polling as fallback. Background activity is limited by the browser, especially on iOS: reopen the app online to finish syncing.
-
-Expired sessions show **Sign in to sync** and retain pending changes. Enter the same password again. Clearing site data or browser eviction can remove unsynced work; sync regularly. Browser storage and SQLite are separate copies, so server backups only contain changes already synced.
-
-- iPhone/iPad: open the HTTPS site in Safari, then **Share → Add to Home Screen**. Open the installed app online once; its storage may be separate.
-- Android: use the browser's **Install app** action or Taskpath's install menu item.
-- Updates: open online, close **all** Taskpath tabs and installed-app windows, then reopen. Both asset URLs and the PWA cache are versioned to avoid mixing application generations.
-
-## Planning, tags, and reminders
-
-Drag tasks between columns or use each card's move control. Native context menus provide task actions. At local midnight, unfinished Today tasks return to This Week; on Monday, weekly tasks return to Later. The browser calculates rollover in the workspace timezone. Done stays Done.
-
-Tasks support up to 10 tags of up to 32 Unicode characters each. Tag names are trimmed, normalized, lowercase, deduplicated, and sorted. Type a tag and press Enter or choose a suggestion. Cards show two muted labels and a `+N` editor button. Combine one tag filter with category and text search; quick-add inherits the selected tag. Tags survive offline operations and Markdown/JSON exports.
-
-Dates and reminder times are encrypted inside tasks. In-app reminders need the workspace open and unlocked and remain until dismissed. System notifications always use the generic text **“You have a reminder in Taskpath.”** Snoozing or rescheduling generates a new random reminder token.
-
-### Background reminders
-
-1. Set `TASKPATH_ORIGIN=https://your-domain.example` on the VPS and keep HTTPS and the server running. Allow outbound HTTPS to browser push services. No additional Nginx route or incoming port is needed.
-2. Update the app, close all Taskpath tabs and installed-app windows, and reopen online to activate the new worker. Install locked dependencies before starting locally; Docker and CI do this automatically.
-3. Unlock and open **Workspace options → Background reminders → Enable on this device**. Grant notification permission. On iPhone/iPad, use the Home Screen installation on iOS/iPadOS 16.4 or later; a normal Safari tab is insufficient. Repeat on each device that should receive alerts.
-4. Wait for synchronization after creating or changing a reminder. Close or lock the app: the server can now send a generic notification. Clicking it opens/focuses Taskpath; the normal vault unlock rules still apply.
-
-Enabling any device opts this account into sharing reminder scheduling metadata. Task titles, notes, tags, passwords and vault keys are never included in pushes. Workers show the fixed generic message without reading vault keys, even on remembered devices. Browser push services handle delivery (Apple, Google, Mozilla, or Windows); Taskpath needs no third-party dashboard or paid messaging service. See [Web Push](https://developer.mozilla.org/en-US/docs/Web/API/Push_API) and [iOS Home Screen requirements](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
-
-The server creates VAPID signing keys once and retains them in SQLite. Back up the whole database: it contains ciphertext, wrapping metadata, push signing keys, subscriptions, schedules and retry state. VAPID keys authorize notifications and cannot decrypt tasks. `TASKPATH_PUSH_SUBJECT` optionally overrides the public origin with an HTTPS contact URL or `mailto:` address. Protect subscriptions and signing keys; never log them.
-
-Schedules are tied to the winning encrypted task revision. Completion, deletion, archive, dismissal and rescheduling update or cancel them on sync. Offline changes and their minimal schedules are saved together; retries reuse the encrypted operation unchanged. Changes made offline cannot cancel a push already queued remotely until they reach the server. Locking preserves subscriptions; switching accounts attempts to unsubscribe this browser. **Turn off on this device** removes its subscription; turning off the last device removes the server's schedules. Other devices and already delivered notifications may remain active.
-
-The durable scheduler checks every 15 seconds, sends to up to 10 subscribed devices per account, retries transient failures and removes expired endpoints. While background reminders are enabled, the page does not also claim a desktop alert. Delivery is best effort: OS settings, offline devices, disabled browser background activity and push-service delays can prevent timely alerts. Retries may be delivered more than once, but a stable notification tag replaces duplicates on a device. After downtime, only reminders overdue by at most 24 hours are sent; a push service may retain an accepted message for up to one hour. Older missed reminders remain in the app. Existing schedules continue after a session expires; new changes require signing in to sync again.
-
-## Markdown and JSON
-
-Import Markdown from the workspace menu. Parsing and preview run offline through the locally vendored [Marked lexer](public/vendor/README.md); imported HTML is never rendered. Headings Later, This Week, Today, and Done select columns. Checked items go to Done; nested checklists become separate tasks. Code examples and quoted checklists outside tasks are ignored. Notes and link destinations are preserved as text.
+Markdown and JSON exports include active and archived tasks, unsynced edits and tasks hidden by filters. They exclude deleted tasks and files. Exports are readable, so protect them. JSON is a snapshot. Markdown is the supported import format.
 
 ```markdown
 ## This Week
@@ -155,75 +53,120 @@ Import Markdown from the workspace menu. Parsing and preview run offline through
   - Reminder: 2026-09-10T09:00:00.000Z
 ```
 
-Imports accept up to 500 tasks / 256 KB, validate before committing, and skip duplicates including normalized tags. Markdown without tags remains compatible. Exports include current unlocked tasks and unsynced edits. JSON is a readable snapshot; Markdown is the supported import format. Deleted tasks remain encrypted tombstones for synchronization, and aren't in readable exports.
+Import through workspace options. Parsing and preview work offline with the [vendored Marked lexer](public/vendor/README.md). Imported HTML is never rendered. Column headings set status, checked items go to Done, and nested checklists become separate tasks. Notes and link destinations remain text. Imports accept up to 500 tasks and 256 KB, validate before saving and skip duplicates. Optional `Archived: <ISO timestamp>` metadata preserves archive state. Files without tags or archive metadata still work.
 
-## Docker and VPS
+## Accounts and passwords
+
+Each account has its own vault, sessions and encrypted data. There are no shared boards, roles, public registration or email service. User IDs are permanent identifiers, not secrets.
+
+```sh
+bun run admin invite
+bun run admin list
+bun run admin reinvite USER_ID
+bun run admin revoke USER_ID
+bun run admin disable USER_ID
+```
+
+Reinvite replaces a pending link. Revoke cancels it. Neither reopens an activated vault. Disable blocks server access and revokes sessions while retaining encrypted data. Existing WebSockets close at the next authorization check. It cannot erase downloaded data or revoke copied keys. There is no account deletion command.
+
+Send setup links privately. Whoever claims one first gets the pending account. The server stores only token hashes and accepts each token once. Admin commands must use the server's `DATABASE_PATH` and `TASKPATH_ORIGIN`.
+
+Change the optional nickname through workspace options. It is encrypted, works offline and appears in greetings after unlocking. It can contain up to 40 characters and need not be unique.
+
+The password both signs in and decrypts the vault. It never reaches the server. There is no recovery key, password reset or administrator bypass. A forgotten password cannot be recovered. An unlocked or remembered browser may still export readable data.
+
+Remember this device is off by default. Otherwise, keys stay in memory and the page locks on close, reload or navigation away. There is no inactivity timer. Remembering stores a non-extractable key in IndexedDB. Anyone using that browser profile may access the vault. Scripts with access to that key can use it even though the browser will not export its raw bytes.
+
+Lock clears remembered keys and decrypted content across this browser's tabs while preserving encrypted pending changes. It leaves other devices unlocked and does not end the server session. Workers can still transfer ciphertext.
+
+Change password requires the current password and an online connection. It rewraps the vault key without re-encrypting tasks or files and revokes existing server sessions. Other devices must sign in again. An offline device may still unlock its cached copy with the old password until it reconnects. Password changes cannot revoke copied decryption keys.
+
+Switch account locks all tabs and clears remembered keys. Each account keeps its encrypted cache and pending edits. Only the active account syncs. Previously downloaded accounts can unlock offline.
+
+## Encryption and privacy
+
+- PBKDF2-HMAC-SHA-256 uses 600,000 iterations and a random 16-byte salt to derive a 256-bit master secret. Passwords are not trimmed or normalized.
+- HKDF-SHA-256 derives separate authentication and wrapping keys. Only the authentication credential travels over HTTPS. The server stores its Argon2id verifier. The credential is replayable, so TLS is required. This is not a PAKE protocol.
+- A random 256-bit vault key encrypts complete tasks with AES-256-GCM, fresh 96-bit nonces and 128-bit authentication tags. Authenticated metadata binds the format, vault, task, edit time and operation ID.
+- SQLite and IndexedDB store ciphertext and public sync metadata. Decrypted content stays in page memory. Workers never load decryption keys.
+
+The server can see identifiers, sizes, edit times, timezone and traffic patterns. Background reminders also expose scheduling times, random tokens and device push subscriptions. Filenames, task contents and passwords remain encrypted or client-only.
+
+This is a custom, unaudited implementation. A compromised host can serve JavaScript that captures a password or unlocked data. Encryption does not protect against that attack or a compromised browser or device. Existing plaintext backups and legacy browser data remain plaintext.
+
+The app's Privacy notice explains local storage, cookies, push delivery and encryption limits. Operators must provide their contact details and their hosting, log and backup retention policies.
+
+## Offline use and installation
+
+Unlock online once and let the workspace and offline resources download. Task edits, archive actions, imports and exports work offline. Each write is encrypted before storage. Retries preserve operation IDs, timestamps and ciphertext.
+
+Sync uses the most recent edit of the whole task, including deletion. Equal timestamps use operation IDs to break ties. Fields are not merged. Keep device clocks accurate. WebSockets announce changes, HTTP transfers ciphertext, and polling provides a fallback.
+
+Session expiry preserves pending changes. Sign in again to sync. Browser eviction or clearing site data can lose unsynced work. Server backups contain only changes that reached the server. Reopen online to finish transfers when the browser suspends background work.
+
+On iPhone or iPad, open the HTTPS site in Safari and choose Share, then Add to Home Screen. Open the installed app online once because it may have separate storage. On Android, use Install app in the browser or Taskpath menu.
+
+## Background reminders
+
+1. Set `TASKPATH_ORIGIN` to the public HTTPS origin. Keep the server running and allow outbound HTTPS to push services.
+2. Unlock and choose Background reminders in workspace options, then Enable on this device. Grant notification permission on each device. iPhone and iPad require a Home Screen installation on iOS or iPadOS 16.4 or later.
+3. Wait for reminder changes to sync before closing the app.
+
+System notifications say "You have a reminder in Taskpath." They contain no task text or keys. Enabling a device shares scheduling metadata for that account. Offline changes cannot cancel a remotely queued notification until they sync.
+
+The server keeps VAPID keys, subscriptions and schedules in SQLite. Back them up with the database. `TASKPATH_PUSH_SUBJECT` can supply a contact URL or `mailto:` address. VAPID keys cannot decrypt vaults.
+
+Delivery depends on the browser, operating system and push provider. The scheduler checks every 15 seconds and supports up to 10 devices per account. Retries may repeat a delivery. After downtime, reminders more than 24 hours overdue remain in-app only. Turn off on this device removes its subscription. Turning off the last device removes server schedules. Locking retains subscriptions.
+
+See the [notification setup and troubleshooting guide](DEPLOYMENT.md#enable-background-reminders).
+
+## Files
+
+Files supports multiple uploads, renaming, downloads and local previews of PNG, JPEG, WebP and GIF images. Other formats, including HTML and SVG, are download-only. There are no folders, sharing or task attachments. Deletion is permanent and wins over stale uploads or renames.
+
+Each file has a random key wrapped by the vault key. Contents and metadata are encrypted before upload. Downloads cache ciphertext for offline use. Available offline means a download finished. Uploads, renames and deletions queue offline. Waiting for space retains the local upload so you can download or discard it. Keep originals until uploads sync.
+
+`TASKPATH_FILE_QUOTA_MB` defaults to `10` per user. It accepts nonnegative whole numbers. One MB is 1,000,000 bytes of original contents. `0` blocks new uploads. Restart the server or recreate the container after changing it. Lower quotas never delete files or prevent reading, renaming or deleting existing files.
+
+Each file is limited to 10 MB or the configured quota if lower. Accounts can hold up to 1,000 files. Offline deletion releases server quota after sync. Lock clears decrypted names and previews, but cannot remove copies downloaded outside Taskpath.
+
+## Deploy and update
 
 ```sh
 cp .env.example .env
-# Set TASKPATH_ORIGIN and TASKPATH_TIMEZONE for your deployment.
+# Set TASKPATH_ORIGIN and TASKPATH_TIMEZONE in .env.
 docker compose up -d --build
-docker compose logs taskpath
+docker compose exec taskpath bun run admin invite
 ```
 
-Compose binds to `127.0.0.1:3000` and uses a new `taskpath-accounts-data` volume. Set `TASKPATH_START_SCRIPT=start:smol` for optional reduced-memory mode. Authentication is mandatory; remove old `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` settings. Create invitations with `docker compose exec taskpath bun run admin invite`; recipients choose passwords in their browsers.
+Compose uses a persistent database volume and binds to `127.0.0.1:3000`. Keep that port private and use the [Nginx template](deploy/nginx/taskpath.conf.example) with valid HTTPS. It includes WebSocket forwarding and the file-upload limit. Follow the [deployment guide](DEPLOYMENT.md) for setup and backups. Never use the old username or password environment settings.
 
-For public access, use the included [Nginx template](deploy/nginx/taskpath.conf.example), valid HTTPS, `TASKPATH_ORIGIN=https://your-domain`, and cookie/Origin forwarding. Keep the application port private. Keep the existing WebSocket and 2 MB sync proxy configuration, and add the 11 MB `/api/files` exception from the updated template. See the [step-by-step VPS guide](DEPLOYMENT.md).
+Existing multi-user installations keep their accounts and data. Plaintext and single-owner databases require the [fresh-start procedure](DEPLOYMENT.md#start-fresh-from-a-plaintext-or-single-owner-release). The app rejects them before modification.
 
-## Verification and GitHub CI
+To update, sync devices, rebuild and restart the server, then load the app online. Close all Taskpath tabs and installed-app windows before reopening. Do not clear site data. Automatic content fingerprints version client URLs and PWA caches. No manual `accounts-vN` bump is needed. README edits do not change the fingerprint.
+
+## Development and checks
+
+`bun run dev` watches modular TypeScript sources and transpiles allowed client files on demand. It needs no build. Production serves `dist/public`. The build minifies client assets and bundles the app and worker separately to avoid import waterfalls. Rebuild after client changes. Production validates the build and snapshots it at startup.
+
+Use `bun run dev:smol` or `bun run start:smol` for lower memory use with more frequent garbage collection. Docker accepts `TASKPATH_START_SCRIPT=start:smol`.
+
+Drizzle uses `bun:sqlite`. Typed tables and repositories live in `src/db/`. Schema changes require explicit initialization code. Deployment does not run Drizzle Kit or automatic schema push.
 
 ```sh
+bun install --frozen-lockfile --ignore-scripts
+bun run typecheck
+bun run build
 bun test
 ```
 
-Tests use isolated databases and cover derivation separation, wrapping, tampering, record substitution, invitation expiry/races, account isolation, nicknames, sessions, password changes, legacy database refusal, encrypted persistence, conflicts, tags, Markdown, rollover, reminder tokens, and real WebSocket connections. All owned code, including browser harness scripts and the service worker, is TypeScript. `bun run typecheck` runs strict, no-emit checks with separate Bun, browser and worker configurations. TypeScript and Bun/Web Push declarations are pinned development dependencies; Bun runs TypeScript directly but does not check its types. Vendored Marked stays JavaScript with local API declarations. Source tests need no build. Run `bun run build` before `bun test` to also verify the minified module graph and served assets. That check is skipped if no fingerprinted build exists; a damaged fingerprinted build fails validation.
+These commands reproduce the [GitHub Tests workflow](.github/workflows/tests.yml). CI runs on pushes, pull requests and manual dispatches with Bun 1.4.2 on Ubuntu 24.04. Bun executes TypeScript, but typecheck checks its types. Tests cover encryption, accounts, storage, sync, task behavior and WebSockets. Push tests use a fake sender. Source tests can run without a build. Build first to include production asset checks.
 
-For real browser IndexedDB, account-switching, and concurrent-context checks, run `QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts` and open the printed `/checks` URL in a fresh browser context. It uses a temporary in-memory server workspace on a separate port, never the application's database. Its checks create disposable browser data on that origin. Run the same scenarios against the build with `QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts`. Use the separate origin for disposable test data; `/invitation` opens a test setup link and `/phone-preview` provides a 390px viewport. UI acceptance checks are separate from Bun tests.
+Run browser checks against separate disposable origins:
 
-The [Tests workflow](.github/workflows/tests.yml) runs on pushes, pull requests, and manual GitHub dispatches. It installs frozen dependencies, checks TypeScript, builds the minified client before testing and uses Ubuntu 24.04 and Bun 1.4.2, a five-minute timeout, read-only permissions, and cancellation of superseded runs. Run `bun install --frozen-lockfile --ignore-scripts`, `bun run typecheck`, `bun run build`, then `bun test` with Bun 1.4.2 to reproduce CI locally. Push tests use a fake sender and never contact external delivery services. Linux/GitHub execution and real phone delivery require separate checks.
+```sh
+QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
+QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
+```
 
-### TypeScript update (accounts-v13)
-
-This update preserves existing multi-user accounts, passwords, SQLite/IndexedDB storage, settings, archived tasks and reminders. It does not rewrite ciphertext, pending operations, IDs or timestamps. Calendar code from the separate branch is not included. Asset URLs and the PWA cache move to `accounts-v13`; storage names and versions stay unchanged. Sync all devices first, download the update online, close **all** tabs and PWA windows, then reopen. **Do not clear site data.**
-
-### Consistent pickers (accounts-v14)
-
-Category, column, tag and date controls use themed selectors on desktop and bottom sheets on screens up to 760px. Tag lists support local search; the editor also supports multiple tags and creating names with Enter. Date pickers provide a Monday-first calendar and manual `YYYY-MM-DD` entry; reminders use device-local `HH:mm` time. Apply updates the editor draft, Clear empties the field, and Cancel leaves it unchanged. Save the task to persist the changes. Escape closes only the top picker and restores focus. File imports still use the system file chooser.
-
-This update preserves accounts, encrypted tasks, pending operations and browser storage. Download it online, close all tabs and installed PWA windows, then reopen. Do not clear site data.
-
-The browser harness also checks picker keyboard behavior, draft validation, tag creation, cleanup, viewport bounds and all seven palettes. Open `/picker-checks` on the test server to run just those checks. See [picker regression results](docs/pickers-regression.md) for the source/build results and device limitations.
-
-Reminders show the calendar and custom Hour (00–23) / Minute (00–59) lists together: side by side on desktop and stacked on phones. Due dates use only the calendar. Choose both time parts for a new reminder, or type `HH:mm` directly. Arrow keys, Home/End and typing digits navigate the lists; Enter/Space selects. Apply stages the chosen date/time in the task editor; Cancel or Escape discards it. The action buttons remain available while scrolling the reminder panel.
-
-The centering fix uses new `accounts-v15` asset URLs and a fresh PWA shell cache. The reminder dialog is centered in the desktop viewport; phones retain the bottom sheet. After updating the server, open online, close all Taskpath tabs/PWA windows, then reopen. Existing tasks, storage and pending changes are preserved; do not clear site data.
-
-The combined picker cleanup uses `accounts-v16` asset URLs and removes the redundant clock button; hour/minute lists and manual entry remain available.
-
-### Encrypted Files (accounts-v17)
-
-Open **Files** in the sidebar or mobile bottom tabs. Upload one or more files, rename them, download originals, or preview PNG/JPEG/WebP/GIF images. Other types—including HTML and SVG—are download-only. Files have no sharing, folders or task attachments. Deletion asks for confirmation and is permanent; deleting offline frees server storage after sync. A deletion wins over stale uploads and renames on other devices.
-
-Files use your existing vault password and remembered-device setting. Contents and filenames are encrypted in the browser, stored as ciphertext in SQLite and IndexedDB, and automatically downloaded for offline use. **Available offline** means the download completed. Uploads/renames/deletions queue offline; **Waiting for space** keeps the encrypted upload locally so you can download it or discard it. An expired session requires sign-in before syncing. Browser eviction, clearing site data and interrupted background execution can still affect offline availability. Keep original files until uploads are synced.
-
-Set `TASKPATH_FILE_QUOTA_MB=10` to configure the allowance **per user** for all accounts. One MB is 1,000,000 bytes of original file contents, excluding bounded encryption metadata. The value must be a nonnegative whole number; `0` blocks new uploads. Restart the server (recreate the Docker container) to apply changes. Lowering the allowance never deletes existing files: over-quota accounts can still read, rename and delete. Each file is limited to 10 MB or the configured allowance when lower, and each account supports up to 1,000 live files. Increasing the total allowance does not raise the single-file limit. The interface displays both local usage and authoritative server usage; offline figures can be stale.
-
-Each file has a random key wrapped by the vault key. Password changes do not re-encrypt files. Lock removes decrypted names and previews and revokes their Blob URLs; encrypted transfers may continue while locked without loading keys. Copies already downloaded outside Taskpath remain outside its control. The server can see file sizes, opaque identifiers, deletion markers and traffic patterns, but not filenames or contents. A compromised host serving malicious JavaScript remains outside E2EE's protection.
-
-This release adds file tables and browser stores without rewriting tasks or pending task operations. Sync devices, update online, close all Taskpath tabs/PWA windows, then reopen. Do not clear site data. SQLite backups now include encrypted files; task Markdown/JSON exports still contain tasks only. Download files individually for readable copies.
-
-## Privacy notice
-
-The **Privacy notice** is available before sign-in and in the workspace footer, including offline after the app is cached. It explains encrypted content, visible metadata, session cookies, local storage, remembered devices, optional push delivery, deletion, backups and the limits of encryption. Operators should provide their own contact details and hosting/log/backup retention information to invited users; the app does not promise a retention policy for independently hosted instances.
-
-Load updates online, close all Taskpath tabs and PWA windows, then reopen. Do not clear site data.
-
-## Automatic client releases
-
-No manual `accounts-vN` bump is needed. Source asset URLs use the stable `__TASKPATH_RELEASE__` placeholder; tooling replaces it with `accounts-<content fingerprint>` in HTML, scripts, icons' manifests and the service-worker cache name. Keep using relative `.js` imports inside client modules. The TypeScript alias and browser harness resolve the same placeholder automatically.
-
-The fingerprint includes sorted client paths and contents, build/transpilation tooling, TypeScript configurations, package metadata, the lockfile and the Bun version/revision. Identical inputs produce the same ID. Root README/documentation changes, timestamps, account data and environment settings are excluded. Source and minified releases deliberately have different IDs.
-
-`bun run dev` fingerprints current files when serving client resources and transpiles TypeScript without a build. Refresh after edits to load the new release; an old URL never silently receives new source bytes. `bun run build` stamps a complete release and writes `dist/public/.taskpath-build.json` with its ID and asset checksums. Production validates and snapshots that artifact at startup, so it uses the build's ID even on another machine. Missing or damaged artifacts fail startup. Rebuild and restart when shipping changes; changing files under a running production server does not replace its snapshot. No extra release command or dependency is required.
-
-The PWA still waits until all older Taskpath tabs/windows close before activating, avoiding mixed versions. Both numbered legacy caches and fingerprinted caches are cleaned up only during activation. IndexedDB names/versions, encryption formats, pending operations and accounts are independent of this fingerprint and are not reset.
+Open each printed `/checks` URL in a fresh browser context. These servers use isolated in-memory databases and create test data in browser storage. `/invitation` provides a setup fixture, `/phone-preview` provides a 390px view, and `/picker-checks` runs selector checks. Browser UI, physical phones and real push delivery need separate verification.
