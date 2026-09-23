@@ -9,6 +9,7 @@ import type { Board as BoardData, Task, Status, Route } from "../types.js";
 import { columns, boardOrder, move, mutate, message, navigate } from "./store";
 import { Icon } from "./icons";
 import { Select } from "./pickers";
+import { TaskMenu } from "./task-menu";
 import { dueLabel } from "../dates.js";
 export const dateLabel = (iso: string | null) =>
   iso
@@ -369,60 +370,39 @@ export function Board({
                 </button>
               </>
             )}
-            <details
-              className="task-menu"
-              onClick={(event) => {
-                if ((event.target as Element).closest(".menu-content button"))
-                  event.currentTarget.open = false;
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.currentTarget.open = false;
-                  event.currentTarget.querySelector("summary")?.focus();
-                }
-              }}
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node))
-                  event.currentTarget.open = false;
-              }}
-            >
-              <summary
-                className="icon-button"
-                aria-label={"More options for " + t.title}
-              >
-                <Icon name="more" />
-              </summary>
-              <div className="menu-content">
-                <button onClick={() => actions.edit(t)}>
+            <TaskMenu title={t.title}>
+                <button type="button" role="menuitem" onClick={() => actions.edit(t)}>
                   {archived ? "View details" : "Edit task"}
                 </button>
                 {!archived && (
                   <>
                     <button
+                      type="button" role="menuitem"
                       disabled={index === 0}
                       onClick={() => reordered(t, -1)}
                     >
                       Move up
                     </button>
                     <button
+                      type="button" role="menuitem"
                       disabled={index === total - 1}
                       onClick={() => reordered(t, 1)}
                     >
                       Move down
                     </button>
-                    <button onClick={() => run(() => actions.archive(t))}>
+                    <button type="button" role="menuitem" onClick={() => run(() => actions.archive(t))}>
                       Archive task
                     </button>
                   </>
                 )}
                 <button
+                      type="button" role="menuitem"
                   className="danger"
                   onClick={() => run(() => actions.remove(t))}
                 >
                   Delete task
                 </button>
-              </div>
-            </details>
+            </TaskMenu>
           </div>
         </div>
       </article>

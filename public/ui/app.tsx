@@ -148,6 +148,31 @@ function Workspace({
     else setEditor({ task, status: task.status });
   };
   useEffect(() => {
+    const shortcuts = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || !isUnlocked()) return;
+      if (document.querySelector('dialog[open], #task-context-menu, .task-menu-popover')) return;
+      if (event.key === "Escape") {
+        for (const open of document.querySelectorAll<HTMLDetailsElement>(".task-menu[open], .app-menu[open]")) {
+          open.open = false;
+          open.querySelector("summary")?.focus();
+        }
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat ||
+        (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))) return;
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        if (getSnapshot().route.view !== "board") navigate({ view: "board" });
+        setEditor({ task: null, status: "later" });
+      } else if (event.key === "/") {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>("#search")?.focus();
+      }
+    };
+    window.addEventListener("keydown", shortcuts);
+    return () => window.removeEventListener("keydown", shortcuts);
+  }, []);
+  useEffect(() => {
     alive.current = true;
     const pref = (e: StorageEvent) => {
       if (e.key === "taskpath-sidebar-collapsed" || e.key === null) {

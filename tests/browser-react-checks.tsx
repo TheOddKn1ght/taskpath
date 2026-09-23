@@ -62,6 +62,8 @@ const input = (selector: string, value: string) =>
   });
 const submit = (selector: string) =>
   flushSync(() => node<HTMLFormElement>(selector).requestSubmit());
+const key = (target: HTMLElement, value: string, options: KeyboardEventInit = {}) =>
+  flushSync(() => target.dispatchEvent(new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...options })));
 const menu = (label: string) => {
   click(".app-menu summary");
   textButton(label, node(".app-menu"));
@@ -122,6 +124,19 @@ try {
     document.querySelectorAll("#root #main").length === 1,
     "one React workspace mounts",
   );
+  key(document.body, "/");
+  assert(document.activeElement === node("#search"), "slash focuses search");
+  key(node("#search"), "n");
+  assert(!document.querySelector("#task-dialog"), "new-task shortcut does not interrupt typing");
+  key(document.body, "n", { ctrlKey: true });
+  key(document.body, "n", { metaKey: true });
+  key(document.body, "n", { isComposing: true });
+  assert(!document.querySelector("#task-dialog"), "shortcuts preserve browser modifiers and composition");
+  key(document.body, "N");
+  assert(!!document.querySelector("#task-dialog"), "N opens a new task");
+  key(node("#task-title"), "/");
+  assert(document.activeElement === node("#task-title"), "slash does not steal editor focus");
+  textButton("Cancel", node("#task-dialog"));
   assert(
     [...document.querySelectorAll(".column")]
       .map((e) => (e as HTMLElement).dataset.status)
@@ -224,14 +239,62 @@ try {
     ),
     "React create preserves normalized tags",
   );
-  textButton("REACT_PRIVATE_TASK");
+  const taskTrigger = node<HTMLButtonElement>(".task-card .task-menu-trigger");
+  click(".task-card .task-menu-trigger");
+  const taskMenu = node(".task-menu-popover");
+  assert(taskMenu.parentElement === document.body && !taskMenu.closest('[draggable="true"]'), "task actions render outside draggable cards");
+  for (const relatedTarget of [null, document.body, taskTrigger.closest("article")]) {
+    flushSync(() => taskMenu.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget })));
+    assert(taskMenu.isConnected, "menu survives pointer blur without relying on Safari button focus");
+  }
+  const drag = new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
+  flushSync(() => taskMenu.querySelector("button")!.dispatchEvent(drag));
+  assert(drag.defaultPrevented && !document.querySelector(".task-card.dragging"), "menu actions cannot start a card drag");
+  textButton("Edit task", taskMenu);
+  assert(!!document.querySelector("#task-dialog"), "task menu Edit opens the editor after pointer blur");
   input("#task-title", "REACT_PRIVATE_EDIT");
-  submit("#task-form");
+  click("#save-task");
   await until(() => !document.querySelector("#task-dialog"), "edit saved");
-  assert(
-    getSnapshot().board?.tasks.some((t) => t.title === "REACT_PRIVATE_EDIT"),
-    "task edit persists",
-  );
+  assert(getSnapshot().board?.tasks.some((t) => t.title === "REACT_PRIVATE_EDIT"), "task edit persists");
+  click(".task-card .task-menu-trigger");
+  key(node(".task-menu-popover button"), "Tab");
+  assert(!document.querySelector(".task-menu-popover") && document.activeElement === taskTrigger, "Tab dismisses task actions and returns focus to their trigger");
+  click(".task-card .task-menu-trigger");
+  flushSync(() => node("#search").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  assert(!document.querySelector(".task-menu-popover"), "outside pointer closes the task menu");
+  click(".task-card .task-menu-trigger");
+  key(node(".task-menu-popover button"), "End");
+  assert(document.activeElement?.textContent === "Delete task", "End focuses the last menu action");
+  key(node(".task-menu-popover button"), "Escape");
+  assert(!document.querySelector(".task-menu-popover") && document.activeElement === taskTrigger, "Escape closes the menu and restores focus");
+  const menuTask = (title: string) => [...document.querySelectorAll<HTMLElement>(".task-card")].find(card => card.querySelector(".task-title")?.textContent === title)!;
+  const action = (title: string, label: string) => {
+    flushSync(() => menuTask(title).querySelector<HTMLButtonElement>(".task-menu-trigger")!.click());
+    const popup = node(".task-menu-popover");
+    flushSync(() => popup.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body })));
+    textButton(label, popup);
+  };
+  for (const title of ["MENU_A", "MENU_B"]) {
+    input('.column[data-status="later"] .quick-add input', title);
+    submit('.column[data-status="later"] .quick-add');
+    await until(() => menuTask(title), "menu fixture created");
+  }
+  const laterTitles = () => getSnapshot().board!.tasks.filter(task => task.status === "later" && !task.archivedAt).map(task => task.title);
+  action("MENU_B", "Move up");
+  await until(() => laterTitles().indexOf("MENU_B") < laterTitles().indexOf("MENU_A"), "menu move up");
+  action("MENU_B", "Move down");
+  await until(() => laterTitles().indexOf("MENU_B") > laterTitles().indexOf("MENU_A"), "menu move down");
+  assert(true, "both reorder menu actions work after pointer blur");
+  action("MENU_A", "Archive task");
+  await until(() => getSnapshot().board!.tasks.some(task => task.title === "MENU_A" && task.archivedAt), "menu archive");
+  assert(!menuTask("MENU_A"), "Archive menu action removes the task from the board");
+  click("#toast-action");
+  await until(() => menuTask("MENU_A"), "archive undo");
+  for (const title of ["MENU_A", "MENU_B"]) {
+    action(title, "Delete task");
+    await until(() => !menuTask(title), "menu delete");
+  }
+  assert(true, "Delete menu action removes tasks after pointer blur");
   input("#search", "PRIVATE_EDIT");
   assert(
     location.hash.includes("q=PRIVATE_EDIT") &&

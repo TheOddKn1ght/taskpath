@@ -99,7 +99,11 @@ export function GuideCopy() {
         At midnight, unfinished Today tasks return to This Week. On Monday,
         unfinished weekly tasks return to Later. Done stays done.
       </p>
-      <p></p>
+      <p>
+        Keyboard: <kbd>N</kbd> creates a task, <kbd>/</kbd> focuses search,
+        and <kbd>Enter</kbd> opens a focused task. <kbd>Escape</kbd> closes
+        the current dialog or menu. Shortcuts stay inactive while typing.
+      </p>
     </div>
   );
 }

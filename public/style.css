@@ -602,3 +602,8 @@ body.vault-locked #files-view { display:none; }
 @media (max-width:760px) and (prefers-reduced-motion:no-preference) {
   #sidebar nav button:active { transform:scale(.96); }
 }
+
+/* Action popovers live outside draggable task cards. */
+.task-menu-popover { position:fixed; right:auto; z-index:30; max-height:calc(100dvh - 16px); max-width:calc(100vw - 16px); overflow-y:auto; overscroll-behavior:contain; }
+.task-actions:has(.task-menu-trigger[aria-expanded="true"]) { opacity:1; }
+@media (max-width:760px) { .task-menu-popover button { min-height:44px; } }
