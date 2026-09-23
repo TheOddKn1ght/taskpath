@@ -16,7 +16,7 @@ test('public shells use versioned assets and every service-worker shell resource
     expect(shell!.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     const urls = [...html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)].map(m => m[1]).filter(u => u !== '/login');
     for (const url of urls) { expect(url).toStartWith(`/assets/${ASSET_VERSION}/`); expect((await get(url))!.status).toBe(200); }
-    for (const file of ['crypto.js', 'vault-ui.js', 'persistence.js', 'markdown.js', 'vendor/marked.js', 'offline-model.js', 'offline.js', 'tags.js', 'realtime.js']) expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
+    for (const file of ['api.js', 'api-client.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js', 'offline-model.js', 'offline.js', 'tags.js', 'realtime.js']) expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
     // Missing themed icons must not break the worker's all-or-nothing offline install.
     for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
       const base = `/assets/${ASSET_VERSION}/themes/${theme}/`;
@@ -40,7 +40,7 @@ test('public shells use versioned assets and every service-worker shell resource
     expect(() => new Bun.Transpiler({ loader: 'js' }).scan(script)).not.toThrow();
     expect(script).not.toContain('import type');
     const worker = await (await get('/sw.js'))!.text();
-    expect(worker).toContain(`/assets/${ASSET_VERSION}/offline.js`);
+    expect(new Bun.Transpiler({loader:'js'}).scan(worker).imports).toEqual([]);
     expect(worker).toContain('taskpath-shell-' + ASSET_VERSION);
     expect(worker).not.toContain('skipWaiting');
     expect(worker).toMatch(/name\.startsWith\(['"]taskpath-shell-accounts-['"]\)/);

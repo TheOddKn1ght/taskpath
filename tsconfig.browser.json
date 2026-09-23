@@ -5,17 +5,20 @@
       "ESNext",
       "DOM",
       "DOM.Iterable"
-    ]
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
     "public/**/*.ts",
     "tests/browser-checks.ts",
     "tests/browser-frame.ts",
     "tests/browser-files-checks.ts",
-    "tests/browser-picker-checks.ts",
+    "tests/browser-picker-checks.tsx",
+    "tests/browser-react-checks.tsx",
     "tests/browser-picker-entry.ts",
     "types/experimental.d.ts",
-    "types/browser.d.ts"
+    "types/browser.d.ts",
+    "public/**/*.tsx"
   ],
   "exclude": [
     "public/sw.ts"

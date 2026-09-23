@@ -7,7 +7,7 @@ import { Store } from '../src/store';
 import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release';
 
 const root = resolve(import.meta.dir, '..');
-const sourceName = (name: string) => name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
+const sourceName = (name: string) => name === 'app.js' ? 'app.tsx' : name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
 const built = resolve(root, 'dist/public');
 const hasBuild = await Bun.file(resolve(built, BUILD_MANIFEST)).exists();
 const release = hasBuild ? releaseForDirectory(built) : sourceRelease('built');
@@ -29,7 +29,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
   for (const name of files.filter(name => name.endsWith('.js'))) {
     const output = await Bun.file(resolve(built, name)).text();
     const source = await Bun.file(resolve(root, 'public', sourceName(name))).text();
-    expect(scan.scan(output).exports.sort()).toEqual(new Bun.Transpiler({loader: name.startsWith('vendor/') ? 'js' : 'ts'}).scan(source).exports.sort());
+    expect(scan.scan(output).exports.sort()).toEqual(new Bun.Transpiler({loader: name === 'app.js' ? 'tsx' : name.startsWith('vendor/') ? 'js' : 'ts'}).scan(source).exports.sort());
     for (const { path } of scan.scan(output).imports) {
       const target = path.startsWith(`/assets/${ASSET_VERSION}/`)
         ? resolve(built, path.slice(`/assets/${ASSET_VERSION}/`.length))
@@ -42,7 +42,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
   // These are separate runtimes: one shared state inside the page bundle and
   // ciphertext-only state inside the worker. Neither fetches child modules.
   for (const name of ['app.js', 'sw.js']) expect(scan.scan(await Bun.file(resolve(built, name)).text()).imports).toEqual([]);
-  expect(scan.scan(await Bun.file(resolve(built, 'vault-ui.js')).text()).imports.some(i => i.path === './offline.js')).toBe(true);
+  expect(await Bun.file(resolve(built, 'sw.js')).text()).not.toContain('react.production');
   expect(scan.scan(await Bun.file(resolve(built, 'theme.js')).text()).exports).toEqual([]);
   const store = new Store();
   try {
@@ -62,7 +62,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
     expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
     for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
-      expect(Bun.file(resolve(built, name)).size).toBeLessThan(Bun.file(resolve(root, 'public', sourceName(name))).size);
+      expect(Bun.file(resolve(built, name)).size).toBeLessThan(new TextEncoder().encode(stampRelease(await Bun.file(resolve(root, 'public', sourceName(name))).text(),release)).length);
     }
   } finally { store.close(); }
 });
@@ -86,7 +86,7 @@ test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell wi
     handlers.get('install')!({ waitUntil(promise) { installation = promise; } });
     await installation;
     const prefix = `/assets/${ASSET_VERSION}/`;
-    expect(fetched.filter(path => path.endsWith('.js')).sort()).toEqual(['app.js', 'privacy.js', 'pwa.js', 'theme.js'].map(name => prefix + name));
+    expect(fetched.filter(path => path.endsWith('.js')).sort()).toEqual(['app.js', 'theme.js'].map(name => prefix + name));
     expect(cached.sort()).toEqual(fetched.sort());
     expect(cached).toContain('/offline-shell');
     expect(cached).toContain(prefix + 'style.css');

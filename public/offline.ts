@@ -1,3 +1,4 @@
+import { accountApi } from './api.js';
 import type { Task, Profile, Envelope, Change, VaultConfig, EncryptedRecord, PlainRecord, PlainBoard, Board, ReminderMetadata, SyncResult, SyncBoard, ImportPreview, TaskInput } from './types.js';
 import { RequestError, errorMessage, errorStatus } from './errors.js';
 import { importTaskKey } from './tags.js';
@@ -81,15 +82,6 @@ export async function switchAccount(userId: string | null) {
   channel?.postMessage('account');
   emit('taskpath-locked');
 }
-export async function network<T = unknown>(path: string, method = 'GET', body?: unknown, userId = selectedAccount()): Promise<T> {
-  const response = await fetch(path, { method, credentials: 'same-origin', cache: 'no-store', headers: { ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }), ...(userId ? { 'X-Taskpath-User': userId } : {}) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000) });
-  if (!response.ok) {
-    let message = response.status === 401 ? 'Sign in to sync. Encrypted changes are saved on this device.' : 'Could not complete the request. Your encrypted changes are safe on this device.';
-    try { const value: unknown = await response.json(); if (value && typeof value === 'object' && 'error' in value && typeof value.error === 'string') message = value.error || message; } catch { /* Proxy error. */ }
-    throw new RequestError(message, response.status);
-  }
-  return response.json();
-}
 const newer = (a: Envelope, b?: Envelope | null) => !b || a.editedAt > b.editedAt || (a.editedAt === b.editedAt && a.changeId > b.changeId);
 export function reminderMetadata(task: Task, changeId: string): ReminderMetadata {
   const active = !task.deletedAt && !task.archivedAt && task.status !== 'done' && task.reminderAt && !task.reminderDismissedAt && task.reminderToken;
@@ -155,8 +147,7 @@ export function sync() {
         }
         const available = new Set([...changes, ...(record.board?.rows || [])].map(e => e.changeId));
         const reminders = record.pushEnabled ? Object.values(record.reminderOutbox || {}).filter(r => available.has(r.changeId)).slice(0, 50) : [];
-        const posting = changes.length || reminders.length;
-        const response = await network('/api/sync', posting ? 'POST' : 'GET', posting ? { workspaceKey: record.config!.vaultId, changes, ...(reminders.length ? { reminders } : {}) } : undefined, userId);
+        const response = await accountApi(userId).sync({ workspaceKey: record.config!.vaultId, changes, reminders });
         await localState(current => acceptEncrypted(current, response), userId);
         await preparePushMetadata(userId);
         changed();
@@ -260,10 +251,10 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
     const board = await readBoard();
     const due = board.reminders.filter(t => t.reminderToken).slice(0, 100);
     try {
-      const claimed = await network<{tokens:string[]}>(path, 'POST', { tokens: due.map(t => t.reminderToken) });
+      const claimed = await accountApi(current.userId ?? null).claimReminders(due.map(t => t.reminderToken!));
       assertUnlocked(await localState(), token);
-      const current = await readBoard();
-      return { tasks: current.reminders.filter(t => Boolean(t.reminderToken && claimed.tokens.includes(t.reminderToken))) };
+      const latest = await readBoard();
+      return { tasks: latest.reminders.filter(t => Boolean(t.reminderToken && claimed.includes(t.reminderToken))) };
     } catch { return { tasks: [] }; }
   }
   if (method === 'GET') throw new Error('Unsupported task operation.');

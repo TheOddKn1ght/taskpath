@@ -1,5 +1,6 @@
+import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
 import type { VaultConfig } from '../public/types.js';
-import { network, activate, localState, lock, switchAccount, isUnlocked } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import { activate, localState, lock, switchAccount, isUnlocked } from '/assets/__TASKPATH_RELEASE__/offline.js';
 import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
 import { addFile, listFiles, readStoredFile, renameStoredFile, deleteStoredFile } from '/assets/__TASKPATH_RELEASE__/file-client.js';
 import { fileState, fileBlob, writeFiles } from '/assets/__TASKPATH_RELEASE__/file-persistence.js';
@@ -21,11 +22,11 @@ export async function fileChecks(assert:(value:unknown,message:string)=>void) {
     return nativeFetch(input,init);
   };
   try {
-    const {userId,secondUserId}=await network<{userId:string;secondUserId:string}>('/test-account');
+    const {userId,secondUserId}=await apiRequest<{userId:string;secondUserId:string}>('/test-account');
     await switchAccount(secondUserId);
-    const config=(await network<{config:VaultConfig}>('/api/auth/config?userId='+secondUserId)).config;
+    const config=(await apiRequest<{config:VaultConfig}>('/api/auth/config?userId='+secondUserId)).config;
     const unlocked=await unlockVault('browser second password 2026',config);
-    const login=()=>network('/api/auth/login','POST',{userId:secondUserId,credential:unlocked.credential,revision:config.revision});
+    const login=()=>apiRequest('/api/auth/login','POST',{userId:secondUserId,credential:unlocked.credential,revision:config.revision});
     const activateAgain=()=>activate(config,unlocked.key,false,epoch);
     let epoch=(await localState()).lockEpoch;
     await login();await activateAgain();await syncFiles();
@@ -77,7 +78,7 @@ export async function fileChecks(assert:(value:unknown,message:string)=>void) {
     assert(waiting.cached && Object.values(state.files).some(f=>f.error==='Waiting for space'),'quota rejection keeps pending encrypted files on the device');
     assert((await readStoredFile(waiting.envelope.fileId)).bytes.length===1,'quota-blocked files remain downloadable');
     full=false;await syncFiles();assert(Object.values((await fileState()).files).every(f=>!f.pending),'pending files resume when space becomes available');
-    await network('/api/auth/logout','POST',{});offline=true;await renameStoredFile(id,'AFTER_EXPIRY.txt');await syncFiles();offline=false;await syncFiles();
+    await apiRequest('/api/auth/logout','POST',{});offline=true;await renameStoredFile(id,'AFTER_EXPIRY.txt');await syncFiles();offline=false;await syncFiles();
     assert((await fileState()).files[id].pending==='rename' && (await fileState()).error?.includes('Sign in'),'session expiry retains pending file metadata');
     await login();await syncFiles();
     offline=true;await renameStoredFile(id,'STALE_RENAME.txt');await syncFiles();
