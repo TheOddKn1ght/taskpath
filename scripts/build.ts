@@ -38,13 +38,13 @@ export async function buildClient() {
   try {
     const files = [...new Bun.Glob('**/*').scanSync({ cwd: source, onlyFiles: true })].sort();
     for (const name of files) {
-      if (name.endsWith(".d.ts")) continue;
+      if (name.endsWith(".d.ts") || name.startsWith("ui/")) continue;
       const input = Bun.file(resolve(source, name));
-      const destination = resolve(staging, name.replace(/\.ts$/, '.js'));
+      const destination = resolve(staging, name.replace(/\.tsx?$/, '.js'));
       await mkdir(dirname(destination), { recursive: true });
       const extension = extname(name);
-      if (extension === '.ts' || extension === '.js' || extension === '.css') {
-        const bundled = name === 'app.ts' || name === 'sw.ts';
+      if (extension === '.ts' || extension === '.tsx' || extension === '.js' || extension === '.css') {
+        const bundled = name === 'app.tsx' || name === 'sw.ts';
         const result = await Bun.build({
           entrypoints: [resolve(source, name)], target: 'browser',
           format: name === 'theme.ts' ? 'iife' : 'esm',
@@ -53,9 +53,9 @@ export async function buildClient() {
           // but are neither imported by the production app nor precached.
           external: bundled ? [] : ['*'], minify: true, sourcemap: 'none', env: 'disable',
           define: name === 'sw.ts' ? { TASKPATH_SHELL_FILES: JSON.stringify([
-            'app.js', 'theme.js', 'pwa.js', 'privacy.js',
+            'app.js', 'theme.js',
             ...files.filter(file => !file.includes('/') && ['.css', '.webmanifest', '.svg', '.png'].includes(extname(file))),
-          ]) } : {},
+          ]) } : { 'process.env.NODE_ENV': JSON.stringify('production') },
           plugins: name === 'sw.ts' ? [{ name: 'worker-local-imports', setup(build) {
             // The source worker uses an absolute, versioned URL because it is
             // served from /sw.js. Resolve that URL only while bundling.
@@ -76,7 +76,7 @@ export async function buildClient() {
         // Keep binary icons and the vendored license/provenance intact.
         await Bun.write(destination, input);
       }
-      if (['.ts', '.js', '.css', '.html', '.webmanifest', '.json', '.svg'].includes(extension)) {
+      if (['.ts', '.tsx', '.js', '.css', '.html', '.webmanifest', '.json', '.svg'].includes(extension)) {
         before += input.size;
         after += Bun.file(destination).size;
       }

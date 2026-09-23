@@ -1,115 +1,93 @@
-import { test, expect } from 'bun:test';
-import { runInNewContext } from 'node:vm';
-
-const html = await Bun.file('public/index.html').text();
-const source = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/vault-ui.ts').text()).replace(/^import .*\n/gm, '').replace('export async function startVault', 'async function startVault'));
-const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+import { test, expect } from "bun:test";
+import { startAuthentication } from "../public/ui/auth-startup";
 function deferred<T>() {
-  let resolve!: (value: T) => void, reject!: (reason: Error) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  let resolve!: (value: T) => void, reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
   return { promise, resolve, reject };
 }
-function startup(hash = '', overrides = {}) {
-  const load = deferred<void>(), restore = deferred<boolean>();
-  const nodes = new Map<string, any>(), visibility: boolean[] = [], listeners = new Map<string, Function>();
-  const classes = new Set(['vault-locked']);
-  let restoreCalls = 0;
-  function node(id: string) {
-    if (!nodes.has(id)) {
-      let hidden = id === '#unlock-screen' || id === '#unlock-error';
-      nodes.set(id, {
-        get hidden() { return hidden; },
-        set hidden(value) { hidden = value; if (id === '#unlock-screen') visibility.push(!value); },
-        inert: id === '#main', value: '', textContent: '',
-        attributes: new Map(), handlers: new Map(),
-        setAttribute(name: string, value: string) { this.attributes.set(name, value); },
-        addEventListener(name: string, callback: Function) { this.handlers.set(name, callback); }, reset() {}, focus() {},
-      });
-    }
-    return nodes.get(id);
-  }
-  const context = {
-    $: node, Error, validateConfig: (input: unknown) => input, errorMessage: (error: unknown) => error instanceof Error ? error.message : String(error), errorStatus: (error: {status?: number}) => error.status,
-    URLSearchParams, location: { hash }, history: { replaceState() {} },
-    document: { querySelector: node, querySelectorAll: () => [], body: { classList: { add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c) } } },
-    window: { addEventListener: (name: string, callback: Function) => listeners.set(name, callback) },
-    selectedAccount: () => 'u_test', loadAccount: () => load.promise,
-    restoreRemembered: () => { restoreCalls++; return restore.promise; },
-    ...overrides,
-  };
-  const start = runInNewContext(source + '\nstartVault;', context);
-  const ready = start();
-  return { ready, load, restore, node, visibility, classes, listeners, restoreCalls: () => restoreCalls };
-}
-
-test('remembered startup never reveals sign-in while device storage is pending', async () => {
-  // Native hidden works even before styles or modules arrive.
-  expect(html).toMatch(/<section\b[^>]*id="unlock-screen"[^>]*\bhidden\s*>/);
-  const ui = startup();
-  expect(ui.node('#unlock-screen').hidden).toBe(true);
-  expect(ui.node('#vault-loading').hidden).toBe(false);
-  expect(ui.node('#main').inert).toBe(true);
-  ui.load.resolve(); await tick();
-  expect(ui.visibility).toEqual([]);
-  ui.restore.resolve(true); await ui.ready;
-  expect(ui.visibility).toEqual([false]);
-  expect(ui.node('#vault-loading').hidden).toBe(true);
-  expect(ui.node('#main').inert).toBe(false);
-  // Explicit locking still reveals the gate immediately.
-  ui.listeners.get('taskpath-locked')!();
-  expect(ui.node('#unlock-screen').hidden).toBe(false);
-  expect(ui.node('#main').inert).toBe(true);
-});
-
-test('unlock shows progress, ignores repeated submissions, and recovers from a failed attempt', async () => {
-  const config = deferred<any>(); let requests = 0;
-  const ui = startup('', {
-    validUserId: () => true, crypto: { subtle: {} }, localState: async () => ({}),
-    network: () => { requests++; return config.promise; }, validateConfig: (input: unknown) => input,
-    unlockVault: async () => { throw new Error('Wrong password'); },
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+function fixture(invitation = false) {
+  const load = deferred<void>(),
+    restore = deferred<boolean>(),
+    phases: string[] = [],
+    errors: string[] = [];
+  let current = true,
+    calls = 0;
+  const ready = startAuthentication({
+    invitation,
+    load: () => load.promise,
+    restore: () => {
+      calls++;
+      return restore.promise;
+    },
+    current: () => current,
+    ready: (p) => phases.push(p),
+    failure: (e) => errors.push(e),
   });
-  ui.load.resolve(); await tick(); ui.restore.resolve(false); await tick();
-  ui.node('#unlock-user').value = 'u_test'; ui.node('#unlock-password').value = 'incorrect test password';
-  const submit = ui.node('#unlock-form').handlers.get('submit');
-  const pending = submit({ preventDefault() {} }); await tick();
-  expect(ui.node('#unlock-submit').disabled).toBe(true);
-  expect(ui.node('#unlock-progress').textContent).toBe('Unlocking your workspace…');
-  expect(ui.node('#main').inert).toBe(true);
-  await submit({ preventDefault() {} }); expect(requests).toBe(1);
-  config.resolve({ config: { vaultId: 'test' } }); await pending;
-  expect(ui.node('#unlock-error').textContent).toBe('User ID or password is incorrect.');
-  expect(ui.node('#unlock-password').value).toBe('');
-  expect(ui.node('#unlock-submit').disabled).toBe(false);
-  expect(ui.node('#unlock-submit').attributes.get('aria-busy')).toBe('false');
-  expect(ui.node('#unlock-progress').textContent).toBe('');
+  return {
+    load,
+    restore,
+    ready,
+    phases,
+    errors,
+    calls: () => calls,
+    invalidate: () => {
+      current = false;
+    },
+  };
+}
+test("remembered startup does not expose sign-in while storage or keys are pending", async () => {
+  expect(await Bun.file("public/index.html").text()).not.toContain(
+    'id="unlock-screen"',
+  );
+  const f = fixture();
+  expect(f.phases).toEqual([]);
+  f.load.resolve();
+  await tick();
+  expect(f.phases).toEqual([]);
+  f.restore.resolve(true);
+  await f.ready;
+  expect(f.phases).toEqual(["unlocked"]);
 });
-
-test('a device without a remembered key shows sign-in only after checking storage', async () => {
-  const ui = startup(); ui.load.resolve(); await tick();
-  expect(ui.visibility).toEqual([]);
-  ui.restore.resolve(false); await tick();
-  expect(ui.visibility).toEqual([true]);
-  expect(ui.node('#vault-loading').hidden).toBe(true);
-  expect(ui.classes.has('vault-locked')).toBe(true);
+test("unremembered startup shows sign-in only after checking storage", async () => {
+  const f = fixture();
+  f.load.resolve();
+  await tick();
+  expect(f.phases).toEqual([]);
+  f.restore.resolve(false);
+  await f.ready;
+  expect(f.phases).toEqual(["locked"]);
 });
-
-test('invitations show setup and do not restore another remembered vault', async () => {
-  const ui = startup('#user=u_invited&setup=test-token'); ui.load.resolve(); await tick();
-  expect(ui.restoreCalls()).toBe(0);
-  expect(ui.node('#unlock-screen').hidden).toBe(false);
-  expect(ui.node('#unlock-title').textContent).toBe('Your private vault');
-  expect(ui.node('#unlock-user').value).toBe('u_invited');
+test("invitations bypass the previously remembered account", async () => {
+  const f = fixture(true);
+  f.load.resolve();
+  await f.ready;
+  expect(f.calls()).toBe(0);
+  expect(f.phases).toEqual(["locked"]);
 });
-
-test('storage failures leave startup with a visible locked error', async () => {
-  for (const phase of ['load', 'restore'] as const) {
-    const ui = startup();
-    if (phase === 'restore') { ui.load.resolve(); await tick(); }
-    ui[phase].reject(new Error('Storage unavailable')); await tick();
-    expect(ui.node('#vault-loading').hidden).toBe(true);
-    expect(ui.node('#unlock-screen').hidden).toBe(false);
-    expect(ui.node('#unlock-error').hidden).toBe(false);
-    expect(ui.node('#unlock-error').textContent).toContain('device storage');
-    expect(ui.node('#main').inert).toBe(true);
+test("storage failures surface a locked error", async () => {
+  for (const phase of ["load", "restore"] as const) {
+    const f = fixture();
+    if (phase === "restore") {
+      f.load.resolve();
+      await tick();
+    }
+    f[phase].reject(new Error("Storage unavailable"));
+    await f.ready;
+    expect(f.errors[0]).toContain("device storage");
+    expect(f.phases).toEqual([]);
   }
+});
+test("late startup cannot reopen a locked or switched workspace", async () => {
+  const f = fixture();
+  f.load.resolve();
+  await tick();
+  f.invalidate();
+  f.restore.resolve(true);
+  await f.ready;
+  expect(f.phases).toEqual([]);
+  expect(f.errors).toEqual([]);
 });

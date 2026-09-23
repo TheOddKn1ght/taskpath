@@ -2,7 +2,7 @@
 
 Taskpath is an invite-only task board with a separate encrypted vault for each account. Collect tasks in Later, plan This Week, and choose Today. The board displays Today, This Week, Later, then Done.
 
-It uses Bun 1.4.2+, SQLite and TypeScript. The server uses Drizzle and Web Push. The client has no package dependencies and includes a vendored Marked lexer for offline Markdown imports.
+It uses Bun 1.4.2+, SQLite and TypeScript. The server uses Drizzle and Web Push. The React client uses TypeScript and a vendored Marked lexer for offline Markdown imports.
 
 ## Start locally
 
@@ -147,9 +147,11 @@ To update, sync devices, rebuild and restart the server, then load the app onlin
 
 ## Development and checks
 
-`bun run dev` watches modular TypeScript sources and transpiles allowed client files on demand. It needs no build. Production serves `dist/public`. The build minifies client assets and bundles the app and worker separately to avoid import waterfalls. Rebuild after client changes. Production validates the build and snapshots it at startup.
+`bun run dev` watches TypeScript/TSX sources and bundles the React entry on demand, caching it by content fingerprint. It needs no preliminary build. Production serves `dist/public`. The build minifies client assets and bundles the app and worker separately to avoid import waterfalls. Rebuild after client changes. Production validates the build and snapshots it at startup.
 
 Use `bun run dev:smol` or `bun run start:smol` for lower memory use with more frequent garbage collection. Docker accepts `TASKPATH_START_SCRIPT=start:smol`.
+
+Client HTTP operations go through the typed adapters in `public/api.ts`; `public/api-client.ts` handles transport. UI and sync code pass domain data, while encryption and offline queues stay in their existing modules.
 
 Drizzle uses `bun:sqlite`. Typed tables and repositories live in `src/db/`. Schema changes require explicit initialization code. Deployment does not run Drizzle Kit or automatic schema push.
 
@@ -169,4 +171,6 @@ QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
 QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
 ```
 
-Open each printed `/checks` URL in a fresh browser context. These servers use isolated in-memory databases and create test data in browser storage. `/invitation` provides a setup fixture, `/phone-preview` provides a 390px view, and `/picker-checks` runs selector checks. Browser UI, physical phones and real push delivery need separate verification.
+Open each printed `/checks` URL in a fresh browser context. These servers use isolated in-memory databases and create test data in browser storage. `/invitation` provides a setup fixture, `/phone-preview` provides a 390px view, `/picker-checks` runs React selector checks, and `/react-checks` exercises setup, login, task/file actions, drafts, lock and account switching through the React interface. Run `/checks` and `/react-checks` sequentially, with no other app tabs at that test origin. Browser UI, physical phones and real push delivery need separate verification.
+
+See [React verification](docs/react-regression.md) for local results and environment limits.

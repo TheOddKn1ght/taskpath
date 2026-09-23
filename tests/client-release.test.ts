@@ -20,14 +20,14 @@ test('source fingerprints change with assets and build configuration, not README
   const root = mkdtempSync(resolve(tmpdir(), 'taskpath-fingerprint-'));
   const put = (name: string, value: string) => { mkdirSync(resolve(root, name, '..'), { recursive: true }); writeFileSync(resolve(root, name), value); };
   try {
-    for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-release.ts', 'package.json', 'bun.lock', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) put(name, 'fixture');
-    put('public/app.ts', 'export const url = "/assets/__TASKPATH_RELEASE__/app.js";');
+    for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-release.ts', 'package.json', 'bun.lock', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) put(name, name.endsWith('.json') ? '{}' : 'fixture');
+    put('public/app.tsx', 'export const url = "/assets/__TASKPATH_RELEASE__/app.js";');
     const first = sourceRelease('source', root);
     put('README.md', 'Documentation changed'); put('public/types.d.ts', 'interface Example {}');
     expect(sourceRelease('source', root).version).toBe(first.version);
-    put('public/app.ts', 'export const url = "/assets/__TASKPATH_RELEASE__/app.js";');
+    put('public/app.tsx', 'export const url = "/assets/__TASKPATH_RELEASE__/app.js";');
     expect(sourceRelease('source', root).version).toBe(first.version);
-    put('public/app.ts', 'export const changed = true;');
+    put('public/app.tsx', 'export const changed = true;');
     const second = sourceRelease('source', root);
     expect(second.version).not.toBe(first.version);
     // Requests already resolving the previous release retain its source bytes.

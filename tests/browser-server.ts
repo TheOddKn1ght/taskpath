@@ -32,24 +32,9 @@ const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PO
     response.headers.set('Content-Security-Policy', response.headers.get('Content-Security-Policy')!.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
     return response;
   }
+  if (path === '/test-invitation') { const invitation=auth.createInvitation(); return new Response('<a href="/#user='+invitation.userId+'&amp;setup='+invitation.token+'">Test invitation</a>',{headers:{'content-type':'text/html'}}); }
+  if (path === '/react-layout') { const width=Number(new URL(request.url).searchParams.get('width')||390);if(![390,800,1280].includes(width))return new Response('Invalid width',{status:400});return new Response('<!doctype html><iframe title="React layout checks" src="/react-checks" width="'+width+'" height="844" style="border:0"></iframe>',{headers:{'content-type':'text/html'}}); }
   if (path === '/test-account') return Response.json({ userId: invite.userId, secondUserId: secondInvite.userId });
-  if (path === '/picker-preview') return new Response(`<!doctype html><html lang="en" data-theme="nord"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Picker preview</title>
-    <link rel="stylesheet" href="/assets/${ASSET_VERSION}/style.css">
-    <main style="padding:24px 16px"><h1>Picker preview</h1><p>Disposable UI fixtures</p>
-    <label>Tags<select id="tag-filter" aria-label="Filter tasks by tag"><option value="">All tags</option></select></label>
-    <label><input id="samples" type="checkbox"> Include sample tags</label>
-    <label>Due date<input id="task-due-date" type="date"></label>
-    <label>Remind me<input id="task-reminder" type="datetime-local"></label></main>
-    <script type="module">
-      import {mountPickers, refreshPickers} from '/assets/${ASSET_VERSION}/pickers.js';
-      mountPickers();
-      document.querySelector('#samples').addEventListener('change', event => {
-        const tags = document.querySelector('#tag-filter');
-        tags.replaceChildren(new Option('All tags', ''));
-        if (event.target.checked) for (const tag of ['errands', 'home', 'work']) tags.add(new Option(tag, tag));
-        refreshPickers();
-      });
-    </script></html>`, { headers: { 'content-type': 'text/html' } });
   // A fake subscription exercises persisted scheduling without contacting any push provider.
   if (path === '/test-push') {
     const userId = auth.identity(request);
@@ -63,6 +48,8 @@ const server = Bun.serve({ hostname: '127.0.0.1', port: Number(process.env.QA_PO
   if (path === '/invitation') return new Response('<!doctype html><a href="/#user=' + pendingInvite.userId + '&amp;setup=' + pendingInvite.token + '">Open test invitation</a>', { headers: { 'content-type': 'text/html' } });
   if (path === '/picker-checks') return new Response('<!doctype html><link rel="stylesheet" href="/assets/' + ASSET_VERSION + '/style.css"><pre id="result">Running…</pre><script type="module" src="/browser-picker-entry.js"></script>', { headers: { 'content-type': 'text/html' } });
   if (path === '/browser-picker-entry.js') return new Response(await clientAsset(import.meta.dir, 'browser-picker-entry.js', release), { headers: { 'content-type': 'text/javascript' } });
+  if (path === '/react-checks') return new Response('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/' + ASSET_VERSION + '/style.css"><script src="/assets/' + ASSET_VERSION + '/theme.js"></script><div id="root"></div><pre id="result"></pre><script type="module" src="/browser-react-checks.js"></script>', {headers:{'content-type':'text/html'}});
+  if (path === '/browser-react-checks.js') return new Response(await clientAsset(import.meta.dir,'browser-react-checks.js',release),{headers:{'content-type':'text/javascript'}});
   if (path === '/checks') return new Response('<!doctype html><meta charset="utf-8"><title>Taskpath browser checks</title><link rel="stylesheet" href="/assets/' + ASSET_VERSION + '/style.css"><h1>Browser persistence checks</h1><pre id="result">Running…</pre><script type="module" src="/checks.js"></script>', { headers: { 'content-type': 'text/html' } });
   if (path === '/browser-picker-checks.js') return new Response(await clientAsset(import.meta.dir, 'browser-picker-checks.js', release), { headers: { 'content-type': 'text/javascript' } });
   if (path === '/checks.js') return new Response(await clientAsset(import.meta.dir, 'browser-checks.js', release), { headers: { 'content-type': 'text/javascript' } });

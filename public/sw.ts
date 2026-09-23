@@ -4,8 +4,7 @@ declare const TASKPATH_SHELL_FILES: string[];
 import { sync } from '/assets/__TASKPATH_RELEASE__/offline.js';
 const CACHE = 'taskpath-shell-__TASKPATH_RELEASE__';
 const ROOT = '/assets/__TASKPATH_RELEASE__/';
-const FILES = (typeof TASKPATH_SHELL_FILES !== 'undefined' ? TASKPATH_SHELL_FILES : ['privacy.js', 'file-format.js', 'file-crypto.js', 'file-persistence.js', 'file-sync.js', 'file-client.js', 'files-ui.js', 'pickers.js', 'picker-model.js', 'dom.js', 'errors.js', 'style.css', 'app.js', 'dates.js', 'navigation.js', 'theme.js', 'vault-ui.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js',
-  'tags.js', 'realtime.js', 'offline.js', 'offline-model.js', 'export-markdown.js', 'pwa.js', 'push.js', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']).map(file => ROOT + file);
+const FILES = (typeof TASKPATH_SHELL_FILES !== 'undefined' ? TASKPATH_SHELL_FILES : ['app.js', 'theme.js', 'style.css', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']).map(file => ROOT + file);
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
 }

@@ -24,50 +24,11 @@
     document.querySelector('link[rel="icon"]')?.setAttribute('href', path + 'favicon.svg');
     document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute('href', path + 'apple-touch-icon.png');
     document.querySelector('link[rel="manifest"]')?.setAttribute('href', path + 'manifest.webmanifest');
-    const label = `Choose theme, current: ${theme.name}${preference ? '' : ' (system)'}`;
-    const button = document.getElementById('theme-toggle');
-    if (button) {
-      button.setAttribute('aria-label', label);
-      button.title = label;
-      button.replaceChildren(Object.assign(document.createElement('img'), { src: path + 'favicon.svg', alt: '' }));
-    }
-    document.getElementById('unlock-theme')?.setAttribute('aria-label', label);
-    for (const choice of document.querySelectorAll<HTMLElement>('[data-theme-choice]')) {
-      choice.setAttribute('aria-pressed', String(choice.dataset.themeChoice === (preference || 'system')));
-    }
+
   }
 
   apply();
-  document.addEventListener('DOMContentLoaded', () => {
-    const dialog = document.getElementById('theme-dialog') as HTMLDialogElement;
-    const choices = document.getElementById('theme-choices')!;
-    for (const theme of [{ id: 'system', name: 'Follow system' }, ...themes]) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'theme-choice';
-      button.dataset.themeChoice = theme.id;
-      const preview = document.createElement('span');
-      preview.className = 'theme-preview';
-      if (theme.id !== 'system') preview.append(Object.assign(document.createElement('img'), { src: `${root}themes/${theme.id}/favicon.svg`, alt: '', width: 32, height: 32 }));
-      else { preview.classList.add('theme-system'); preview.textContent = '◐'; }
-      button.append(preview, Object.assign(document.createElement('span'), { textContent: theme.name }));
-      button.addEventListener('click', () => {
-        preference = valid(theme.id);
-        try {
-          if (preference) localStorage.setItem(key, preference);
-          else localStorage.removeItem(key);
-        } catch { /* Keep the choice for this tab. */ }
-        apply();
-      });
-      choices.append(button);
-    }
-    apply();
-    document.getElementById('theme-toggle')!.addEventListener('click', () => {
-      if (!dialog.open) dialog.showModal();
-      choices.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
-    });
-    document.getElementById('theme-close')!.addEventListener('click', () => dialog.close());
-  });
+  window.addEventListener('taskpath-theme', event => { preference = valid((event as CustomEvent<string>).detail); apply(); });
   system.addEventListener('change', () => { if (!preference) apply(); });
   window.addEventListener('storage', event => {
     if (event.key !== key && event.key !== null) return;

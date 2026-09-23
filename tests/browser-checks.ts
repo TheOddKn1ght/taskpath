@@ -1,7 +1,8 @@
+import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
 import { fileChecks } from './browser-files-checks.js';
 import { pickerChecks } from './browser-picker-checks.js';
 import type { VaultConfig } from '../public/types.js';
-import { network, localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import { localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/__TASKPATH_RELEASE__/offline.js';
 import { openDatabase, commit, rememberedKey } from '/assets/__TASKPATH_RELEASE__/persistence.js';
 import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
 import { selectAccount } from '/assets/__TASKPATH_RELEASE__/persistence.js';
@@ -28,10 +29,10 @@ try {
   const legacy = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('taskpath-offline-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('state'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
   const legacyValue = { pending: [{ changeId: 'legacy-id', editedAt: '2020-01-01T00:00:00.000Z', task: { title: 'LEGACY_PRIVATE_DATA' } }] };
   await new Promise(resolve => { const tx = legacy.transaction('state', 'readwrite'); tx.objectStore('state').put(legacyValue, 'workspace'); tx.oncomplete = resolve; });
-  const { userId, secondUserId } = await network<{userId: string; secondUserId: string}>('/test-account');
+  const { userId, secondUserId } = await apiRequest<{userId: string; secondUserId: string}>('/test-account');
   await selectAccount(userId);
-  const { config } = await network<{config: VaultConfig}>('/api/auth/config?userId=' + userId), unlocked = await unlockVault(password, config);
-  await network('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
+  const { config } = await apiRequest<{config: VaultConfig}>('/api/auth/config?userId=' + userId), unlocked = await unlockVault(password, config);
+  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
   await activate(config, unlocked.key, false, (await localState()).lockEpoch); await sync();
   disconnected = true;
   const marker = 'BROWSER_HARNESS_PRIVATE_7261';
@@ -58,7 +59,7 @@ try {
   assert((await localState()).pending.length === 2, 'stale commit preserves pending changes');
   disconnected = false; await sync();
   assert((await localState()).pending.length === 0, 'reconnection acknowledges the encrypted queue');
-  await network('/test-push', 'POST', {}); await syncAfterCurrent();
+  await apiRequest('/test-push', 'POST', {}); await syncAfterCurrent();
   assert((await localState()).pushEnabled, 'push opt-in is learned through encrypted sync');
   disconnected = true;
   const pushTask = (await offlineRequest('/api/tasks', 'POST', { title: 'PUSH_PRIVATE_BROWSER', notes: 'PUSH_PRIVATE_NOTE', reminderAt: new Date(Date.now() + 3600000).toISOString() })).task;
@@ -67,11 +68,11 @@ try {
   await sync().catch(() => {});
   assert(JSON.stringify((await localState()).pending) === pushQueue, 'push retries never rewrite ciphertext');
   disconnected = false; await syncAfterCurrent();
-  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'reconnect publishes the reminder schedule');
+  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'reconnect publishes the reminder schedule');
   await offlineRequest(`/api/tasks/${pushTask.id}/archive`, 'POST'); await syncAfterCurrent();
-  assert(!(await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'archiving cancels the server reminder');
+  assert(!(await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'archiving cancels the server reminder');
   await offlineRequest(`/api/tasks/${pushTask.id}/unarchive`, 'POST'); await syncAfterCurrent();
-  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'restoring republishes the paused reminder');
+  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'restoring republishes the paused reminder');
   await activate(config, unlocked.key, true, (await localState()).lockEpoch);
   const remembered = await rememberedKey();
   assert(remembered?.key.extractable === false, 'remembered CryptoKey is non-extractable');
@@ -118,7 +119,7 @@ try {
   worker.terminate();
   assert(!workerResult.unlocked && workerResult.remembered === null, 'background worker never loads decryption keys');
   assert((await localState()).pending.length === 0, 'background worker transfers pending ciphertext while the page is locked');
-  assert((await network<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
+  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
   const legacyCache = await caches.open('taskpath-shell-legacy-check');
   await legacyCache.put('/legacy-shell', new Response('legacy static shell'));
   const previousReleaseCache = await caches.open('taskpath-shell-accounts-v18');
@@ -139,13 +140,13 @@ try {
   assert(Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')), 'legacy shell cache remains untouched');
   assert(!/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText), 'PWA caches contain only static assets, not task plaintext');
   await registration.unregister();
-  await network('/api/auth/logout', 'POST', {});
+  await apiRequest('/api/auth/logout', 'POST', {});
   await sync().catch(() => {});
   assert((await localState()).authRequired === true, 'expired session pauses ciphertext sync without deleting the workspace');
   const oldValue = await new Promise(resolve => { const r = legacy.transaction('state').objectStore('state').get('workspace'); r.onsuccess = () => resolve(r.result); });
   assert(JSON.stringify(oldValue) === JSON.stringify(legacyValue), 'legacy plaintext queue is unchanged');
   // Switch accounts with unsynced task/profile operations and remembered keys.
-  await network('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
+  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
   await activate(config, unlocked.key, true, (await localState()).lockEpoch);
   disconnected = true;
   await offlineRequest('/api/profile', 'POST', { nickname: 'PRIVATE_NICK_A' });
@@ -159,9 +160,9 @@ try {
   await commit(oldRevision, accountA).then(() => { throw new Error('Cross-account commit succeeded'); }, () => {});
   assert((await localState()).config === null, 'new account never inherits the previous account cache');
   disconnected = false; await syncAfterCurrent().catch(() => {});
-  const configB = (await network<{config: VaultConfig}>('/api/auth/config?userId=' + secondUserId)).config;
+  const configB = (await apiRequest<{config: VaultConfig}>('/api/auth/config?userId=' + secondUserId)).config;
   const keyB = await unlockVault('browser second password 2026', configB);
-  await network('/api/auth/login', 'POST', { userId: secondUserId, credential: keyB.credential, revision: 1 });
+  await apiRequest('/api/auth/login', 'POST', { userId: secondUserId, credential: keyB.credential, revision: 1 });
   await activate(configB, keyB.key, false, (await localState()).lockEpoch); await syncAfterCurrent();
   assert((await readBoard()).tasks.length === 0 && (await readBoard()).nickname === '', 'second account sees only its own empty vault');
   await offlineRequest('/api/profile', 'POST', { nickname: 'PRIVATE_NICK_B' });
@@ -175,7 +176,7 @@ try {
   disconnected = false;
   await syncAfterCurrent().catch(() => {});
   assert((await localState()).authRequired && JSON.stringify((await localState()).pending) === pendingA, 'other-account session cannot acknowledge or consume this account queue');
-  await network('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision }); await syncAfterCurrent();
+  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision }); await syncAfterCurrent();
   assert((await localState()).pending.length === 0 && (await readBoard()).nickname === 'PRIVATE_NICK_A', 'correct account reconnects and syncs its original pending edits');
   const switched = waitMessage('locked'); await switchAccount(secondUserId); await switched;
   assert(!isUnlocked(), 'account switch locks other browser contexts');
