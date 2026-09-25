@@ -1,3 +1,4 @@
+import { clientStyles } from '../src/client-styles';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { resolve, dirname, extname } from 'node:path';
 import { sourceRelease, stampRelease, digest, BUILD_MANIFEST, type BuildManifest } from '../src/client-release';
@@ -43,7 +44,18 @@ export async function buildClient() {
       const destination = resolve(staging, name.replace(/\.tsx?$/, '.js'));
       await mkdir(dirname(destination), { recursive: true });
       const extension = extname(name);
-      if (extension === '.ts' || extension === '.tsx' || extension === '.js' || extension === '.css') {
+      if (name === 'style.css') {
+        const css = await clientStyles(release);
+        const result = await Bun.build({
+          entrypoints:['taskpath:styles'], minify:true, target:'browser',
+          plugins:[{name:'compiled-css',setup(build) {
+            build.onResolve({filter:/^taskpath:styles$/},() => ({path:'style.css',namespace:'taskpath-css'}));
+            build.onLoad({filter:/.*/,namespace:'taskpath-css'},() => ({contents:css,loader:'css'}));
+          }}],
+        });
+        if (!result.success || result.outputs.length !== 1) throw new AggregateError(result.logs,'Could not compile styles');
+        await Bun.write(destination,stampRelease(await result.outputs[0].text(),release));
+      } else if (extension === '.ts' || extension === '.tsx' || extension === '.js' || extension === '.css') {
         const bundled = name === 'app.tsx' || name === 'sw.ts';
         const result = await Bun.build({
           entrypoints: [resolve(source, name)], target: 'browser',

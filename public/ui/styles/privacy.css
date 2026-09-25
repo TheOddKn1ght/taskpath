@@ -1,0 +1,42 @@
+/* The public notice is available without unlocking or leaving the workspace. */
+.privacy-entry {
+  text-align: center;
+  margin-top: 8px;
+}
+
+[data-privacy-open],#privacy-close {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.board-footer {
+  align-items: center;
+}
+
+#privacy-dialog {
+  width: 640px;
+  margin: auto;
+  overscroll-behavior: contain;
+}
+
+.privacy-copy {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.privacy-copy h3 {
+  margin-top: 24px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.privacy-copy p {
+  margin-top: 12px;
+}
+
+.privacy-copy strong {
+  color: var(--text);
+}

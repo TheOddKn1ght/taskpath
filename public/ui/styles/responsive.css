@@ -1,0 +1,168 @@
+@media (min-width:1400px) {
+  .column {
+    min-height: 500px;
+  }
+  .task-list {
+    min-height: 366px;
+  }
+}
+
+@media (max-width:1000px) {
+  main {
+    padding-inline: 24px;
+  }
+  .app-heading {
+    gap: 15px;
+  }
+  .board {
+    gap: 12px;
+  }
+  .toolbar {
+    gap: 8px;
+  }
+  .search {
+    width: 125px;
+  }
+  .column {
+    padding-inline: 8px;
+  }
+  .task-card {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width:800px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 25px 0;
+  }
+  .app-heading {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .toolbar {
+    width: 100%;
+    gap: 10px;
+  }
+  .search {
+    flex: 1;
+  }
+  .board {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 18px;
+  }
+  .column {
+    min-height: 320px;
+  }
+  .task-list {
+    min-height: 186px;
+  }
+}
+
+@media (max-width:480px) {
+  main {
+    padding-inline: 16px;
+  }
+  .board {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .column {
+    min-height: 220px;
+  }
+  .task-list {
+    min-height: 86px;
+  }
+  .empty-state {
+    padding: 24px 8px;
+  }
+  .toolbar {
+    gap: 7px;
+  }
+  .search {
+    min-width: 70px;
+  }
+  .primary-button {
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+  #category-filter, #tag-filter {
+    max-width: 86px;
+    font-size: 11px;
+  }
+  .app-header {
+    padding-top: 23px;
+  }
+  .field-row {
+    gap: 10px;
+  }
+  .board-footer {
+    font-size: 10px;
+  }
+  .toast {
+    font-size: 11px;
+    width: max-content;
+  }
+}
+
+@media (hover:none) {
+  .task-actions {
+    opacity: 1;
+  }
+  .task-actions .icon-button {
+    width: 30px;
+    height: 30px;
+  }
+  .complete-button {
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+  }
+}
+
+@media (max-width:480px) {
+  #new-task {
+    font-size: 0;
+    width: 32px;
+    padding: 0;
+    flex: none;
+    gap: 0;
+  }
+  .app-menu {
+    flex: none;
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,::before,::after,::backdrop {
+    transition: none!important;
+    animation: none!important;
+    scroll-behavior: auto!important;
+  }
+}
+
+/* Standalone phone layout avoids the notch, home indicator, and input zoom. */
+@media (display-mode:standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  main {
+    padding-left: max(16px,env(safe-area-inset-left));
+    padding-right: max(16px,env(safe-area-inset-right));
+  }
+}
+
+@media (max-width:600px) {
+  .field input,.field textarea,.field select,.quick-add input,.search input {
+    font-size: 16px;
+  }
+  .board-footer {
+    flex-wrap: wrap;
+  }
+}
+
+#sign-in-again {
+  color: var(--accent);
+}

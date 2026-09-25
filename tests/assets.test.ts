@@ -18,7 +18,7 @@ test('public shells use versioned assets and every service-worker shell resource
     for (const url of urls) { expect(url).toStartWith(`/assets/${ASSET_VERSION}/`); expect((await get(url))!.status).toBe(200); }
     for (const file of ['api.js', 'api-client.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js', 'offline-model.js', 'offline.js', 'tags.js', 'realtime.js']) expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
     // Missing themed icons must not break the worker's all-or-nothing offline install.
-    for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
+    for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice']) {
       const base = `/assets/${ASSET_VERSION}/themes/${theme}/`;
       const manifest = await (await get(base + 'manifest.webmanifest'))!.json();
       expect(manifest.id).toBe('/'); // Theme changes retain the same installed-app identity.

@@ -34,7 +34,7 @@ Date and time pickers keep changes as a draft until you save the task. Reminders
 
 Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Views and filters survive refresh through the URL fragment, such as `#archive?q=trip&category=personal&tag=travel`. Search stays local and never reaches the server, but remains visible in browser history and copied links.
 
-The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha and Rosé Pine Dawn. Follow system chooses Light or Dark. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
+The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha Rosé Pine Dawn, Midnight, Plum, Ocean, Sand, Lavender and Ice. Follow system chooses Light or Dark. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
 
 ## Archive and export
 
@@ -176,3 +176,5 @@ Open each printed `/checks` URL in a fresh browser context. These servers use is
 See [React verification](docs/react-regression.md) for local results and environment limits.
 
 Task sync uses protocol 2: initial downloads are paginated, then only changed encrypted records are fetched. Older clients must update before syncing; pending edits remain saved. Server restarts trigger a paginated rescan without clearing cached tasks. Exports wait until the download completes. Load the update online, close all tabs/PWA windows, then reopen; never clear site data. SQLite adds sync sequence metadata automatically, without rewriting existing encrypted records.
+
+The frontend uses React/TypeScript feature components and Tailwind CSS 4 utilities. Tailwind maps semantic colors to the thirteen themes; the existing reset and complex responsive/picker CSS remain. Keep utility names as complete strings so the scanner can detect them. Development compiles CSS on demand from the same immutable source snapshot as JavaScript; production emits one minified stylesheet. `public/style.css` is the ordered stylesheet entry point; readable feature rules live in `public/ui/styles/` (themes, board, dialogs, pickers, files, mobile and more). Keep import order intact to preserve overrides. Imports resolve from the release snapshot into the same single CSS response, with automatic fingerprint updates. Tailwind's compiler and scanner are build-only dependencies. Docker uses a build stage and installs only production dependencies in its final image.

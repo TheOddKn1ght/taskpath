@@ -65,8 +65,11 @@ const submit = (selector: string) =>
 const key = (target: HTMLElement, value: string, options: KeyboardEventInit = {}) =>
   flushSync(() => target.dispatchEvent(new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true, ...options })));
 const menu = (label: string) => {
-  click(".app-menu summary");
-  textButton(label, node(".app-menu"));
+  click(".app-menu");
+  const popup = node(".app-menu-popover");
+  flushSync(() => popup.dispatchEvent(new FocusEvent("focusout", {bubbles:true, relatedTarget:null})));
+  if (!popup.isConnected) throw new Error("Workspace menu dismissed before action");
+  textButton(label, popup);
 };
 try {
   const invitation = await (await originalFetch("/test-invitation")).text(),
@@ -124,6 +127,26 @@ try {
     document.querySelectorAll("#root #main").length === 1,
     "one React workspace mounts",
   );
+  click(".app-menu");
+  const workspaceTrigger=node(".app-menu"), workspacePopup=node(".app-menu-popover");
+  assert(workspacePopup.parentElement===document.body,"workspace menu uses the shared portal");
+  for (const relatedTarget of [null,document.body,workspaceTrigger]) {
+    flushSync(()=>workspacePopup.dispatchEvent(new FocusEvent("focusout",{bubbles:true,relatedTarget})));
+    assert(workspacePopup.isConnected,"workspace menu survives pointer blur");
+  }
+  key(workspacePopup,"End");
+  const enabledItems=[...workspacePopup.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+  assert(document.activeElement===enabledItems.at(-1),"workspace End focuses last enabled action");
+  key(workspacePopup,"Home");
+  assert(document.activeElement===enabledItems[0],"workspace Home focuses first enabled action");
+  key(workspacePopup,"Escape");
+  assert(!document.querySelector(".app-menu-popover") && document.activeElement===workspaceTrigger,"workspace Escape closes and restores focus");
+  click(".app-menu");
+  key(node(".app-menu-popover"),"Tab");
+  assert(!document.querySelector(".app-menu-popover") && document.activeElement===workspaceTrigger,"workspace Tab closes and restores focus");
+  click(".app-menu");
+  flushSync(()=>node("#search").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true})));
+  assert(!document.querySelector(".app-menu-popover"),"workspace outside pointer dismisses the menu");
   key(document.body, "/");
   assert(document.activeElement === node("#search"), "slash focuses search");
   key(node("#search"), "n");
@@ -198,6 +221,12 @@ try {
     "Nord",
     "Catppuccin Mocha",
     "Rosé Pine Dawn",
+    "Midnight",
+    "Plum",
+    "Ocean",
+    "Sand",
+    "Lavender",
+    "Ice",
   ]) {
     click("#theme-toggle");
     textButton(theme, node("#theme-dialog"));
@@ -207,6 +236,12 @@ try {
         ?.textContent?.trim() === theme,
       "theme selection " + theme,
     );
+    const colorProbe = document.createElement("span");
+    colorProbe.style.color = "var(--muted)";
+    document.body.append(colorProbe);
+    assert(getComputedStyle(node("#greeting")).color === getComputedStyle(colorProbe).color,
+      "Tailwind greeting color follows " + theme);
+    colorProbe.remove();
     textButton("Close Choose theme");
   }
   click("#new-task");
@@ -239,6 +274,9 @@ try {
     ),
     "React create preserves normalized tags",
   );
+  const toastStyle = getComputedStyle(node("#toast"));
+  assert(toastStyle.position === "fixed" && toastStyle.display === "flex" && toastStyle.gap === "16px",
+    "extracted toast uses compiled Tailwind layout");
   const taskTrigger = node<HTMLButtonElement>(".task-card .task-menu-trigger");
   click(".task-card .task-menu-trigger");
   const taskMenu = node(".task-menu-popover");
@@ -613,6 +651,7 @@ try {
   input("#unlock-password", "Changed React password 2026");
   submit("#unlock-form");
   await until(() => document.querySelector("#main"), "changed password login");
+  await until(() => !!getSnapshot().board?.tasks.some((t) => t.id === taskId), "restored board after password change");
   assert(
     getSnapshot().board?.tasks.some((t) => t.id === taskId),
     "password change retains encrypted tasks",

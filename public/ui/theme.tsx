@@ -9,6 +9,12 @@ export const themes = [
   { id: "nord", name: "Nord" },
   { id: "catppuccin", name: "Catppuccin Mocha" },
   { id: "rose-pine", name: "Rosé Pine Dawn" },
+  { id: "midnight", name: "Midnight" },
+  { id: "plum", name: "Plum" },
+  { id: "ocean", name: "Ocean" },
+  { id: "sand", name: "Sand" },
+  { id: "lavender", name: "Lavender" },
+  { id: "ice", name: "Ice" },
 ];
 export function ThemeDialog({ close }: { close: () => void }) {
   const [selected, setSelected] = useState(() => {

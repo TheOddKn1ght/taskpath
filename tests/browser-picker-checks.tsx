@@ -110,7 +110,7 @@ export async function pickerChecks(
       "gruvbox-dark",
       "nord",
       "catppuccin",
-      "rose-pine",
+      "rose-pine", "midnight", "plum", "ocean", "sand", "lavender", "ice",
     ]) {
       document.documentElement.dataset.theme = theme;
       activate(trigger(due));
@@ -137,7 +137,7 @@ export async function pickerChecks(
       );
       closePicker();
     }
-    assert(colors.size === 7, "all seven picker themes use their own palette");
+    assert(colors.size === 13, "all thirteen picker themes use their own palette");
     assert(
       select.type === "hidden" &&
         due.type === "hidden" &&

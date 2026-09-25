@@ -1,0 +1,31 @@
+.toast {
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 20px var(--shadow);
+}
+
+.toast-close {
+  font-size: 20px!important;
+  opacity: .65;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 15px;
+  border-radius: 7px;
+  margin-bottom: 20px;
+  background: var(--error-bg);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.loading-message {
+  padding: 50px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  grid-column: 1/-1;
+}

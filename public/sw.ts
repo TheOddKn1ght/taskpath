@@ -5,7 +5,7 @@ import { sync } from '/assets/__TASKPATH_RELEASE__/offline.js';
 const CACHE = 'taskpath-shell-__TASKPATH_RELEASE__';
 const ROOT = '/assets/__TASKPATH_RELEASE__/';
 const FILES = (typeof TASKPATH_SHELL_FILES !== 'undefined' ? TASKPATH_SHELL_FILES : ['app.js', 'theme.js', 'style.css', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']).map(file => ROOT + file);
-for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine']) {
+for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
 }
 self.addEventListener('install', event => event.waitUntil((async () => {

@@ -1,0 +1,154 @@
+dialog {
+  width: 460px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100dvh - 28px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--paper);
+  color: inherit;
+  box-shadow: 0 20px 70px var(--menu-shadow);
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(2px);
+}
+
+.dialog-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.dialog-top h2 {
+  font-size: 18px;
+  font-weight: 550;
+}
+
+.dialog-top .icon-button {
+  margin-right: -5px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 19px;
+  position: relative;
+  color: var(--muted);
+}
+
+.field input,.field textarea,.field select {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  width: 100%;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.field input::placeholder,.field textarea::placeholder {
+  color: var(--muted);
+}
+
+.field textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.optional {
+  position: absolute;
+  left: 39px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.field-row {
+  display: flex;
+  gap: 14px;
+}
+
+.field-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.dialog-actions-right {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.subtle-button {
+  padding: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.subtle-button:hover {
+  background: var(--hover);
+}
+
+.danger {
+  color: var(--warning);
+}
+
+.form-error {
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 15px;
+}
+
+.guide-copy {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.guide-copy p {
+  margin-top: 18px;
+}
+
+.guide-copy strong {
+  font-weight: 550;
+  color: var(--accent);
+}
+
+#guide-timezone {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.guide-shortcuts {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 22px;
+  line-height: 2;
+}
+
+kbd {
+  display: inline-block;
+  font: 11px monospace;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  margin: 0 4px 0 9px;
+}
+
+kbd:first-child {
+  margin-left: 0;
+}

@@ -1,3 +1,4 @@
+import { clientStyles } from './client-styles';
 import { realpathSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import {
@@ -73,6 +74,7 @@ export async function clientAsset(
     if (!bytes) throw new Error("Asset missing from build manifest.");
     return new Uint8Array(bytes);
   }
+  if (name === "style.css" && release.sources && resolve(directory) === release.directory) return stampRelease(await clientStyles(release), release);
   const sourceName =
     name.endsWith(".js") && !name.startsWith("vendor/")
       ? name.replace(/\.js$/, ".ts")

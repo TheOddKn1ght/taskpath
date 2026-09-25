@@ -26,7 +26,7 @@ export function sourceRelease(mode: 'source' | 'built' = 'source', projectRoot =
     if (!name.endsWith('.d.ts')) sources.set(name, readFileSync(resolve(directory, name)));
   }
   const inputs = [...sources].map(([name, bytes]) => ['public/' + name, bytes] as const);
-  for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-release.ts', 'package.json', 'bun.lock', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) {
+  for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-styles.ts', 'src/client-release.ts', 'package.json', 'bun.lock', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) {
     inputs.push([name, readFileSync(resolve(projectRoot, name))]);
   }
   return { version: fingerprint(inputs, mode), sources, directory };

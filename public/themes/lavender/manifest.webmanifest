@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Taskpath",
+  "short_name": "Taskpath",
+  "description": "Plan your week. Pick your day. Available offline.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "gcm_sender_id": "103953800507",
+  "display": "standalone",
+  "background_color": "#f6f2fc",
+  "theme_color": "#f6f2fc",
+  "icons": [
+    {
+      "src": "/assets/__TASKPATH_RELEASE__/themes/lavender/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/__TASKPATH_RELEASE__/themes/lavender/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

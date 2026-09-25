@@ -10,6 +10,12 @@
     { id: 'nord', name: 'Nord', color: '#2e3440' },
     { id: 'catppuccin', name: 'Catppuccin Mocha', color: '#1e1e2e' },
     { id: 'rose-pine', name: 'Rosé Pine Dawn', color: '#faf4ed' },
+    { id: 'midnight', name: 'Midnight', color: '#101827' },
+    { id: 'plum', name: 'Plum', color: '#211627' },
+    { id: 'ocean', name: 'Ocean', color: '#102326' },
+    { id: 'sand', name: 'Sand', color: '#faf3e8' },
+    { id: 'lavender', name: 'Lavender', color: '#f6f2fc' },
+    { id: 'ice', name: 'Ice', color: '#f1f7fc' },
   ];
   const system = window.matchMedia('(prefers-color-scheme: dark)');
   const valid = (value: string | null) => themes.some(theme => theme.id === value) ? value : null;

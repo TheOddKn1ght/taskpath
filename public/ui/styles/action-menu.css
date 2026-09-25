@@ -1,0 +1,15 @@
+/* Action popovers live outside draggable task cards. */
+.menu-content.action-menu-popover {
+  position: fixed;
+  right: auto;
+}
+
+.task-actions:has(.task-menu-trigger[aria-expanded="true"]) {
+  opacity: 1;
+}
+
+@media (max-width:760px) {
+  .action-menu-popover button {
+    min-height: 44px;
+  }
+}

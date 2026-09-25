@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test';
 import { resolve, dirname } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { compactHTML } from '../scripts/build';
+import { clientStyles } from '../src/client-styles';
 import { createHandler } from '../src/server';
 import { Store } from '../src/store';
 import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release';
@@ -62,8 +63,11 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
     expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
     for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
-      expect(Bun.file(resolve(built, name)).size).toBeLessThan(new TextEncoder().encode(stampRelease(await Bun.file(resolve(root, 'public', sourceName(name))).text(),release)).length);
+      const source = name === 'style.css' ? await clientStyles(sourceRelease()) : await Bun.file(resolve(root, 'public', sourceName(name))).text();
+      expect(Bun.file(resolve(built, name)).size).toBeLessThan(new TextEncoder().encode(stampRelease(source,release)).length);
     }
+    expect(files.filter(name => name.endsWith('.css'))).toEqual(['style.css']);
+    expect(await Bun.file(resolve(built, 'style.css')).text()).not.toContain('@import');
   } finally { store.close(); }
 });
 
@@ -90,7 +94,9 @@ test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell wi
     expect(cached.sort()).toEqual(fetched.sort());
     expect(cached).toContain('/offline-shell');
     expect(cached).toContain(prefix + 'style.css');
-    expect(cached).toContain(prefix + 'themes/nord/manifest.webmanifest');
+    for (const theme of ['midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice']) {
+      for (const asset of ['manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) expect(cached).toContain(prefix + 'themes/' + theme + '/' + asset);
+    }
     const shell = await Bun.file(resolve(built, 'index.html')).text();
     for (const [, url] of shell.matchAll(/(?:src|href)="(\/assets\/[^"#]+)"/g)) expect(cached).toContain(url);
     offline = true;

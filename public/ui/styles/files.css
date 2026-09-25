@@ -1,0 +1,151 @@
+/* The file vault shares the workspace palettes and keeps filenames out of markup. */
+.files-view .toolbar > .search,.files-view .toolbar > [data-picker-for="category-filter"],.files-view .toolbar > [data-picker-for="tag-filter"] {
+  display: none;
+}
+
+.files-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+
+.files-heading > div {
+  flex: 1;
+  min-width: 220px;
+}
+
+.files-heading h2 {
+  font-size: 22px;
+}
+
+.files-usage,.files-status {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+#files-view > input {
+  width: 100%;
+  max-width: 400px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.files-status {
+  margin: 16px 0;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.file-info {
+  min-width: 0;
+}
+
+.file-info h3 {
+  font-size: 14px;
+  font-weight: 550;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.file-info p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.file-actions button,#files-view button {
+  min-height: 44px;
+}
+
+.files-empty {
+  padding: 40px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.files-dragover {
+  outline: 2px dashed var(--accent);
+  outline-offset: 8px;
+}
+
+.file-preview {
+  width: 700px;
+}
+
+.file-preview h2 {
+  overflow-wrap: anywhere;
+  padding-right: 50px;
+  font-size: 16px;
+}
+
+.file-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 70dvh;
+  object-fit: contain;
+  margin: 20px auto 0;
+}
+
+.file-preview-close {
+  position: absolute;
+  right: 16px;
+  top: 12px;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.file-action-dialog p {
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+
+.file-action-dialog input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+body.vault-locked #files-view {
+  display: none;
+}
+
+@media(max-width:760px) {
+  .file-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .file-actions {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+  .file-actions button {
+    width: 100%;
+  }
+  #files-view > input,.file-action-dialog input {
+    font-size: 16px;
+  }
+}

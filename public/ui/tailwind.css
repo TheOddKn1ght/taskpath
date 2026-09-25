@@ -1,0 +1,23 @@
+/* Keep the existing reset; later legacy responsive selectors retain precedence. */
+@theme {
+  --spacing: 4px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+}
+@theme inline {
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-hover: var(--hover);
+  --color-warning: var(--warning);
+  --color-toast: var(--toast);
+  --color-on-toast: var(--on-toast);
+  --color-brand: var(--brand);
+}
+@tailwind utilities;

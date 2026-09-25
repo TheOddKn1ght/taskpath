@@ -1,3 +1,9 @@
+import { WorkspaceNav } from "./workspace-nav";
+import { WorkspaceHeader } from "./workspace-header";
+import { ReminderPanel } from "./reminders";
+import { ArchiveDetails } from "./archive-details";
+import { Toast } from "./toast";
+import { Nickname } from "./nickname";
 import { getInstallPrompt, subscribeInstall, installApp } from "./install";
 import {
   useEffect,
@@ -25,16 +31,15 @@ import {
   selectedAccount,
 } from "../offline.js";
 import { Auth, PasswordDialog, changeAccount } from "./auth";
-import { Board, dateLabel } from "./board";
+import { Board } from "./board";
 import { Files } from "./files";
 import { Editor } from "./editor";
 import { Dialog } from "./dialog";
-import { ThemeDialog, ThemeIcon } from "./theme";
+import { ThemeDialog } from "./theme";
 import { PrivacyCopy, GuideCopy } from "./copy";
 import { PushDialog } from "./push";
 import { ImportDialog } from "./import";
-import { PickerProvider, Select } from "./pickers";
-import { Icon } from "./icons";
+import { PickerProvider } from "./pickers";
 import { GREETINGS } from "./greetings";
 export function App() {
   const state = useSyncExternalStore(subscribe, getSnapshot),
@@ -124,7 +129,6 @@ function Workspace({
     [, render] = useState(0);
   const install = useSyncExternalStore(subscribeInstall, getInstallPrompt);
   const alive = useRef(true),
-    menu = useRef<HTMLDetailsElement>(null),
     timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
     notificationBusy = useRef(false),
     desktopNotifications = useRef(new Set<Notification>()),
@@ -150,14 +154,7 @@ function Workspace({
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !isUnlocked()) return;
-      if (document.querySelector('dialog[open], #task-context-menu, .task-menu-popover')) return;
-      if (event.key === "Escape") {
-        for (const open of document.querySelectorAll<HTMLDetailsElement>(".task-menu[open], .app-menu[open]")) {
-          open.open = false;
-          open.querySelector("summary")?.focus();
-        }
-        return;
-      }
+      if (document.querySelector('dialog[open], #task-context-menu, .action-menu-popover')) return;
       if (event.ctrlKey || event.metaKey || event.altKey || event.repeat ||
         (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))) return;
       if (event.key.toLowerCase() === "n") {
@@ -552,153 +549,12 @@ function Workspace({
         id="main"
         className={`${collapsed ? "sidebar-collapsed " : ""}${keyboard ? "mobile-keyboard" : ""}`}
       >
-        <aside id="sidebar">
-          <button
-            id="sidebar-toggle"
-            className="icon-button"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={() => {
-              setCollapsed(!collapsed);
-              try {
-                localStorage.setItem(
-                  "taskpath-sidebar-collapsed",
-                  String(!collapsed),
-                );
-              } catch {}
-            }}
-          >
-            <Icon name="sidebar" />
-          </button>
-          <nav aria-label="Workspace">
-            {(["board", "archive", "files"] as const).map((view) => (
-              <button
-                key={view}
-                data-view={view}
-                aria-label={view[0].toUpperCase() + view.slice(1)}
-                aria-current={route.view === view ? "page" : undefined}
-                onClick={() => {
-                  navigate({ view });
-                  if (
-                    route.view !== view &&
-                    matchMedia("(max-width:760px)").matches
-                  )
-                    window.scrollTo({ top: 0, behavior: "instant" });
-                }}
-              >
-                <Icon name={view} />
-                <span className="nav-label">
-                  {view[0].toUpperCase() + view.slice(1)}
-                </span>
-              </button>
-            ))}
-          </nav>
-        </aside>
+        <WorkspaceNav collapsed={collapsed} view={route.view} toggleCollapsed={() => {
+          setCollapsed(!collapsed);
+          try { localStorage.setItem("taskpath-sidebar-collapsed",String(!collapsed)); } catch {}
+        }} />
         <div className="workspace-content">
-          <header className="app-header">
-            <div className="app-heading">
-              <h1>
-                taskpath<span>.</span>
-              </h1>
-              <span id="greeting" className="week-label">
-                {board?.nickname
-                  ? `${greeting.current.phrase}, ${board.nickname}`
-                  : ""}
-              </span>
-              <span id="week-label" className="week-label">
-                {week}
-              </span>
-            </div>
-            <div className="toolbar">
-              <label className="search">
-                <Icon name="search" />
-                <input
-                  id="search"
-                  type="search"
-                  aria-label="Search tasks"
-                  placeholder="Search"
-                  value={route.query}
-                  onChange={(e) => navigate({ query: e.target.value }, true)}
-                />
-              </label>
-              <Select
-                id="category-filter"
-                label="Filter tasks by category"
-                value={route.category}
-                options={[
-                  { value: "all", label: "All tasks" },
-                  { value: "work", label: "Work" },
-                  { value: "personal", label: "Personal" },
-                ]}
-                onChange={(v) =>
-                  navigate({ category: v as typeof route.category }, true)
-                }
-              />
-              <Select
-                id="tag-filter"
-                label="Filter tasks by tag"
-                value={route.tag}
-                search
-                options={[
-                  { value: "", label: "All tags" },
-                  ...tags.map((value) => ({ value, label: value })),
-                ]}
-                onChange={(tag) => navigate({ tag }, true)}
-              />
-              <button
-                id="new-task"
-                className="primary-button"
-                aria-label="New task"
-                hidden={route.view === "archive"}
-                onClick={() => setEditor({ task: null, status: "later" })}
-              >
-                <Icon name="plus" />
-                New task
-              </button>
-              <button
-                id="theme-toggle"
-                className="icon-button theme-toggle"
-                aria-label="Choose theme"
-                onClick={theme}
-              >
-                <ThemeIcon />
-              </button>
-              <details
-                ref={menu}
-                className="app-menu"
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.currentTarget.open = false;
-                    event.currentTarget.querySelector("summary")?.focus();
-                  }
-                }}
-                onBlur={(event) => {
-                  if (
-                    !event.currentTarget.contains(event.relatedTarget as Node)
-                  )
-                    event.currentTarget.open = false;
-                }}
-              >
-                <summary className="icon-button" aria-label="Workspace options">
-                  <Icon name="more" />
-                </summary>
-                <div className="menu-content">
-                  {options.map((o) => (
-                    <button
-                      key={o.label}
-                      disabled={"disabled" in o && o.disabled}
-                      onClick={() => {
-                        if (menu.current) menu.current.open = false;
-                        o.fn();
-                      }}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </details>
-            </div>
-          </header>
+          <WorkspaceHeader route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:"later"})} options={options} />
           {state.error && (
             <div id="error-banner" className="error-banner" role="alert">
               <span>{state.error}</span>
@@ -716,38 +572,7 @@ function Workspace({
             </div>
           )}
           {route.view === "board" && !!board?.reminders.length && (
-            <section
-              id="reminder-panel"
-              className="reminder-panel"
-              aria-label="Due reminders"
-            >
-              {board.reminders.map((t) => (
-                <div className="reminder-row" key={t.id}>
-                  <Icon name="bell" />
-                  <button className="reminder-open" onClick={() => edit(t)}>
-                    <strong>{t.title}</strong>
-                    <span>{dateLabel(t.reminderAt)}</span>
-                  </button>
-                  {(["snooze", "dismiss"] as const).map((action) => (
-                    <button
-                      key={action}
-                      className="subtle-button"
-                      disabled={state.busy}
-                      onClick={() =>
-                        run(() =>
-                          mutate(`/api/tasks/${t.id}/reminder`, "POST", {
-                            action,
-                            reminderAt: t.reminderAt,
-                          }),
-                        )
-                      }
-                    >
-                      {action === "snooze" ? "Snooze 10m" : "Dismiss"}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </section>
+            <ReminderPanel tasks={board.reminders} busy={state.busy} edit={edit} act={(task,action) => run(() => mutate(`/api/tasks/${task.id}/reminder`,"POST",{action,reminderAt:task.reminderAt}))} />
           )}
           {route.view === "files" ? (
             <Files />
@@ -808,57 +633,10 @@ function Workspace({
           notifications={toggleNotifications}
         />
       )}
-      {archived && (
-        <Dialog
-          id="archive-details-dialog"
-          title="Archived task"
-          onClose={() => setDetails(null)}
-        >
-          <div id="archive-details-content">
-            <h3>{archived.title}</h3>
-            <p className="archive-meta">
-              {columns[archived.status]} · {archived.category} · Archived{" "}
-              {dateLabel(archived.archivedAt)}
-            </p>
-            <p className="archive-notes">{archived.notes}</p>
-            <p>Tags: {archived.tags.join(", ")}</p>
-            {archived.dueDate && <p>Due: {archived.dueDate}</p>}
-            {archived.reminderAt && (
-              <p>
-                Reminder: {dateLabel(archived.reminderAt)} (
-                {archived.reminderDismissedAt
-                  ? "dismissed"
-                  : "paused while archived"}
-                )
-              </p>
-            )}
-          </div>
-          <div className="dialog-actions">
-            <button
-              className="subtle-button danger"
-              onClick={() =>
-                run(async () => {
-                  await remove(archived);
-                  setDetails(null);
-                })
-              }
-            >
-              Delete task
-            </button>
-            <button
-              className="primary-button"
-              onClick={() =>
-                run(async () => {
-                  await mutate(`/api/tasks/${archived.id}/unarchive`, "POST");
-                  setDetails(null);
-                })
-              }
-            >
-              Restore task
-            </button>
-          </div>
-        </Dialog>
-      )}
+      {archived && <ArchiveDetails task={archived} close={() => setDetails(null)}
+        remove={() => run(async () => { await remove(archived); setDetails(null); })}
+        restore={() => run(async () => { await mutate(`/api/tasks/${archived.id}/unarchive`,"POST"); setDetails(null); })}
+      />}
       {modal === "password" && <PasswordDialog close={() => setModal(null)} />}{" "}
       {modal === "nickname" && (
         <Nickname
@@ -882,78 +660,14 @@ function Workspace({
           </p>
         </Dialog>
       )}
-      {toast && (
-        <div id="toast" className="toast" role="status">
-          <span id="toast-message">{toast.text}</span>
-          {toast.undo && (
-            <button
-              id="toast-action"
-              onClick={() => {
-                const undo = toast.undo!;
-                setToast(null);
-                run(undo);
-              }}
-            >
-              Undo
-            </button>
-          )}
-          <button
-            id="toast-close"
-            className="icon-button"
-            aria-label="Dismiss notification"
-            onClick={() => setToast(null)}
-          >
-            ×
-          </button>
-        </div>
-      )}
+      {toast && <Toast text={toast.text} close={() => setToast(null)} undo={toast.undo ? () => {
+        const undo=toast.undo!; setToast(null); run(undo);
+      } : undefined} />}
       <div id="announcer" className="sr-only" aria-live="polite">
         {board?.reminders.length
           ? `${board.reminders.length} reminders are due.`
           : ""}
       </div>
     </>
-  );
-}
-function Nickname({ initial, close }: { initial: string; close: () => void }) {
-  const [error, setError] = useState(""),
-    alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
-  return (
-    <Dialog id="nickname-dialog" title="Your nickname" onClose={close}>
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            await mutate("/api/profile", "POST", {
-              nickname: new FormData(e.currentTarget).get("nickname"),
-            });
-            if (alive.current) close();
-          } catch (e) {
-            if (alive.current) setError(message(e));
-          }
-        }}
-      >
-        <label className="field">
-          Nickname (optional)
-          <input name="nickname" defaultValue={initial} maxLength={80} />
-        </label>
-        <p className="schedule-hint">
-          Only used for your greeting. Sign in with your user ID. Stored
-          encrypted in your vault.
-        </p>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-        <button className="primary-button">Save</button>
-      </form>
-    </Dialog>
   );
 }

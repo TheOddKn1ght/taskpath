@@ -1,0 +1,66 @@
+.theme-toggle {
+  flex: none;
+}
+
+.import-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+#import-dialog {
+  width: 560px;
+}
+
+#markdown-text {
+  font-family: ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size: 12px;
+}
+
+#markdown-file {
+  font-size: 12px;
+}
+
+#markdown-file::file-selector-button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-right: 10px;
+  background: var(--paper);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.import-preview {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  font-size: 12px;
+}
+
+.import-preview ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+.import-preview li {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.import-preview strong {
+  display: block;
+  font-weight: 500;
+}
+
+.import-preview small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
