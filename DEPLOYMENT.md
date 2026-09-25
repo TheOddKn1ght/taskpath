@@ -301,6 +301,11 @@ Restore into a separate empty volume with the app stopped. Each vault still need
 
 ## 10. Update Taskpath
 
+Task sync now requires protocol 2. Older tabs receive an update-required error and keep their encrypted pending changes. Download the update online, close **all** Taskpath tabs and PWA windows, then reopen. Do not clear site data.
+
+Startup automatically adds indexed sync sequences in a transaction; existing accounts, ciphertext and edit identities remain unchanged. Initial downloads and server-restart rescans use bounded pages, then only changed records are transferred. Cached tasks remain available during rescans; full-workspace exports wait until downloading finishes. No Nginx changes are needed.
+
+
 These steps are for an existing **multi-user** installation:
 
 1. Open each device online and wait for **All changes synced**. Do not clear browser storage: it may contain unsynced edits.

@@ -14,7 +14,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
   const { store, auth } = await fixture(); const hub = new Realtime(50);
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: hub.websocket, fetch: createHandler(store, auth, undefined, hub) });
   const origin = server.url.origin, sockets: WebSocket[] = [];
-  const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { 'x-taskpath-sync':'2', origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   try {
     expect((await fetch(origin + '/api/events', { headers: { origin } })).status).toBe(401);
     const session = async () => (await post('/api/auth/login', { userId: testUserId, credential: testVault.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
@@ -36,7 +36,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     const send = (row: any, cookie: string) => post('/api/sync', { workspaceKey: testVault.config.vaultId, changes: [row] }, cookie);
     expect((await send(encrypted, a)).status).toBe(200);
     await until(() => messages.slice(0,2).every(list => list.some(m => JSON.parse(m).type === 'changed')));
-    const response = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();
+    const response = await (await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync':'2' } })).json();
     expect(JSON.stringify(response)).not.toContain(task.title);
     expect(await decryptEnvelope(testVault.key, testVault.config.vaultId, response.rows[0])).toMatchObject({ title: task.title, tags: ['laptop'] });
     device.update(task.id, { tags: ['phone', 'shared'] });
@@ -49,7 +49,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1)!);
     await send(archived, a);
     await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 3));
-    const archivedSnapshot = await (await fetch(origin + '/api/sync', { headers: { cookie: b } })).json();
+    const archivedSnapshot = await (await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync':'2' } })).json();
     expect((await decryptEnvelope(testVault.key, testVault.config.vaultId, archivedSnapshot.rows[0])).archivedAt).toBeTruthy();
     expect(JSON.stringify(messages)).not.toContain('archivedAt');
     expect(JSON.stringify(messages)).not.toContain(task.title);

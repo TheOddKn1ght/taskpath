@@ -6,12 +6,13 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 // Shared by pages and workers. Callers own validation, encryption, account
 // lifecycle checks and retries; transport never changes local state.
 function request(path: string, method: HttpMethod, body: BodyInit | undefined,
-  userId: string | null, contentType: string, timeout: number): Promise<Response> {
+  userId: string | null, contentType: string, timeout: number, headers: Record<string,string> = {}): Promise<Response> {
   return fetch(path, {
     method,
     credentials: 'same-origin',
     cache: 'no-store',
     headers: {
+      ...headers,
       ...(method === 'GET' ? {} : { 'Content-Type': contentType }),
       ...(userId ? { 'X-Taskpath-User': userId } : {}),
     },
@@ -21,9 +22,9 @@ function request(path: string, method: HttpMethod, body: BodyInit | undefined,
 }
 
 export async function apiRequest<T = unknown>(path: string, method: HttpMethod = 'GET',
-  body?: unknown, userId = selectedAccount()): Promise<T> {
+  body?: unknown, userId = selectedAccount(), headers:Record<string,string> = {}): Promise<T> {
   const response = await request(path, method, body === undefined ? undefined : JSON.stringify(body),
-    userId, 'application/json', 12000);
+    userId, 'application/json', 12000, headers);
   if (!response.ok) {
     let message = response.status === 401
       ? 'Sign in to sync. Encrypted changes are saved on this device.'

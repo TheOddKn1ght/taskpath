@@ -16,11 +16,12 @@ export interface Envelope { version: 1; vaultId: string; taskId: string; editedA
 export interface Change<T = Task> { changeId: string; editedAt: string; task: T }
 export interface ReminderMetadata { taskId: string; changeId: string; token: string | null; dueAt: string | null }
 export interface SyncBoard { format: number; workspaceKey: string; timezone: string; serverTime: string; rows: Envelope[]; pushEnabled?: boolean }
-export interface SyncResult extends SyncBoard { acknowledged: string[]; conflicts: number; reminderAcknowledged?: {taskId:string;changeId:string}[] }
+export interface SyncResult extends SyncBoard { protocol?:2; cursor?:string; hasMore?:boolean; acknowledged: string[]; conflicts: number; reminderAcknowledged?: {taskId:string;changeId:string}[] }
 export interface PlainBoard { rows: Task[]; changeIds: Record<string,string>; timezone: string; nickname?: string; workspaceKey?: string; serverTime?: string; format?: number; pushEnabled?: boolean }
 export interface Board extends PlainBoard { tasks: Task[]; day: string; week: string; serverTime: string; reminders: Task[] }
 export interface PlainRecord { board: PlainBoard | null; pending: Change[]; offset: number; lastEdit: number; locked?: boolean }
 export interface EncryptedRecord {
+  syncCursor?:string | null; syncComplete?:boolean;
   revision: number; lockEpoch: number; config: VaultConfig | null; board: SyncBoard | null; pending: Envelope[]; offset: number; lastEdit: number;
   userId?: string | null; inactive?: boolean; locked?: boolean; online?: boolean; authRequired?: boolean;
   conflicts?: number; pushEnabled?: boolean; reminderOutbox?: Record<string,ReminderMetadata>; lastSync?: string; error?: string | null; reminderPublished?: Record<string,string>;

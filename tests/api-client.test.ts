@@ -110,7 +110,7 @@ test('auth adapter accepts domain inputs and validates vault configuration', asy
 
 test('account adapter chooses sync transport and binds each instance to its account', async () => {
   const a = accountApi('account-a'), b = accountApi('account-b');
-  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({}));
+  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({protocol:2}));
   const empty = { workspaceKey: 'vault', changes: [] };
   await a.sync(empty);
   await b.sync({ ...empty, reminders: [{ taskId: 'task', changeId: 'op', token: 'opaque', dueAt: null }] });
@@ -146,7 +146,7 @@ test('file adapter frames ciphertext, preserves retries and validates manifests'
   const { key, config } = await createVault('file adapter test password 2026');
   const userId = 'u_' + 'b'.repeat(32), files = accountApi(userId).files;
   const encrypted = await encryptFile(key, userId, config.vaultId, new Uint8Array([1, 2]), { name: 'PRIVATE_NAME.txt', type: 'text/plain', lastModified: 0 });
-  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({}));
+  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({protocol:2}));
   await files.upload(encrypted.envelope, encrypted.ciphertext);
   await files.upload(encrypted.envelope, encrypted.ciphertext);
   const body = fetchMock.mock.calls[0]![1]?.body as Uint8Array<ArrayBuffer>;
@@ -177,4 +177,17 @@ test('file adapter returns bounded ciphertext and rejects oversized or incomplet
   expect(cancelled).toBe(true);
   await expect(files.download('file', 10_000_001)).rejects.toThrow('Invalid encrypted file length.');
   expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+test('sync adapter selects upload or cursor download and rejects an old server before acknowledgement', async () => {
+  const api = accountApi('account-a');
+  fetchMock.mockResolvedValueOnce(Response.json({protocol:2,rows:[]}));
+  await api.sync({workspaceKey:'vault',changes:[],cursor:'opaque/cursor'});
+  expect(fetchMock.mock.calls[0]![0]).toBe('/api/sync?cursor=opaque%2Fcursor');
+  expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get('x-taskpath-sync')).toBe('2');
+  fetchMock.mockResolvedValueOnce(Response.json({protocol:2,rows:[]}));
+  await api.sync({workspaceKey:'vault',changes:[],reminders:[{taskId:'task',changeId:'change',token:null,dueAt:null}]});
+  expect(fetchMock.mock.calls[1]![1]?.method).toBe('POST');
+  fetchMock.mockResolvedValueOnce(Response.json({format:1,rows:[],acknowledged:['change']}));
+  await expect(api.sync({workspaceKey:'vault',changes:[]})).rejects.toMatchObject({status:426});
 });

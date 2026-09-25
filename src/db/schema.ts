@@ -36,13 +36,14 @@ export const sessions = sqliteTable('auth_sessions', {
 });
 
 export const encryptedTasks = sqliteTable('encrypted_tasks', {
+  sequence: integer().notNull().default(0),
   userId: text().notNull(),
   taskId: text().notNull(),
   editedAt: text().notNull(),
   changeId: text().notNull(),
   // Preserve the serialized envelope byte-for-byte on reads and retries.
   envelope: text().notNull(),
-}, table => [primaryKey({ columns: [table.userId, table.taskId] })]);
+}, table => [primaryKey({ columns: [table.userId, table.taskId] }), uniqueIndex('task_sequence').on(table.userId, table.sequence)]);
 
 export const reminderClaims = sqliteTable('reminder_claims', {
   userId: text().notNull(),

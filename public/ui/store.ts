@@ -94,7 +94,9 @@ export async function refresh() {
           ? `Sync paused · ${local.pending.length} pending`
           : local.pending.length
             ? `${local.pending.length} changes saved on this device`
-            : local.online
+            : local.online && !local.syncComplete
+              ? "Syncing tasks…"
+              : local.online
               ? "All changes synced"
               : "Offline · Saved on this device",
     });

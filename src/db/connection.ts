@@ -4,8 +4,8 @@ import { dirname } from 'node:path';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import * as schema from './schema';
 
-// Keep the deployed SQL schema unchanged. Schema definitions describe it; they
-// do not automatically alter existing databases or rewrite encrypted records.
+// Schema changes are explicit, additive transactions. Never rewrite existing
+// encrypted envelopes when adding synchronization metadata.
 export function openDatabase(path: string, timezone: string) {
   new Intl.DateTimeFormat('en', { timeZone: timezone });
   // Inspect read-only BEFORE WAL, schema writes, or directory creation. Never migrate plaintext.
@@ -35,6 +35,14 @@ export function openDatabase(path: string, timezone: string) {
   `);
   db.exec('CREATE TABLE IF NOT EXISTS auth_sessions (tokenHash TEXT PRIMARY KEY, userId TEXT NOT NULL, revision INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
   db.transaction(() => db.exec('CREATE TABLE IF NOT EXISTS encrypted_files (userId TEXT NOT NULL, fileId TEXT NOT NULL, bytes INTEGER NOT NULL CHECK(bytes >= 0), envelope TEXT, ciphertext BLOB, deleted INTEGER NOT NULL CHECK(deleted IN (0,1)), PRIMARY KEY(userId,fileId))'))();
+  db.transaction(() => {
+    const columns = db.query<{name:string}, []>('PRAGMA table_info(encrypted_tasks)').all();
+    if (!columns.some(column => column.name === 'sequence')) {
+      db.exec("ALTER TABLE encrypted_tasks ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0");
+      db.exec("WITH ranked AS (SELECT userId, taskId, row_number() OVER (PARTITION BY userId ORDER BY taskId) AS seq FROM encrypted_tasks) UPDATE encrypted_tasks SET sequence=(SELECT seq FROM ranked WHERE ranked.userId=encrypted_tasks.userId AND ranked.taskId=encrypted_tasks.taskId)");
+    }
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS task_sequence ON encrypted_tasks(userId, sequence)");
+  })();
   return db;
 }
 

@@ -161,7 +161,8 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
         if (server.upgrade(request, { data: { userId, authorized: () => auth.identity(request) === userId } })) return;
         return json({ error: 'WebSocket upgrade failed.' }, 400);
       }
-      if (path === '/api/sync' && request.method === 'GET') return json(store.syncBoard(userId));
+      if (path === '/api/sync' && request.headers.get('x-taskpath-sync') !== '2') return json({error:'Update Taskpath to sync. Close all tabs and PWA windows, then reopen. Local encrypted changes remain saved.'},426);
+      if (path === '/api/sync' && request.method === 'GET') return json(store.syncBoard(userId, url.searchParams.get('cursor')));
       if (path === '/api/sync' && request.method === 'POST') {
         const result = store.sync(userId, await body());
         if (result.changed) realtime?.notify(userId);

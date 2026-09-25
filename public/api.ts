@@ -1,3 +1,4 @@
+import { RequestError } from './errors.js';
 import { apiRequest, fileRequest } from './api-client.js';
 import { validateConfig } from './crypto.js';
 import { encodeFile, fileManifest, FILE_MAX, type FileEnvelope } from './file-format.js';
@@ -6,7 +7,7 @@ import type { Envelope, ReminderMetadata, PushStatus, VaultConfig } from './type
 interface Login { userId: string; credential: string; revision: number }
 interface Setup { userId: string; token: string; config: VaultConfig; credential: string }
 interface PasswordChange { currentCredential: string; credential: string; config: VaultConfig; revision: number }
-interface SyncBatch { workspaceKey: string; changes: Envelope[]; reminders?: ReminderMetadata[] }
+interface SyncBatch { cursor?:string | null; workspaceKey: string; changes: Envelope[]; reminders?: ReminderMetadata[] }
 
 export const authApi = {
   async configuration(userId: string): Promise<VaultConfig | null> {
@@ -34,12 +35,16 @@ export function accountApi(userId: string | null) {
   const id = userId;
   return {
     // acceptEncrypted validates the snapshot against local vault/queue state.
-    sync(batch: SyncBatch): Promise<unknown> {
+    async sync(batch: SyncBatch): Promise<unknown> {
       const posting = batch.changes.length || batch.reminders?.length;
-      return apiRequest('/api/sync', posting ? 'POST' : 'GET', posting ? {
+      const response = await apiRequest('/api/sync' + (!posting && batch.cursor ? '?cursor=' + encodeURIComponent(batch.cursor) : ''), posting ? 'POST' : 'GET', posting ? {
         workspaceKey: batch.workspaceKey, changes: batch.changes,
         ...(batch.reminders?.length ? { reminders: batch.reminders } : {}),
-      } : undefined, id);
+      } : undefined, id, {'X-Taskpath-Sync':'2'});
+      if (!response || typeof response !== 'object' || !('protocol' in response) || response.protocol !== 2) {
+        throw new RequestError('Update Taskpath on the server and reload the app to sync. Local encrypted changes remain saved.',426);
+      }
+      return response;
     },
     async claimReminders(tokens: string[]): Promise<string[]> {
       const result = await apiRequest<{ tokens: unknown }>('/api/reminders/claim', 'POST', { tokens }, id);

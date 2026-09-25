@@ -103,11 +103,15 @@ async function preparePushMetadata(userId: string) {
   }
   if (updated && token === generation && vaultKey) await commit(record.revision, { ...record, reminderOutbox: outbox });
 }
-export function acceptEncrypted(record: EncryptedRecord, input: unknown, now = Date.now()) {
+export function acceptEncrypted(record: EncryptedRecord, input: unknown, now = Date.now(), expectedCursor?:string | null) {
   if (!input || typeof input !== 'object') throw new Error('Invalid sync response.');
   const response = input as SyncResult;
   if (response.format !== 1 || !Array.isArray(response.rows) || response.workspaceKey !== record.config?.vaultId) {
     throw new RequestError('This server has a different or unsupported workspace. Local encrypted changes were kept.', 409);
+  }
+  if (expectedCursor !== undefined) {
+    if (response.protocol !== 2 || typeof response.cursor !== 'string' || !response.cursor || typeof response.hasMore !== 'boolean') throw new Error('Invalid incremental sync response.');
+    if ((record.syncCursor ?? null) !== expectedCursor) return;
   }
   new Intl.DateTimeFormat('en', { timeZone: response.timezone });
   if (!Number.isFinite(Date.parse(response.serverTime))) throw new Error('Invalid server time.');
@@ -123,6 +127,10 @@ export function acceptEncrypted(record: EncryptedRecord, input: unknown, now = D
     if (record.reminderOutbox?.[r.taskId]?.changeId === r.changeId) delete record.reminderOutbox[r.taskId];
   }
   record.board = { format: 1, workspaceKey: response.workspaceKey, timezone: response.timezone, serverTime: response.serverTime, rows: [...rows.values()] };
+  if (expectedCursor !== undefined) {
+    record.syncCursor = response.cursor;
+    record.syncComplete = !response.hasMore;
+  }
   record.offset = Date.parse(response.serverTime) - now;
   record.lastEdit = Math.max(record.lastEdit || 0, ...response.rows.map(e => Date.parse(e.editedAt)));
   record.online = true; record.authRequired = false; record.error = null; record.conflicts = response.conflicts || 0;
@@ -131,6 +139,7 @@ let syncing: Promise<void> | null = null;
 export async function syncAfterCurrent() { if (syncing) try { await syncing; } catch {} return sync(); }
 export function sync() {
   if (syncing) return syncing;
+  let continueSync = false;
   const run = async () => {
     if (!page) await loadAccount();
     const userId = selectedAccount();
@@ -147,20 +156,33 @@ export function sync() {
         }
         const available = new Set([...changes, ...(record.board?.rows || [])].map(e => e.changeId));
         const reminders = record.pushEnabled ? Object.values(record.reminderOutbox || {}).filter(r => available.has(r.changeId)).slice(0, 50) : [];
-        const response = await accountApi(userId).sync({ workspaceKey: record.config!.vaultId, changes, reminders });
-        await localState(current => acceptEncrypted(current, response), userId);
+        const posting = changes.length > 0 || reminders.length > 0;
+        const cursor = record.syncCursor ?? null;
+        try {
+          const response = await accountApi(userId).sync({ workspaceKey: record.config!.vaultId, changes, reminders, cursor });
+          await localState(current => acceptEncrypted(current, response, Date.now(), posting ? undefined : cursor), userId);
+        } catch (error) {
+          if (!posting && errorStatus(error) === 410) {
+            await localState(current => {
+              if ((current.syncCursor ?? null) === cursor) { current.syncCursor = null; current.syncComplete = false; }
+            }, userId);
+            continue;
+          }
+          throw error;
+        }
         await preparePushMetadata(userId);
         changed();
         const next = await localState(undefined, userId);
-        if (!next.pending.length && !Object.keys(next.reminderOutbox || {}).length) return;
+        if (!posting && next.syncComplete && !next.pending.length && !Object.keys(next.reminderOutbox || {}).length) return;
       }
+      continueSync = true;
     } catch (error) {
       await localState(record => { record.online = Boolean(errorStatus(error)); record.authRequired = errorStatus(error) === 401; record.error = errorStatus(error) && errorStatus(error) !== 401 ? errorMessage(error) : null; }, userId).catch(() => {});
       changed(); throw error;
     }
   };
   const combined = async () => { await run(); await syncFiles(); };
-  syncing = (globalThis.navigator?.locks ? navigator.locks.request('taskpath-accounts-sync', combined) : combined()).finally(() => { syncing = null; });
+  syncing = (globalThis.navigator?.locks ? navigator.locks.request('taskpath-accounts-sync', combined) : combined()).finally(() => { syncing = null; if (continueSync && page && isUnlocked()) setTimeout(() => { void sync().catch(() => {}); }, 0); });
   return syncing;
 }
 async function plaintext(record: EncryptedRecord, token: number) {
@@ -238,6 +260,7 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
   const body = (input || {}) as Record<string,unknown>;
   if (path === '/api/board' && method === 'GET') return readBoard();
   if (path.startsWith('/api/export')) {
+    if (!(await localState()).syncComplete) throw new Error('Syncing tasks… Wait for the initial download before exporting.');
     const board = await readBoard();
     return path.includes('format=markdown') ? exportMarkdown(board.tasks) : { version: 2, exportedAt: new Date().toISOString(), timezone: board.timezone, tasks: board.tasks };
   }

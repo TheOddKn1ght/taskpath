@@ -255,6 +255,7 @@ try {
   input("#task-title", "REACT_PRIVATE_EDIT");
   click("#save-task");
   await until(() => !document.querySelector("#task-dialog"), "edit saved");
+  await until(() => !!getSnapshot().board?.tasks.some((t) => t.title === "REACT_PRIVATE_EDIT"), "edited title reaches the board");
   assert(getSnapshot().board?.tasks.some((t) => t.title === "REACT_PRIVATE_EDIT"), "task edit persists");
   click(".task-card .task-menu-trigger");
   key(node(".task-menu-popover button"), "Tab");

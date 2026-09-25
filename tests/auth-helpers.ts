@@ -19,5 +19,5 @@ export async function login(handle: any, credential = testVault.credential, revi
   return { response, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
 }
 export function request(handle: any, cookie: string, path: string, body?: any, site = origin) {
-  return handle(new Request(`${origin}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { cookie, origin: site, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+  return handle(new Request(`${origin}${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'x-taskpath-sync':'2', cookie, origin: site, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
 }

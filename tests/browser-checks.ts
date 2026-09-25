@@ -1,3 +1,4 @@
+import { accountApi } from '/assets/__TASKPATH_RELEASE__/api.js';
 import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
 import { fileChecks } from './browser-files-checks.js';
 import { pickerChecks } from './browser-picker-checks.js';
@@ -198,6 +199,36 @@ try {
   assert((await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'offline unlock preserves Today placement');
   disconnected = false; await syncAfterCurrent();
   assert(!(await localState()).pending.length && (await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'reconnection acknowledges and retains Today reminder placement');
+  disconnected = true;
+  await syncAfterCurrent().catch(() => {});
+  for (let i=0;i<55;i++) await offlineRequest('/api/tasks','POST',{title:'INCREMENTAL_PRIVATE_'+i});
+  const immutableQueue=JSON.stringify((await localState()).pending);
+  await syncAfterCurrent().catch(() => {});
+  assert(JSON.stringify((await localState()).pending)===immutableQueue,'incremental upload retries preserve queued ciphertext');
+  disconnected=false; await syncAfterCurrent();
+  let syncRecord=await localState();
+  const api=accountApi(syncRecord.userId!);
+  const idle=await api.sync({workspaceKey:syncRecord.config!.vaultId,changes:[],cursor:syncRecord.syncCursor}) as {rows:unknown[];hasMore:boolean};
+  assert(idle.rows.length===0 && !idle.hasMore,'idle incremental sync downloads no envelopes');
+  await localState(record=>{record.syncCursor=null;record.syncComplete=false;});
+  let exportBlocked=false;
+  try {await offlineRequest('/api/export');} catch {exportBlocked=true;}
+  assert(exportBlocked,'incomplete initial download blocks full-workspace export');
+  // Interrupt after one persisted page; the next sync resumes its cursor.
+  let pulls=0; const beforeInterrupt=window.fetch;
+  window.fetch=async(url,options)=>{
+    if(String(url).startsWith('/api/sync') && (!options?.method || options.method==='GET') && ++pulls===2) throw new TypeError('Interrupted page');
+    return beforeInterrupt(url,options);
+  };
+  try {await syncAfterCurrent();} catch {}
+  finally {window.fetch=beforeInterrupt;}
+  syncRecord=await localState();
+  assert(!!syncRecord.syncCursor && !syncRecord.syncComplete,'interrupted download saves progress without claiming completion');
+  await syncAfterCurrent();
+  assert((await localState()).syncComplete && (await readBoard()).tasks.filter(t=>t.title.startsWith('INCREMENTAL_PRIVATE_')).length===55,'resumed pages retain all encrypted tasks');
+  await localState(record=>{record.syncCursor='expired-cursor';});
+  await syncAfterCurrent();
+  assert((await localState()).syncComplete && (await offlineRequest('/api/export')).tasks.length>=55,'expired cursors rescan safely without clearing cached tasks');
   await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
 } catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }

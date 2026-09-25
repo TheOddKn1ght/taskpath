@@ -17,9 +17,9 @@ import { fixture, testVault, testUserId, origin } from './auth-helpers';
 const time = new Date('2026-09-11T12:00:00Z');
 const tables = ['encrypted_format', 'settings', 'accounts', 'auth_sessions', 'encrypted_tasks', 'reminder_claims', 'push_subscriptions', 'push_reminders', 'push_deliveries'];
 const snapshot = (db: Database) => ({
-  schema: db.query("SELECT name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name != 'encrypted_files' ORDER BY name").all(),
+  schema: db.query("SELECT name, replace(sql, ', sequence INTEGER NOT NULL DEFAULT 0', '') AS sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name != 'encrypted_files' AND name != 'task_sequence' ORDER BY name").all(),
   // Table identifiers are a fixed test fixture, never request input.
-  rows: tables.map(table => db.query(`SELECT * FROM ${table} ORDER BY rowid`).all()),
+  rows: tables.map(table => db.query(`SELECT ${table === 'encrypted_tasks' ? 'userId,taskId,editedAt,changeId,envelope' : '*'} FROM ${table} ORDER BY rowid`).all()),
 });
 
 test('pre-Drizzle database retains schema, sessions, ciphertext, invitations, and push state on upgrade and retry', async () => {
@@ -59,7 +59,10 @@ test('pre-Drizzle database retains schema, sessions, ciphertext, invitations, an
     expect(await decryptEnvelope(testVault.key, testVault.config.vaultId, store.syncBoard(testUserId).rows[0])).toMatchObject({ title: task.title, tags: ['home'] });
     expect(store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [envelope] }).changed).toBe(false);
     expect(snapshot(store.db)).toEqual(before);
+    const cursor = store.syncBoard(testUserId).cursor;
+    expect(store.db.query('SELECT sequence FROM encrypted_tasks').get()).toEqual({sequence:1});
     store.close(); store = new Store(path, () => time);
+    expect(() => store!.syncBoard(testUserId,cursor)).toThrow('cursor expired');
     expect(snapshot(store.db)).toEqual(before);
   } finally {
     db?.close(); store?.close(); rmSync(directory, { recursive: true, force: true });
