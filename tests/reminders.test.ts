@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { ClientStore as Store } from "./client-helpers";
-import { dueLabel, localReminderValue, reminderFromInput } from "../public/dates.js";
+import { afterEach, beforeEach, test } from "node:test";
+import { expect } from "@std/expect";
+import { ClientStore as Store } from "./client-helpers.ts";
+import { dueLabel, localReminderValue, reminderFromInput } from "../public/dates.ts";
 
 let now: Date;
 let store: Store;

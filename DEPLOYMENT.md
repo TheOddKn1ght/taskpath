@@ -4,7 +4,7 @@ This guide deploys an invite-only Taskpath installation with private per-user va
 
 **Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. The picker update (`accounts-v16`) preserves the database and encrypted browser storage; it does not require a new vault, password, or migration command. Only older plaintext/single-owner installations need the separate fresh-start procedure.
 
-The image uses Bun **1.4.2**. Docker installs the versions in `bun.lock`, including React, Drizzle ORM and `web-push`, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
+The image uses Deno **2.9**. Docker installs the versions in `deno.lock` and `package.json`, including React, `web-push`, esbuild and `hash-wasm`, and minifies the client during the image build. You do not need Deno or `node_modules` on the VPS host. The database layout is the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
 
 You need:
 
@@ -117,7 +117,7 @@ cd /opt/taskpath
 ls
 ```
 
-You should see `Dockerfile`, `compose.yaml`, `package.json`, **`bun.lock`**, `scripts`, `public`, `src`, and `deploy`. Copy the lockfile: the Docker build requires it. The image builds `dist/public` itself, so do not upload your local build or dependencies.
+You should see `Dockerfile`, `compose.yaml`, `package.json`, **`deno.lock`**, `deno.json`, `scripts`, `public`, `src`, and `deploy`. Copy the lockfiles: the Docker build requires them. The image builds `dist/public` itself, so do not upload your local build or dependencies.
 
 ## 5. Configure fresh account storage
 
@@ -138,7 +138,7 @@ TASKPATH_SESSION_DAYS=30
 # TASKPATH_PUSH_SUBJECT=mailto:admin@example.com
 ```
 
-Remove legacy `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` values. Passwords are chosen only in the browser; there is no password-hash command. Optional `TASKPATH_START_SCRIPT=start:smol` enables Bun's lower-memory mode. Leave `HOST` and `DATABASE_PATH` at the container defaults.
+Remove legacy `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` values. Passwords are chosen only in the browser; there is no password-hash command. Leave `HOST` and `DATABASE_PATH` at the container defaults.
 
 The HTTPS origin also enables server push delivery. Signing keys are generated once and stored in SQLite; do not generate or paste VAPID keys manually. `TASKPATH_PUSH_SUBJECT`, when supplied, must be an HTTPS contact URL or `mailto:` address. Allow outbound DNS and HTTPS from the container to browser push providers. No additional incoming port or Nginx configuration is needed for push.
 
@@ -210,7 +210,7 @@ The production template:
 Confirm the HTTPS certificate is valid. Then create your own account or invite a friend:
 
 ```sh
-sudo docker compose exec taskpath bun run admin invite
+sudo docker compose exec taskpath deno task admin invite
 ```
 
 The command prints a **user ID** and **setup URL**. Send both privately to your friend. The URL already contains the user ID, so the recipient only needs to choose and confirm a vault password and optionally enter a nickname. The link expires after **24 hours** and is consumed once; restarting the server does not renew it.
@@ -220,10 +220,10 @@ Normal login requires **user ID + password**. The nickname is encrypted and only
 Account administration, while the app is running:
 
 ```sh
-sudo docker compose exec taskpath bun run admin list
-sudo docker compose exec taskpath bun run admin reinvite USER_ID
-sudo docker compose exec taskpath bun run admin revoke USER_ID
-sudo docker compose exec taskpath bun run admin disable USER_ID
+sudo docker compose exec taskpath deno task admin list
+sudo docker compose exec taskpath deno task admin reinvite USER_ID
+sudo docker compose exec taskpath deno task admin revoke USER_ID
+sudo docker compose exec taskpath deno task admin disable USER_ID
 ```
 
 Replace `USER_ID` with the generated ID. `reinvite` replaces an expired or unclaimed invitation; its old link stops working. `revoke` cancels a pending invitation. Active accounts cannot be reinvited. `disable` revokes the user's sessions and prevents server access while retaining their encrypted data. It does not revoke offline access to previously downloaded data. Other accounts are unaffected. There is no deletion or password-reset command.
@@ -310,7 +310,7 @@ These steps are for an existing **multi-user** installation:
 
 1. Open each device online and wait for **All changes synced**. Do not clear browser storage: it may contain unsynced edits.
 2. [Back up the volume](#9-back-up-the-database).
-3. Repeat the `rsync` command from step 4 on your computer. Keep the `.env`, `data/`, `node_modules/`, and `dist/` exclusions, and include `bun.lock` and `scripts/`.
+3. Repeat the `rsync` command from step 4 on your computer. Keep the `.env`, `data/`, `node_modules/`, and `dist/` exclusions, and include `deno.lock` and `scripts/`.
 4. On the VPS, review new settings in `.env.example` and merge them into your existing `.env`. Keep the same Compose project/volume name and `TASKPATH_ORIGIN`. Do not replace `.env` with the example.
 5. Rebuild and recreate the service:
 
@@ -330,20 +330,20 @@ Continue only if the image build succeeds. The named volume survives image repla
 7. With changes synchronized on all devices before upgrading, on **every device**, open Taskpath online so it can download the new PWA shell, close all Taskpath tabs and installed-app windows, then reopen and unlock. Keep browser storage intact. The worker waits for old windows to close before activating; refreshing one tab may not be enough.
 8. Enable background reminders on each desired device using the section below. Confirm a test notification arrives with the app closed.
 
-For a local checkout with Bun 1.4.2, the same dependency/build/test sequence used by CI is:
+For a local checkout with Deno 2.9, the same dependency/build/test sequence used by CI is:
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run typecheck
-bun run build
-bun test
+deno install
+deno task typecheck
+deno task build
+deno task test
 ```
 
-The build belongs in `dist/public`. `bun run start` and `bun run start:smol` serve it; `bun run dev` serves readable sources and is not the production command. If you already manage a non-Docker Bun service, run the sequence above in its release directory before restarting that service with the same database and environment.
+The build belongs in `dist/public`. `deno task start` serves it; `deno task dev` serves readable sources and is not the production command. If you already manage a non-Docker Deno service, run the sequence above in its release directory before restarting that service with the same database and environment.
 
 ### Start fresh from a plaintext or single-owner release
 
-This change deliberately does not migrate existing accounts or vaults. Use the new Compose volume `taskpath-accounts-data` (or a fresh `DATABASE_PATH` for local runs), start the release, and run `bun run admin invite` inside the container for each person, including yourself. Existing volumes and browser storage remain untouched.
+This change deliberately does not migrate existing accounts or vaults. Use the new Compose volume `taskpath-accounts-data` (or a fresh `DATABASE_PATH` for local runs), start the release, and run `deno task admin invite` inside the container for each person, including yourself. Existing volumes and browser storage remain untouched.
 
 If you want to keep readable tasks from that older release, export Markdown while the old vault is unlocked, store the export privately, then import it into a newly created account. This is optional manual transfer; old pending operations, account credentials and browser storage are never imported automatically. Follow the PWA close/reopen step above after switching releases.
 
@@ -390,9 +390,9 @@ If `docker compose` is unrecognized, install `docker-compose-plugin` from the Do
 
 ### Build fails or the client is outdated
 
-Confirm `bun.lock` and `scripts/build.ts` were uploaded, then rebuild the image. Do not copy host `node_modules` into the container. A frozen-lockfile failure means `package.json` and `bun.lock` do not match; upload both from the same project revision. Do not delete the lockfile to bypass the check.
+Confirm `deno.lock` and `scripts/build.ts` were uploaded, then rebuild the image. Do not copy host `node_modules` into the container. A lockfile failure means `package.json` and `deno.lock` do not match; upload both from the same project revision. Do not delete the lockfile to bypass the check.
 
-For non-Docker production, **Client build missing, outdated or damaged** means you must run `bun run build` before starting the server. If the server is updated but the UI is still old, follow the close-all-windows PWA update procedure. Do not clear site storage as the first fix.
+For non-Docker production, **Client build missing, outdated or damaged** means you must run `deno task build` before starting the server. If the server is updated but the UI is still old, follow the close-all-windows PWA update procedure. Do not clear site storage as the first fix.
 
 ### Background notifications do not arrive
 
@@ -471,6 +471,6 @@ The existing SQLite backup now contains file ciphertext, wrapped file keys, meta
 
 ## Client updates and automatic fingerprints
 
-Asset URLs and PWA caches now receive an automatic content fingerprint. Do not edit release numbers. Docker generates the fingerprint during its normal build; for a direct installation, run `bun run build` and restart the server. Keep the generated `dist/public/.taskpath-build.json` together with the complete `dist/public` directory when copying a build. The manifest is internal and is not served over HTTP. Production validates file checksums and serves one fixed release until restart.
+Asset URLs and PWA caches now receive an automatic content fingerprint. Do not edit release numbers. Docker generates the fingerprint during its normal build; for a direct installation, run `deno task build` and restart the server. Keep the generated `dist/public/.taskpath-build.json` together with the complete `dist/public` directory when copying a build. The manifest is internal and is not served over HTTP. Production validates file checksums and serves one fixed release until restart.
 
 Open the update online, then close every Taskpath tab and PWA window and reopen. This activation rule also applies when upgrading from `accounts-v18` or earlier. Do not clear browser storage, replace database volumes or recreate accounts. Backend-only changes do not inherently require a new client cache. No Nginx changes are needed for fingerprinted URLs.

@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { ClientStore as Store, calendar } from "./client-helpers";
+import { afterEach, beforeEach, test } from "node:test";
+import { expect } from "@std/expect";
+import { ClientStore as Store, calendar } from "./client-helpers.ts";
 
 let now: Date;
 let store: Store;

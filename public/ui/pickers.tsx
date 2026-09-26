@@ -15,9 +15,9 @@ import {
   shiftDate,
   shiftMonth,
   validCalendarDate,
-} from "../picker-model.js";
-import { localReminderValue, reminderFromInput } from "../dates.js";
-import { normalizeTags } from "../tags.js";
+} from "../picker-model.ts";
+import { localReminderValue, reminderFromInput } from "../dates.ts";
+import { normalizeTags } from "../tags.ts";
 export interface Option {
   value: string;
   label: string;

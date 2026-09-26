@@ -1,6 +1,6 @@
-import type { Route } from '../types.js';
-import { Icon } from './icons';
-import { navigate } from './store';
+import type { Route } from '../types.d.ts';
+import { Icon } from './icons.tsx';
+import { navigate } from './store.ts';
 export function WorkspaceNav({collapsed,view,toggleCollapsed}:{collapsed:boolean;view:Route['view'];toggleCollapsed:()=>void}) {
   return (
     <aside id="sidebar">

@@ -1,7 +1,7 @@
-import type {Task} from '../types.js';
-import {Dialog} from './dialog';
-import {columns} from './store';
-import {dateLabel} from './board';
+import type {Task} from '../types.d.ts';
+import {Dialog} from './dialog.tsx';
+import {columns} from './store.ts';
+import {dateLabel} from './board.tsx';
 export function ArchiveDetails({task,close,remove,restore}:{task:Task;close:()=>void;remove:()=>void;restore:()=>void}) { return (
     <Dialog
       id="archive-details-dialog"

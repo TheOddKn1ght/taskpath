@@ -1,6 +1,6 @@
 # React frontend verification
 
-Branch: `react-rewrite`. Verified locally on macOS with Bun 1.4.2 and Chromium.
+Branch: `react-rewrite`. Verified locally on macOS with Deno 2.9 and Chromium.
 
 The frontend uses React 19.3.0 and strict TypeScript/TSX, with one application root. The encrypted task/file models, storage and sync modules are unchanged. React subscribes through a stable `useSyncExternalStore` adapter; form drafts remain component-local. Lock unmounts private views and clears the adapter immediately. Development bundles the application on request from a fingerprinted source snapshot. Production emits a minified app bundle and a separate worker without React.
 
@@ -8,16 +8,16 @@ The frontend uses React 19.3.0 and strict TypeScript/TSX, with one application r
 
 | Check | Result |
 | --- | --- |
-| `bun run typecheck` | Passed: server, browser/TSX and worker |
-| `bun run build` | Passed; automatic content fingerprint |
-| `bun test` | 99 passed, 0 failed; 1,061 assertions across 20 files |
+| `deno task typecheck` | Passed: server, browser/TSX and worker |
+| `deno task build` | Passed; automatic content fingerprint |
+| `deno task test` | 118 passed, 0 failed across 23 files |
 | Source browser `/checks` | 131 passed |
 | Built browser `/checks` | 131 passed |
 | Source React UI fixture, 800px | 50 passed |
 | Production React UI fixture, 1280px | 50 passed |
 | Production React UI fixture, 390px | 52 passed |
 
-The existing harness covers encrypted persistence and immutable retries, offline editing and reconnect, account isolation, concurrent contexts, conflicts, expiry, remembered keys, lock propagation, service-worker caching and ciphertext-only worker transfers. Bun tests include real WebSocket connections and push delivery through a test sender.
+The existing harness covers encrypted persistence and immutable retries, offline editing and reconnect, account isolation, concurrent contexts, conflicts, expiry, remembered keys, lock propagation, service-worker caching and ciphertext-only worker transfers. Deno tests include real WebSocket connections and push delivery through a test sender.
 
 The new React fixture covers invitation setup, failed and successful login, password changes, account switching, all seven theme selections, board order, editor draft/focus/selection/scroll preservation during refresh, task CRUD, tags and filters, fragment history, quick-add inheritance, drag events, archive/delete Undo, Markdown preview/import, both exports, file upload/rename/download/delete, decoded image previews and Blob URL revocation. It also checks offline edits, reconnect and immediate removal of private views on lock. Requests and stored workspace records are checked for distinctive plaintext and passwords.
 
@@ -28,17 +28,17 @@ The UI fixture bundles the same public TSX components with development or produc
 ## Reproduce
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run typecheck
-bun run build
-bun test
+deno install
+deno task typecheck
+deno task build
+deno task test
 ```
 
 Run one harness at a time, using disposable origins with no other Taskpath tabs open:
 
 ```sh
-QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
-QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
+QA_ASSETS=source QA_PORT=3195 deno task qa
+QA_ASSETS=built QA_PORT=3196 deno task qa
 ```
 
 Open `/checks`, wait for its final result, then use `/react-layout?width=1280`, `/react-layout?width=800` or `/react-layout?width=390`. Each React run gets a new disposable invitation. `/picker-checks` runs selector checks alone. Test servers use in-memory databases; they never open the deployment database.

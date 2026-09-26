@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import type { Board, Task, Status, Category } from "../types.js";
-import { Dialog } from "./dialog";
-import { Select, TagButton, DatePicker } from "./pickers";
-import { columns, message, mutate } from "./store";
-import { normalizeTags } from "../tags.js";
-import { localReminderValue, reminderFromInput } from "../dates.js";
-import { reminderIsToday } from "../offline-model.js";
+import type { Board, Task, Status, Category } from "../types.d.ts";
+import { Dialog } from "./dialog.tsx";
+import { Select, TagButton, DatePicker } from "./pickers.tsx";
+import { columns, message, mutate } from "./store.ts";
+import { normalizeTags } from "../tags.ts";
+import { localReminderValue, reminderFromInput } from "../dates.ts";
+import { reminderIsToday } from "../offline-model.ts";
 export function Editor({
   task,
   status,

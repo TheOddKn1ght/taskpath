@@ -1,4 +1,4 @@
-import type { TaskInput } from './types.js';
+import type { TaskInput } from './types.d.ts';
 export function normalizeTags(value: unknown) {
   if (!Array.isArray(value)) throw new Error('Tags must be a list of names.');
   const tags = value.map(name => {

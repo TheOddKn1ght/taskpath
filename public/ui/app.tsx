@@ -1,10 +1,10 @@
-import { WorkspaceNav } from "./workspace-nav";
-import { WorkspaceHeader } from "./workspace-header";
-import { ReminderPanel } from "./reminders";
-import { ArchiveDetails } from "./archive-details";
-import { Toast } from "./toast";
-import { Nickname } from "./nickname";
-import { getInstallPrompt, subscribeInstall, installApp } from "./install";
+import { WorkspaceNav } from "./workspace-nav.tsx";
+import { WorkspaceHeader } from "./workspace-header.tsx";
+import { ReminderPanel } from "./reminders.tsx";
+import { ArchiveDetails } from "./archive-details.tsx";
+import { Toast } from "./toast.tsx";
+import { Nickname } from "./nickname.tsx";
+import { getInstallPrompt, subscribeInstall, installApp } from "./install.ts";
 import {
   useEffect,
   useLayoutEffect,
@@ -12,7 +12,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { Task, Status, ArchiveReceipt } from "../types.js";
+import type { Task, Status, ArchiveReceipt } from "../types.d.ts";
 import {
   subscribe,
   getSnapshot,
@@ -22,25 +22,25 @@ import {
   refresh,
   message,
   columns,
-} from "./store";
+} from "./store.ts";
 import {
   isUnlocked,
   lock,
   offlineRequest,
   syncAfterCurrent,
   selectedAccount,
-} from "../offline.js";
-import { Auth, PasswordDialog, changeAccount } from "./auth";
-import { Board } from "./board";
-import { Files } from "./files";
-import { Editor } from "./editor";
-import { Dialog } from "./dialog";
-import { ThemeDialog } from "./theme";
-import { PrivacyCopy, GuideCopy } from "./copy";
-import { PushDialog } from "./push";
-import { ImportDialog } from "./import";
-import { PickerProvider } from "./pickers";
-import { GREETINGS } from "./greetings";
+} from "../offline.ts";
+import { Auth, PasswordDialog, changeAccount } from "./auth.tsx";
+import { Board } from "./board.tsx";
+import { Files } from "./files.tsx";
+import { Editor } from "./editor.tsx";
+import { Dialog } from "./dialog.tsx";
+import { ThemeDialog } from "./theme.tsx";
+import { PrivacyCopy, GuideCopy } from "./copy.tsx";
+import { PushDialog } from "./push.tsx";
+import { ImportDialog } from "./import.tsx";
+import { PickerProvider } from "./pickers.tsx";
+import { GREETINGS } from "./greetings.ts";
 export function App() {
   const state = useSyncExternalStore(subscribe, getSnapshot),
     [publicDialog, setPublicDialog] = useState<"theme" | "privacy" | null>(

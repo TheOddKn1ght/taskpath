@@ -1,5 +1,5 @@
-import type { Route } from "../types.js";
-import { normalizeTags } from "../tags.js";
+import type { Route } from "../types.d.ts";
+import { normalizeTags } from "../tags.ts";
 export const emptyRoute: Route = {
   view: "board",
   query: "",

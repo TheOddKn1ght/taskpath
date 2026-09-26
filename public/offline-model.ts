@@ -1,5 +1,5 @@
-import type { Task, PlainRecord, PlainBoard, Board, ArchiveReceipt, MutationResult, ArchiveResult } from './types.js';
-import { normalizeTags } from './tags.js';
+import type { Task, PlainRecord, PlainBoard, Board, ArchiveReceipt, MutationResult, ArchiveResult } from './types.d.ts';
+import { normalizeTags } from './tags.ts';
 // Pure projections shared by the page and service worker. Pending edits stay immutable.
 export function calendarAt(time: number, timezone: string) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));

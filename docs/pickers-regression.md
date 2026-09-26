@@ -14,11 +14,11 @@ The browser harness ran in Chromium with disposable accounts and an in-memory se
 
 Picker geometry, 44px button heights and distinct palettes passed in all seven themes at 390×844 on the source client and 1280×720 on the built client. Geometry is measured after opening animations finish. Manual interface checks covered category filtering, creating tags, date validation, saving a reminder and reopening it in the 390px phone preview. The phone preview displayed the custom reminder bottom sheet in Gruvbox Dark.
 
-To reproduce, run `bun run typecheck`, `bun run build`, then `bun test`. Start the browser harness separately for each asset mode:
+To reproduce, run `deno task typecheck`, `deno task build`, then `deno task test`. Start the browser harness separately for each asset mode:
 
 ```sh
-QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
-QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
+QA_ASSETS=source QA_PORT=3195 deno task qa
+QA_ASSETS=built QA_PORT=3196 deno task qa
 ```
 
 Open each server's `/checks` URL in a fresh browser context. `/picker-checks` runs the component checks alone and can be repeated without changing the test accounts. Use disposable test origins, not the production site's storage.

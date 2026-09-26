@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from './icons';
+import { Icon } from './icons.tsx';
 
 // Dismiss explicitly: Safari pointer activation need not focus the action.
 export function ActionMenu({ label, children, triggerClassName, popupClassName }: {

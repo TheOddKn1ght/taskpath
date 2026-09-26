@@ -1,4 +1,4 @@
-import type { Kdf, VaultConfig, Envelope, Change, IdentifiedRecord } from './types.js';
+import type { Kdf, VaultConfig, Envelope, Change, IdentifiedRecord } from './types.d.ts';
 // Versioned wire format shared with the server. Secrets are derived only in pages.
 const utf8 = new TextEncoder();
 const decode = new TextDecoder('utf-8', { fatal: true });

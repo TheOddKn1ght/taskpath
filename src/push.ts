@@ -1,7 +1,15 @@
 import webpush from 'web-push';
 import { createHash, ECDH } from 'node:crypto';
-import { InputError, object, Store } from './store';
-import { PushRepository } from './db/push';
+import { InputError, object, Store } from './store.ts';
+import { PushRepository } from './db/push.ts';
+
+const fromBase64Url = (value: string): Uint8Array => {
+  const s = value.replaceAll('-', '+').replaceAll('_', '/');
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+};
 
 export const subscriptionId = (endpoint: string) => createHash('sha256').update(endpoint).digest('hex');
 export function subscription(input: unknown): webpush.PushSubscription {
@@ -13,9 +21,9 @@ export function subscription(input: unknown): webpush.PushSubscription {
     const allowed = ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com'].includes(url.hostname) || url.hostname.endsWith('.notify.windows.com');
     if (!allowed || url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) throw new Error();
     for (const [name, size] of [['p256dh', 65], ['auth', 16]] as const) {
-      if (typeof keys[name] !== 'string' || !/^[\w-]+$/.test(keys[name]) || Buffer.from(keys[name], 'base64url').length !== size) throw new Error();
+      if (typeof keys[name] !== 'string' || !/^[\w-]+$/.test(keys[name]) || fromBase64Url(keys[name] as string).length !== size) throw new Error();
     }
-    ECDH.convertKey(Buffer.from(keys.p256dh as string, 'base64url'), 'prime256v1');
+    ECDH.convertKey(fromBase64Url(keys.p256dh as string), 'prime256v1');
   } catch { throw new InputError('Unsupported or invalid browser push subscription.'); }
   return { endpoint: value.endpoint as string, keys: { p256dh: keys.p256dh as string, auth: keys.auth as string } };
 }
@@ -27,7 +35,7 @@ export class PushService {
   private timer?: ReturnType<typeof setInterval>;
   private running?: Promise<void>;
   constructor(private store: Store, private subject?: string, private send = webpush.sendNotification.bind(webpush), private now = () => Date.now()) {
-    this.repository = new PushRepository(store.orm);
+    this.repository = new PushRepository(store.db);
     if (!subject) return;
     const url = new URL(subject);
     if (!['https:', 'mailto:'].includes(url.protocol)) throw new Error('Push contact must be an HTTPS URL or mailto address.');

@@ -1,8 +1,9 @@
-import type { TaskInput, Status } from './types.js';
-import type { Token } from './vendor/marked.js';
+import type { TaskInput, Status } from './types.d.ts';
+import type { Token } from './vendor/marked.d.ts';
+// @deno-types="./vendor/marked.d.ts"
 import { lexer } from './vendor/marked.js';
-import { normalizeTags } from './tags.js';
-export { exportMarkdown } from './export-markdown.js';
+import { normalizeTags } from './tags.ts';
+export { exportMarkdown } from './export-markdown.ts';
 export const markdownLimit = 256 * 1024;
 // Decode text, never insert imported markup in DOM or invoke Marked's renderer.
 function entities(text: string) {

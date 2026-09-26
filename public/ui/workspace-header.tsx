@@ -1,9 +1,9 @@
-import type { Route } from '../types.js';
-import { Icon } from './icons';
-import { ThemeIcon } from './theme';
-import { Select } from './pickers';
-import { navigate } from './store';
-import { WorkspaceMenu, type WorkspaceOption } from './workspace-menu';
+import type { Route } from '../types.d.ts';
+import { Icon } from './icons.tsx';
+import { ThemeIcon } from './theme.tsx';
+import { Select } from './pickers.tsx';
+import { navigate } from './store.ts';
+import { WorkspaceMenu, type WorkspaceOption } from './workspace-menu.tsx';
 export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,options}:{
   route:Route;tags:string[];greeting:string;week:string;theme:()=>void;createTask:()=>void;options:WorkspaceOption[];
 }) { return (

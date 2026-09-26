@@ -1,8 +1,8 @@
 import { accountApi } from '/assets/__TASKPATH_RELEASE__/api.js';
 import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
-import { fileChecks } from './browser-files-checks.js';
-import { pickerChecks } from './browser-picker-checks.js';
-import type { VaultConfig } from '../public/types.js';
+import { fileChecks } from './browser-files-checks.ts';
+import { pickerChecks } from './browser-picker-checks.tsx';
+import type { VaultConfig } from '../public/types.d.ts';
 import { localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/__TASKPATH_RELEASE__/offline.js';
 import { openDatabase, commit, rememberedKey } from '/assets/__TASKPATH_RELEASE__/persistence.js';
 import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';

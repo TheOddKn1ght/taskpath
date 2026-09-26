@@ -1,19 +1,27 @@
-import { test, expect } from 'bun:test';
-import { Realtime } from '../src/realtime';
-import { createHandler } from '../src/server';
-import { createRealtime } from '../public/realtime.js';
-import { fixture, testVault, testUserId } from './auth-helpers';
-import { queueChange } from '../public/offline-model.js';
-import { ClientStore } from './client-helpers';
-import { encryptChange, decryptEnvelope, createVault } from '../public/crypto.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import Ws from 'ws';
+import { Realtime } from '../src/realtime.ts';
+import type { RealtimeData } from '../src/realtime.ts';
+import { createHandler } from '../src/server.ts';
+import { createRealtime } from '../public/realtime.ts';
+import { fixture, testVault, testUserId } from './auth-helpers.ts';
+import { queueChange } from '../public/offline-model.ts';
+import { ClientStore } from './client-helpers.ts';
+import { encryptChange, decryptEnvelope, createVault } from '../public/crypto.ts';
+import { sleep } from './test-utils.ts';
 const until = async (condition: () => boolean, timeout = 4000) => {
   const end = Date.now() + timeout;
-  while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await Bun.sleep(10); }
+  while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await sleep(10); }
 };
 test('real WebSockets propagate encrypted edits between devices, enforce Origin, and close revoked sessions', async () => {
   const { store, auth } = await fixture(); const hub = new Realtime(50);
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: hub.websocket, fetch: createHandler(store, auth, undefined, hub) });
-  const origin = server.url.origin, sockets: WebSocket[] = [];
+  const handle = createHandler(store, auth, undefined, hub);
+  const upgrade = (request: Request, data: RealtimeData) => { const { socket, response } = Deno.upgradeWebSocket(request); hub.attach(socket, data); return response; };
+  let origin = '';
+  const server = Deno.serve({ hostname: '127.0.0.1', port: 0, onListen: (addr) => { origin = `http://127.0.0.1:${addr.port}`; }, handler: (request) => handle(request, upgrade) as Promise<Response> });
+  while (!origin) await sleep(10);
+  const sockets: Ws[] = [];
   const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { 'x-taskpath-sync':'2', origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   try {
     expect((await fetch(origin + '/api/events', { headers: { origin } })).status).toBe(401);
@@ -26,9 +34,9 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(426);
     const messages: string[][] = [[], [], []]; const closed: number[] = [];
     for (const [i, cookie] of [a, b, c].entries()) {
-      const socket = new (WebSocket as unknown as { new(url: string, options: import('bun').WebSocketOptions): WebSocket })(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
-      socket.onmessage = event => messages[i].push(String(event.data));
-      socket.onclose = event => { closed[i] = event.code; }; sockets.push(socket);
+      const socket = new Ws(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
+      socket.on('message', (data: unknown) => messages[i]!.push(String(data)));
+      socket.on('close', (code: number) => { closed[i] = code; }); sockets.push(socket);
     }
     await until(() => messages.every(list => list.some(m => JSON.parse(m).type === 'ready')));
     const device = new ClientStore(), task = device.create({ title: 'PRIVATE_WEBSOCKET_CONTENT', tags: ['laptop'] });
@@ -43,7 +51,7 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     const second = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[1]);
     await send(second, b);
     await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
-    await send(second, b); await Bun.sleep(100);
+    await send(second, b); await sleep(100);
     expect(messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
     queueChange(device.record, `/api/tasks/${task.id}/archive`, 'POST');
     const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1)!);
@@ -53,13 +61,13 @@ test('real WebSockets propagate encrypted edits between devices, enforce Origin,
     expect((await decryptEnvelope(testVault.key, testVault.config.vaultId, archivedSnapshot.rows[0])).archivedAt).toBeTruthy();
     expect(JSON.stringify(messages)).not.toContain('archivedAt');
     expect(JSON.stringify(messages)).not.toContain(task.title);
-    expect(messages[2].some(m => JSON.parse(m).type === 'changed')).toBe(false);
+    expect(messages[2]!.some(m => JSON.parse(m).type === 'changed')).toBe(false);
     auth.disable(invitation.userId); await until(() => closed[2] === 4401);
     expect(closed[0]).toBeUndefined(); expect(closed[1]).toBeUndefined();
     await post('/api/auth/logout', {}, a); await until(() => closed[0] === 4401);
     expect(closed[1]).toBeUndefined();
     store.db.exec('UPDATE auth_sessions SET expiresAt=0'); await until(() => closed[1] === 4401);
-  } finally { sockets.forEach(s => s.close()); hub.close(); await server.stop(true); store.close(); }
+  } finally { sockets.forEach(s => s.close()); hub.close(); await server.shutdown(); store.close(); }
 });
 class FakeSocket {
   static instances: FakeSocket[] = [];

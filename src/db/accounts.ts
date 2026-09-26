@@ -1,70 +1,73 @@
-import { and, eq, gt, lte } from 'drizzle-orm';
-import type { AppDatabase } from './connection';
-import { accounts, sessions } from './schema';
+import { Database, transaction } from './connection.ts';
+
+export interface AccountRow {
+  userId: string;
+  status: 'pending' | 'active' | 'disabled';
+  createdAt: number;
+  tokenHash: string | null;
+  expiresAt: number | null;
+  revision: number | null;
+  config: string | null;
+  verifier: string | null;
+}
 
 export class AccountRepository {
-  constructor(private db: AppDatabase) {}
+  constructor(private db: Database) {}
 
-  transaction<T>(work: () => T): T { return this.db.transaction(work); }
+  transaction<T>(work: () => T): T { return transaction(this.db, work); }
 
-  get(userId: string) {
-    return this.db.select().from(accounts).where(eq(accounts.userId, userId)).get();
+  get(userId: string): AccountRow | undefined {
+    return this.db.prepare('SELECT * FROM accounts WHERE userId=?').get(userId) as AccountRow | undefined;
   }
 
-  list() {
-    return this.db.select({ userId: accounts.userId, status: accounts.status, createdAt: accounts.createdAt, expiresAt: accounts.expiresAt })
-      .from(accounts).orderBy(accounts.createdAt, accounts.userId).all();
+  list(): { userId: string; status: string; createdAt: number; expiresAt: number | null }[] {
+    return this.db.prepare('SELECT userId, status, createdAt, expiresAt FROM accounts ORDER BY createdAt, userId').all() as { userId: string; status: string; createdAt: number; expiresAt: number | null }[];
   }
 
-  createPending(userId: string, createdAt: number) {
-    this.db.insert(accounts).values({ userId, status: 'pending', createdAt }).run();
+  createPending(userId: string, createdAt: number): void {
+    this.db.prepare("INSERT INTO accounts(userId, status, createdAt) VALUES (?, 'pending', ?)").run(userId, createdAt);
   }
 
-  setInvitation(userId: string, tokenHash: string | null, expiresAt: number | null) {
-    return Boolean(this.db.update(accounts).set({ tokenHash, expiresAt })
-      .where(and(eq(accounts.userId, userId), eq(accounts.status, 'pending')))
-      .returning({ userId: accounts.userId }).get());
+  setInvitation(userId: string, tokenHash: string | null, expiresAt: number | null): boolean {
+    return Boolean((this.db.prepare("UPDATE accounts SET tokenHash=?, expiresAt=? WHERE userId=? AND status='pending' RETURNING userId").get(tokenHash, expiresAt, userId) as { userId: string } | undefined));
   }
 
-  validInvitation(userId: string, tokenHash: string, now: number) {
-    return Boolean(this.db.select({ userId: accounts.userId }).from(accounts)
-      .where(and(eq(accounts.userId, userId), eq(accounts.status, 'pending'), eq(accounts.tokenHash, tokenHash), gt(accounts.expiresAt, now))).get());
+  validInvitation(userId: string, tokenHash: string, now: number): boolean {
+    return Boolean((this.db.prepare("SELECT userId FROM accounts WHERE userId=? AND status='pending' AND tokenHash=? AND expiresAt>?").get(userId, tokenHash, now) as { userId: string } | undefined));
   }
 
-  activate(userId: string, config: string, verifier: string) {
-    this.db.update(accounts).set({ status: 'active', revision: 1, config, verifier, tokenHash: null, expiresAt: null })
-      .where(eq(accounts.userId, userId)).run();
+  activate(userId: string, config: string, verifier: string): void {
+    this.db.prepare("UPDATE accounts SET status='active', revision=1, config=?, verifier=?, tokenHash=NULL, expiresAt=NULL WHERE userId=?").run(config, verifier, userId);
   }
 
-  disable(userId: string) {
-    return Boolean(this.db.update(accounts).set({ status: 'disabled', tokenHash: null, expiresAt: null })
-      .where(eq(accounts.userId, userId)).returning({ userId: accounts.userId }).get());
+  disable(userId: string): boolean {
+    return Boolean((this.db.prepare("UPDATE accounts SET status='disabled', tokenHash=NULL, expiresAt=NULL WHERE userId=? RETURNING userId").get(userId) as { userId: string } | undefined));
   }
 
-  replaceCredentials(userId: string, revision: number, config: string, verifier: string) {
-    this.db.update(accounts).set({ revision, config, verifier }).where(eq(accounts.userId, userId)).run();
+  replaceCredentials(userId: string, revision: number, config: string, verifier: string): void {
+    this.db.prepare('UPDATE accounts SET revision=?, config=?, verifier=? WHERE userId=?').run(revision, config, verifier, userId);
   }
 
-  sessionIdentity(tokenHash: string, now: number) {
-    return this.db.select({ userId: sessions.userId }).from(sessions)
-      .innerJoin(accounts, eq(accounts.userId, sessions.userId))
-      .where(and(eq(sessions.tokenHash, tokenHash), eq(sessions.revision, accounts.revision), gt(sessions.expiresAt, now), eq(accounts.status, 'active')))
-      .get()?.userId ?? null;
+  sessionIdentity(tokenHash: string, now: number): string | null {
+    const row = this.db.prepare(`SELECT s.userId AS userId FROM auth_sessions s
+      INNER JOIN accounts a ON a.userId=s.userId
+      WHERE s.tokenHash=? AND s.revision=a.revision AND s.expiresAt>? AND a.status='active'`).get(tokenHash, now) as { userId: string } | undefined;
+    return row?.userId ?? null;
   }
 
-  createSession(tokenHash: string, userId: string, revision: number, expiresAt: number) {
-    this.db.insert(sessions).values({ tokenHash, userId, revision, expiresAt }).run();
+  createSession(tokenHash: string, userId: string, revision: number, expiresAt: number): void {
+    this.db.prepare('INSERT INTO auth_sessions(tokenHash, userId, revision, expiresAt) VALUES (?,?,?,?)').run(tokenHash, userId, revision, expiresAt);
   }
 
-  deleteExpiredSessions(now: number) {
-    this.db.delete(sessions).where(lte(sessions.expiresAt, now)).run();
+  deleteExpiredSessions(now: number): void {
+    this.db.prepare('DELETE FROM auth_sessions WHERE expiresAt<=?').run(now);
   }
 
-  revokeSessions(userId: string) {
-    this.db.delete(sessions).where(eq(sessions.userId, userId)).run();
+  revokeSessions(userId: string): void {
+    this.db.prepare('DELETE FROM auth_sessions WHERE userId=?').run(userId);
   }
 
-  deleteSession(tokenHash: string) {
-    this.db.delete(sessions).where(eq(sessions.tokenHash, tokenHash)).run();
+  deleteSession(tokenHash: string): void {
+    this.db.prepare('DELETE FROM auth_sessions WHERE tokenHash=?').run(tokenHash);
   }
 }

@@ -1,14 +1,14 @@
-import { accountApi } from '../api.js';
+import { accountApi } from '../api.ts';
 import { useEffect, useRef, useState } from "react";
 import {
   localState,
   selectedAccount,
   isUnlocked,
   syncAfterCurrent,
-} from "../offline.js";
-import type { PushStatus } from "../types.js";
-import { Dialog } from "./dialog";
-import { message } from "./store";
+} from "../offline.ts";
+import type { PushStatus } from "../types.d.ts";
+import { Dialog } from "./dialog.tsx";
+import { message } from "./store.ts";
 const digest = async (text: string) =>
   [
     ...new Uint8Array(

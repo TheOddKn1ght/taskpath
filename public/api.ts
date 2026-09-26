@@ -1,8 +1,8 @@
-import { RequestError } from './errors.js';
-import { apiRequest, fileRequest } from './api-client.js';
-import { validateConfig } from './crypto.js';
-import { encodeFile, fileManifest, FILE_MAX, type FileEnvelope } from './file-format.js';
-import type { Envelope, ReminderMetadata, PushStatus, VaultConfig } from './types.js';
+import { RequestError } from './errors.ts';
+import { apiRequest, fileRequest } from './api-client.ts';
+import { validateConfig } from './crypto.ts';
+import { encodeFile, fileManifest, FILE_MAX, type FileEnvelope } from './file-format.ts';
+import type { Envelope, ReminderMetadata, PushStatus, VaultConfig } from './types.d.ts';
 
 interface Login { userId: string; credential: string; revision: number }
 interface Setup { userId: string; token: string; config: VaultConfig; credential: string }

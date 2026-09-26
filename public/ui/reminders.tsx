@@ -1,6 +1,6 @@
-import type {Task} from '../types.js';
-import {Icon} from './icons';
-import {dateLabel} from './board';
+import type {Task} from '../types.d.ts';
+import {Icon} from './icons.tsx';
+import {dateLabel} from './board.tsx';
 export function ReminderPanel({tasks,busy,edit,act}:{tasks:Task[];busy:boolean;edit:(task:Task)=>void;act:(task:Task,action:'snooze'|'dismiss')=>void}) {
   return (
     <section

@@ -1,9 +1,9 @@
 import { useRef, useState, useEffect } from "react";
-import { offlineRequest } from "../offline.js";
-import { mutate, message, columns } from "./store";
-import { Dialog } from "./dialog";
-import { dateLabel } from "./board";
-import type { Task } from "../types.js";
+import { offlineRequest } from "../offline.ts";
+import { mutate, message, columns } from "./store.ts";
+import { Dialog } from "./dialog.tsx";
+import { dateLabel } from "./board.tsx";
+import type { Task } from "../types.d.ts";
 export function ImportDialog({
   close,
   notify,

@@ -1,13 +1,14 @@
-import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { Database } from '../src/db/connection.ts';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Store } from '../src/store';
-import { fixture, testVault, testUserId, login, request } from './auth-helpers';
-import { encryptChange, decryptEnvelope } from '../public/crypto.js';
-import { acceptEncrypted } from '../public/offline.js';
-import { ClientStore } from './client-helpers';
+import { Store } from '../src/store.ts';
+import { fixture, testVault, testUserId, login, request } from './auth-helpers.ts';
+import { encryptChange, decryptEnvelope } from '../public/crypto.ts';
+import { acceptEncrypted } from '../public/offline.ts';
+import { ClientStore } from './client-helpers.ts';
 const time = new Date('2026-09-08T12:00:00Z');
 const client = () => new ClientStore(':memory:', () => time);
 const encrypt = (change: any) => encryptChange(testVault.key, testVault.config.vaultId, change);
@@ -35,7 +36,7 @@ test('encrypted edits, tags, moves, completion, deletion/undo, and immutable ret
     expect(store.syncBoard(testUserId).rows).toHaveLength(2);
     const bytes = readFileSync(path).toString();
     for (const secret of [a.title, a.notes, testVault.credential, 'correct horse battery staple']) expect(bytes).not.toContain(secret);
-    expect(store.db.query("SELECT name FROM sqlite_master WHERE name='tasks'").get()).toBeNull();
+    expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name='tasks'").get()).toBeNull();
   } finally { store?.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 test('whole-task latest edit wins; equal timestamps use operation IDs; encrypted tombstones reject stale edits', async () => {
@@ -108,7 +109,7 @@ test('opaque reminder claims are atomic across devices and reveal no schedule or
     expect((await request(handle, '', '/api/reminders/claim', { tokens: [token] })).status).toBe(401);
     expect((await request(handle, cookie, '/api/reminders/claim', { tokens: [token] }, 'https://evil.example')).status).toBe(403);
     expect((await request(handle, cookie, '/api/reminders/claim', { taskId: 'plaintext' })).status).toBe(400);
-    expect(store.db.query('SELECT * FROM reminder_claims').all()).toEqual([{ userId: testUserId, token }]);
+    expect(store.db.prepare('SELECT * FROM reminder_claims').all()).toEqual([{ userId: testUserId, token }]);
   } finally { store.close(); }
 });
 test('client reminder tokens persist for unrelated edits; snooze and rescheduling rearm while stale actions fail', () => {

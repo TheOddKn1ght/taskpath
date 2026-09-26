@@ -7,10 +7,10 @@ import {
   deleteStoredFile,
   fileStatus,
   syncFiles,
-} from "../file-client.js";
-import { isUnlocked } from "../offline.js";
-import { Dialog } from "./dialog";
-import { message } from "./store";
+} from "../file-client.ts";
+import { isUnlocked } from "../offline.ts";
+import { Dialog } from "./dialog.tsx";
+import { message } from "./store.ts";
 const size = (bytes: number) =>
   bytes >= 1e6
     ? `${(bytes / 1e6).toLocaleString("en", { maximumFractionDigits: 2 })} MB`

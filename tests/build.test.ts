@@ -1,50 +1,52 @@
-import { test, expect } from 'bun:test';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
 import { resolve, dirname } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { compactHTML } from '../scripts/build';
-import { clientStyles } from '../src/client-styles';
-import { createHandler } from '../src/server';
-import { Store } from '../src/store';
-import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release';
+import { compactHTML } from '../scripts/build.ts';
+import { clientStyles } from '../src/client-styles.ts';
+import { createHandler } from '../src/server.ts';
+import { Store } from '../src/store.ts';
+import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release.ts';
+import { readText, readBytes, fileExists, fileSize, walkFiles, scanExports, scanImports, bytesEqual } from './test-utils.ts';
 
-const root = resolve(import.meta.dir, '..');
+const here = new URL('.', import.meta.url).pathname;
+const root = resolve(here, '..');
 const sourceName = (name: string) => name === 'app.js' ? 'app.tsx' : name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
 const built = resolve(root, 'dist/public');
-const hasBuild = await Bun.file(resolve(built, BUILD_MANIFEST)).exists();
+const hasBuild = fileExists(resolve(built, BUILD_MANIFEST));
 const release = hasBuild ? releaseForDirectory(built) : sourceRelease('built');
 const ASSET_VERSION = release.version;
 
 test('HTML compaction preserves inline spacing, entities, attributes and literal text', async () => {
   const source = '<!doctype html>\n<p title="a  b">Hello \n <strong>world</strong> &amp; friends&nbsp;!</p><!-- discard -->\n<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea><script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>';
-  const result = await compactHTML(source);
+  const result = compactHTML(source);
   expect(result).toContain('<p title="a  b">Hello <strong>world</strong> &amp; friends&nbsp;!</p>');
   expect(result).toContain('<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea>');
   expect(result).toContain('<script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>');
   expect(result).not.toContain('discard');
 });
 
-test.skipIf(!hasBuild)('minified client preserves module exports, reachable imports, PWA assets and CSP', async () => {
-  const scan = new Bun.Transpiler({ loader: 'js' });
-  const files = [...new Bun.Glob('**/*').scanSync({ cwd: built, onlyFiles: true })];
+test('minified client preserves module exports, reachable imports, PWA assets and CSP', { skip: !hasBuild }, async () => {
+  const files = [...walkFiles(built)];
   expect(files.some(name => name.endsWith('.map') || name.endsWith('.ts'))).toBe(false);
   for (const name of files.filter(name => name.endsWith('.js'))) {
-    const output = await Bun.file(resolve(built, name)).text();
-    const source = await Bun.file(resolve(root, 'public', sourceName(name))).text();
-    expect(scan.scan(output).exports.sort()).toEqual(new Bun.Transpiler({loader: name === 'app.js' ? 'tsx' : name.startsWith('vendor/') ? 'js' : 'ts'}).scan(source).exports.sort());
-    for (const { path } of scan.scan(output).imports) {
+    const output = readText(resolve(built, name));
+    const source = readText(resolve(root, 'public', sourceName(name)));
+    expect(scanExports(output).sort()).toEqual(scanExports(source).sort());
+    for (const { path } of scanImports(output)) {
       const target = path.startsWith(`/assets/${ASSET_VERSION}/`)
         ? resolve(built, path.slice(`/assets/${ASSET_VERSION}/`.length))
         : resolve(built, dirname(name), path);
-      expect(await Bun.file(target).exists()).toBe(true);
+      expect(fileExists(target)).toBe(true);
     }
     expect(output).not.toContain('sourceMappingURL');
     expect(output).not.toContain('__TASKPATH_RELEASE__');
   }
   // These are separate runtimes: one shared state inside the page bundle and
   // ciphertext-only state inside the worker. Neither fetches child modules.
-  for (const name of ['app.js', 'sw.js']) expect(scan.scan(await Bun.file(resolve(built, name)).text()).imports).toEqual([]);
-  expect(await Bun.file(resolve(built, 'sw.js')).text()).not.toContain('react.production');
-  expect(scan.scan(await Bun.file(resolve(built, 'theme.js')).text()).exports).toEqual([]);
+  for (const name of ['app.js', 'sw.js']) expect(scanImports(readText(resolve(built, name)))).toEqual([]);
+  expect(readText(resolve(built, 'sw.js'))).not.toContain('react.production');
+  expect(scanExports(readText(resolve(built, 'theme.js')))).toEqual([]);
   const store = new Store();
   try {
     const handler = createHandler(store, undefined, undefined, undefined, built);
@@ -53,25 +55,25 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
       const response = (await handler(new Request('http://localhost' + path)))!;
       expect(response.status).toBe(200);
       expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(await Bun.file(resolve(built, name)).arrayBuffer()));
+      expect(bytesEqual(new Uint8Array(await response.arrayBuffer()), readBytes(resolve(built, name)))).toBe(true);
     }
     expect((await handler(new Request(`http://localhost/assets/${ASSET_VERSION}/.taskpath-build.json`)))!.status).not.toBe(200);
-    const html = await Bun.file(resolve(built, 'index.html')).text();
+    const html = readText(resolve(built, 'index.html'));
     for (const [, url] of html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)) {
       expect((await handler(new Request('http://localhost' + url)))!.status).toBe(200);
     }
-    expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
-    expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
+    expect(JSON.parse(readText(resolve(built, 'manifest.webmanifest')))).toEqual(JSON.parse(stampRelease(readText(resolve(root, 'public/manifest.webmanifest')), release)));
+    expect(readText(resolve(built, 'vendor/marked.LICENSE.md'))).toBe(readText(resolve(root, 'public/vendor/marked.LICENSE.md')));
     for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
-      const source = name === 'style.css' ? await clientStyles(sourceRelease()) : await Bun.file(resolve(root, 'public', sourceName(name))).text();
-      expect(Bun.file(resolve(built, name)).size).toBeLessThan(new TextEncoder().encode(stampRelease(source,release)).length);
+      const source = name === 'style.css' ? await clientStyles(sourceRelease()) : readText(resolve(root, 'public', sourceName(name)));
+      expect(fileSize(resolve(built, name))).toBeLessThan(new TextEncoder().encode(stampRelease(source,release)).length);
     }
     expect(files.filter(name => name.endsWith('.css'))).toEqual(['style.css']);
-    expect(await Bun.file(resolve(built, 'style.css')).text()).not.toContain('@import');
+    expect(readText(resolve(built, 'style.css'))).not.toContain('@import');
   } finally { store.close(); }
 });
 
-test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell without standalone JavaScript modules', async () => {
+test('bundled worker precaches and serves the offline shell without standalone JavaScript modules', { skip: !hasBuild }, async () => {
   type WorkerEvent = { waitUntil(promise: Promise<void>): void; request?: Pick<Request, 'url' | 'method' | 'mode'>; respondWith?(promise: Promise<Response>): void };
   const handlers = new Map<string, (event: WorkerEvent) => void>();
   const fetched: string[] = [], cached: string[] = [];
@@ -80,7 +82,7 @@ test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell wi
   const store = new Store();
   try {
     const handler = createHandler(store, undefined, undefined, undefined, built);
-    runInNewContext(await Bun.file(resolve(built, 'sw.js')).text(), {
+    runInNewContext(readText(resolve(built, 'sw.js')), {
       TextEncoder, TextDecoder, URL, Response, AbortSignal, setTimeout,
       self: { location: { origin: 'http://localhost' }, addEventListener: (name: string, callback: (event: WorkerEvent) => void) => handlers.set(name, callback) },
       caches: { open: async () => ({ put: async (path: string, response: Response) => { cached.push(path); responses.set(path, response); }, match: async (path: string) => responses.get(path)?.clone() }) },
@@ -97,14 +99,14 @@ test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell wi
     for (const theme of ['midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice']) {
       for (const asset of ['manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) expect(cached).toContain(prefix + 'themes/' + theme + '/' + asset);
     }
-    const shell = await Bun.file(resolve(built, 'index.html')).text();
+    const shell = readText(resolve(built, 'index.html'));
     for (const [, url] of shell.matchAll(/(?:src|href)="(\/assets\/[^"#]+)"/g)) expect(cached).toContain(url);
     offline = true;
     for (const path of ['/', '/login', prefix + 'app.js', prefix + 'theme.js']) {
       let response: Promise<Response> | undefined;
       handlers.get('fetch')!({ request: { url: 'http://localhost' + path, method: 'GET', mode: path.endsWith('.js') ? 'cors' : 'navigate' }, waitUntil() {}, respondWith(promise) { response = promise; } });
       expect(response).toBeDefined();
-      expect(await (await response!).text()).toBe(path.endsWith('.js') ? await Bun.file(resolve(built, path.slice(prefix.length))).text() : shell);
+      expect(await (await response!).text()).toBe(path.endsWith('.js') ? readText(resolve(built, path.slice(prefix.length))) : shell);
     }
   } finally { store.close(); }
 });

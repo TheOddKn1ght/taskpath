@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { Database } from 'bun:sqlite';
-import { InputError } from './store';
-import { connect } from './db/connection';
-import { AccountRepository } from './db/accounts';
-import { validateConfig, unbase64, validUserId } from '../public/crypto.js';
+import { Database } from './db/connection.ts';
+import { InputError } from './store.ts';
+import { AccountRepository } from './db/accounts.ts';
+import { hashCredential, verifyCredential } from './password.ts';
+import { validateConfig, unbase64, validUserId } from '../public/crypto.ts';
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const sessionCookieName = 'taskpath_session';
 export const secureSessionCookieName = '__Host-taskpath_session';
@@ -18,7 +18,7 @@ export class AuthManager {
   constructor(db: Database, sessionDays = 30, private now = () => Date.now()) {
     if (!Number.isInteger(sessionDays) || sessionDays < 1 || sessionDays > 365) throw new Error('TASKPATH_SESSION_DAYS must be from 1 to 365.');
     this.sessionSeconds = sessionDays * 86400;
-    this.accounts = new AccountRepository(connect(db));
+    this.accounts = new AccountRepository(db);
   }
   private row(userId: string) { return this.accounts.get(userId); }
   configuration(userId: string) { const row = this.row(userId); return row?.status === 'active' ? validateConfig(JSON.parse(row.config!)) : null; }
@@ -45,7 +45,7 @@ export class AuthManager {
   }
   list() { return this.accounts.list(); }
   private validSetup(userId: unknown, token: unknown) {
-    return validUserId(userId) && typeof token === 'string' && token.length === 43 && this.accounts.validInvitation(userId as string, digest(token), this.now());
+    return validUserId(userId) && typeof token === 'string' && token.length === 43 && this.accounts.validInvitation(userId as string, digest(token as string), this.now());
   }
   private validateCredential(credential: unknown) {
     try { unbase64(credential, 32); } catch { throw new InputError('Invalid authentication credential.'); }
@@ -56,7 +56,7 @@ export class AuthManager {
     try { config = validateConfig(rawConfig); } catch { throw new InputError('Invalid vault configuration.'); }
     if (config.revision !== 1) throw new InputError('Invalid initial revision.');
     this.validateCredential(credential);
-    const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });
+    const verifier = await hashCredential(credential);
     this.accounts.transaction(() => {
       if (!this.validSetup(userId, token)) throw new InputError('Invitation has already been used or expired.', 409);
       this.accounts.activate(userId, JSON.stringify(config), verifier);
@@ -75,7 +75,7 @@ export class AuthManager {
     if ((this.attempts.get(rateKey)?.until || 0) > now) throw new InputError('Too many attempts. Wait 15 minutes and try again.', 429);
     this.validateCredential(credential);
     const row = validUserId(userId) ? this.row(userId) : null;
-    if (!row || row.status !== 'active' || !await Bun.password.verify(credential, row.verifier!).catch(() => false)) {
+    if (!row || row.status !== 'active' || !await verifyCredential(credential, row.verifier!).catch(() => false)) {
       const before = this.attempts.get(rateKey), failures = (before?.failures || 0) + 1;
       this.attempts.set(rateKey, { failures, at: before?.at || now, until: failures >= 5 ? now + 900000 : 0 });
       throw new InputError(failures >= 5 ? 'Too many attempts. Wait 15 minutes and try again.' : 'User ID or password is incorrect.', failures >= 5 ? 429 : 401);
@@ -100,8 +100,8 @@ export class AuthManager {
     let config: ReturnType<typeof validateConfig>;
     try { config = validateConfig(rawConfig); } catch { throw new InputError('Invalid vault configuration.'); }
     this.validateCredential(credential);
-    if (revision !== row.revision || config.revision !== revision + 1 || config.vaultId !== JSON.parse(row.config!).vaultId || config.kdf.salt === JSON.parse(row.config!).kdf.salt) throw new InputError('Credential revision changed. Try again.', 409);
-    const verifier = await Bun.password.hash(credential, { algorithm: 'argon2id', memoryCost: 65536, timeCost: 2 });
+    if (revision !== row.revision || config.revision !== revision + 1 || config.vaultId !== (JSON.parse(row.config!).vaultId as string) || config.kdf.salt === (JSON.parse(row.config!).kdf as { salt: string }).salt) throw new InputError('Credential revision changed. Try again.', 409);
+    const verifier = await hashCredential(credential);
     this.accounts.transaction(() => {
       if (this.identity(request) !== userId || this.row(userId)?.revision !== revision) throw new InputError('Credential revision changed. Sign in again.', 409);
       this.accounts.replaceCredentials(userId, config.revision, JSON.stringify(config), verifier);

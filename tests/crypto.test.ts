@@ -1,6 +1,7 @@
-import { test, expect } from 'bun:test';
-import { createVault, derive, unlockVault, replacePassword, encryptChange, decryptEnvelope, validateKdf, validatePassword, newKdf, base64, random, unbase64 } from '../public/crypto.js';
-import { ClientStore } from './client-helpers';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { createVault, derive, unlockVault, replacePassword, encryptChange, decryptEnvelope, validateKdf, validatePassword, newKdf, base64, random, unbase64 } from '../public/crypto.ts';
+import { ClientStore } from './client-helpers.ts';
 const password = '  密码 with exact spaces!  ';
 const vault = await createVault(password);
 const client = new ClientStore();

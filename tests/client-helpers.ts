@@ -1,8 +1,8 @@
-import type { Task, PlainRecord, PlainBoard, Status } from '../public/types.js';
-export type { Task } from '../public/types.js';
+import type { Task, PlainRecord, PlainBoard, Status } from '../public/types.d.ts';
+export type { Task } from '../public/types.d.ts';
 // Adapter around production browser domain functions. No plaintext SQL implementation.
-import { project, queueChange, calendarAt } from '../public/offline-model.js';
-import { previewImport } from '../public/offline.js';
+import { project, queueChange, calendarAt } from '../public/offline-model.ts';
+import { previewImport } from '../public/offline.ts';
 export const statuses: Status[] = ['later', 'week', 'today', 'done'];
 export const calendar = (date: Date, timezone: string) => calendarAt(date.getTime(), timezone);
 export class ClientStore {

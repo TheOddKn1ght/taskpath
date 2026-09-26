@@ -2,9 +2,9 @@
 
 Verified on September 15, 2026, using disposable local accounts and databases. No deployment was performed.
 
-- `bun run typecheck`: passed (Bun, browser, worker).
-- `bun run build`: passed; minified client 230.7 KiB.
-- `bun test`: 91 passed, 0 failed, 1,067 assertions across 18 files, including built-asset checks.
+- `deno task typecheck`: passed (Bun, browser, worker).
+- `deno task build`: passed; minified client 230.7 KiB.
+- `deno task test`: 91 passed, 0 failed, 1,067 assertions across 18 files, including built-asset checks.
 - Chromium source browser harness: 124 checks passed.
 - Chromium built browser harness: 124 checks passed using the same scenarios.
 

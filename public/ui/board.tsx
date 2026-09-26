@@ -5,12 +5,12 @@ import {
   type DragEvent,
   type PointerEvent,
 } from "react";
-import type { Board as BoardData, Task, Status, Route } from "../types.js";
-import { columns, boardOrder, move, mutate, message, navigate } from "./store";
-import { Icon } from "./icons";
-import { Select } from "./pickers";
-import { TaskMenu } from "./task-menu";
-import { dueLabel } from "../dates.js";
+import type { Board as BoardData, Task, Status, Route } from "../types.d.ts";
+import { columns, boardOrder, move, mutate, message, navigate } from "./store.ts";
+import { Icon } from "./icons.tsx";
+import { Select } from "./pickers.tsx";
+import { TaskMenu } from "./task-menu.tsx";
+import { dueLabel } from "../dates.ts";
 export const dateLabel = (iso: string | null) =>
   iso
     ? new Date(iso).toLocaleString("en-US", {

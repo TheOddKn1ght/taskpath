@@ -16,26 +16,26 @@ jobs:
   tests:
     name: Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
         with:
-          bun-version: "1.4.2"
+          deno-version: "2.9.7"
 
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Install dependencies
+        run: deno install --allow-scripts=npm:@tailwindcss/oxide --allow-scripts=npm:esbuild
 
       - name: Check TypeScript
-        run: bun run typecheck
+        run: deno task typecheck
 
       - name: Minify client
-        run: bun run build
+        run: deno task build
 
       - name: Run tests
-        run: bun test
+        run: deno task test

@@ -1,8 +1,8 @@
-import { withFileKey } from './offline.js';
-import { encryptFile, decryptFile, decryptFileMetadata, renameFile, imageType } from './file-crypto.js';
-import { FILE_MAX, FILE_COUNT_MAX } from './file-format.js';
-import { fileState, fileBlob, writeFiles, type LocalFile } from './file-persistence.js';
-import { filesChanged, syncFiles } from './file-sync.js';
+import { withFileKey } from './offline.ts';
+import { encryptFile, decryptFile, decryptFileMetadata, renameFile, imageType } from './file-crypto.ts';
+import { FILE_MAX, FILE_COUNT_MAX } from './file-format.ts';
+import { fileState, fileBlob, writeFiles, type LocalFile } from './file-persistence.ts';
+import { filesChanged, syncFiles } from './file-sync.ts';
 export { fileState, syncFiles };
 export async function listFiles() {
   return withFileKey(async(key,userId)=>{

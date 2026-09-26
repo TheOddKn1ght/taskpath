@@ -1,7 +1,9 @@
-import { test, expect } from 'bun:test';
-import { Store } from '../src/store';
-import { createHandler } from '../src/server';
-import { sourceRelease } from '../src/client-release';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { Store } from '../src/store.ts';
+import { createHandler } from '../src/server.ts';
+import { sourceRelease } from '../src/client-release.ts';
+import { fileExists, readText, scanExports, scanImports } from './test-utils.ts';
 const ASSET_VERSION = sourceRelease().version;
 
 test('public shells use versioned assets and every service-worker shell resource exists', async () => {
@@ -15,7 +17,7 @@ test('public shells use versioned assets and every service-worker shell resource
     expect((await get('/assets/__TASKPATH_RELEASE__/app.js'))!.status).not.toBe(200);
     expect(shell!.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
     const urls = [...html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)].map(m => m[1]).filter(u => u !== '/login');
-    for (const url of urls) { expect(url).toStartWith(`/assets/${ASSET_VERSION}/`); expect((await get(url))!.status).toBe(200); }
+    for (const url of urls) { expect(url.startsWith(`/assets/${ASSET_VERSION}/`)).toBe(true); expect((await get(url))!.status).toBe(200); }
     for (const file of ['api.js', 'api-client.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js', 'offline-model.js', 'offline.js', 'tags.js', 'realtime.js']) expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
     // Missing themed icons must not break the worker's all-or-nothing offline install.
     for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice']) {
@@ -24,27 +26,28 @@ test('public shells use versioned assets and every service-worker shell resource
       expect(manifest.id).toBe('/'); // Theme changes retain the same installed-app identity.
       expect(manifest.start_url).toBe('/');
       for (const icon of manifest.icons) {
-        expect(icon.src).toStartWith(base);
+        expect(icon.src.startsWith(base)).toBe(true);
         const response = (await get(icon.src))!;
         expect(response.headers.get('Content-Type')).toBe('image/png');
-        const bytes = Buffer.from(await response.arrayBuffer());
-        expect(bytes.subarray(1, 4).toString()).toBe('PNG');
-        expect(bytes.readUInt32BE(16)).toBe(Number(icon.sizes.split('x')[0]));
-        expect(bytes.readUInt32BE(20)).toBe(Number(icon.sizes.split('x')[1]));
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        expect(new TextDecoder().decode(bytes.subarray(1, 4))).toBe('PNG');
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        expect(view.getUint32(16)).toBe(Number(icon.sizes.split('x')[0]));
+        expect(view.getUint32(20)).toBe(Number(icon.sizes.split('x')[1]));
       }
       expect((await (await get(base + 'apple-touch-icon.png'))!.arrayBuffer()).byteLength).toBeGreaterThan(100);
       expect(await (await get(base + 'favicon.svg'))!.text()).toContain('<svg');
     }
     for (const path of ['/app.js', '/app.ts', '/assets/' + ASSET_VERSION + '/app.ts', '/assets/' + ASSET_VERSION + '/types.d.ts', '/src/server.ts']) expect((await get(path))!.status).not.toBe(200);
     const script = await (await get(`/assets/${ASSET_VERSION}/app.js`))!.text();
-    expect(() => new Bun.Transpiler({ loader: 'js' }).scan(script)).not.toThrow();
+    expect(() => scanExports(script)).not.toThrow();
     expect(script).not.toContain('import type');
     const worker = await (await get('/sw.js'))!.text();
-    expect(new Bun.Transpiler({loader:'js'}).scan(worker).imports).toEqual([]);
+    expect(scanImports(worker)).toEqual([]);
     expect(worker).toContain('taskpath-shell-' + ASSET_VERSION);
     expect(worker).not.toContain('skipWaiting');
     expect(worker).toMatch(/name\.startsWith\(['"]taskpath-shell-accounts-['"]\)/);
-    expect(await Bun.file('public/vendor/marked.LICENSE.md').exists()).toBe(true);
-    expect(await Bun.file('.dockerignore').text()).toContain('!public/vendor/marked.LICENSE.md');
+    expect(fileExists('public/vendor/marked.LICENSE.md')).toBe(true);
+    expect(readText('.dockerignore')).toContain('!public/vendor/marked.LICENSE.md');
   } finally { store.close(); }
 });

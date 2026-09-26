@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Dialog} from './dialog';
-import {mutate,message} from './store';
+import {Dialog} from './dialog.tsx';
+import {mutate,message} from './store.ts';
 export function Nickname({ initial, close }: { initial: string; close: () => void }) {
   const [error, setError] = useState(""),
     alive = useRef(true);

@@ -1,5 +1,5 @@
-import { base64, unbase64, random, importVault } from './crypto.js';
-import { fileEnvelope, fileMetadata, type FileEnvelope, type FileMetadata } from './file-format.js';
+import { base64, unbase64, random, importVault } from './crypto.ts';
+import { fileEnvelope, fileMetadata, type FileEnvelope, type FileMetadata } from './file-format.ts';
 const encoder = new TextEncoder();
 const aad = (e:FileEnvelope, purpose:string) => encoder.encode(JSON.stringify(['taskpath:file:v1',purpose,e.userId,e.vaultId,e.fileId,e.contentId,e.createdAt,...(purpose === 'metadata' ? [e.metadata.changeId,e.metadata.editedAt] : [])]));
 const params = (e:FileEnvelope,purpose:string,nonce:string) => ({name:'AES-GCM',iv:unbase64(nonce,12),additionalData:aad(e,purpose),tagLength:128});

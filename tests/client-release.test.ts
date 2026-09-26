@@ -1,26 +1,27 @@
-import { test, expect } from 'bun:test';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { fingerprint, sourceRelease, builtRelease, stampRelease, digest, BUILD_MANIFEST } from '../src/client-release';
-import { clientAsset } from '../src/client-assets';
+import { fingerprint, sourceRelease, builtRelease, stampRelease, digest, BUILD_MANIFEST } from '../src/client-release.ts';
+import { clientAsset } from '../src/client-assets.ts';
 const bytes = (value: string) => new TextEncoder().encode(value);
 
 test('fingerprints are deterministic, order-independent and bind paths, bytes, mode and toolchain', () => {
   const inputs = [['a', bytes('bc')], ['d', bytes('ef')]] as const;
-  const id = fingerprint(inputs, 'source', 'bun-fixture');
-  expect(fingerprint([...inputs].reverse(), 'source', 'bun-fixture')).toBe(id);
-  expect(fingerprint(inputs, 'built', 'bun-fixture')).not.toBe(id);
-  expect(fingerprint(inputs, 'source', 'other-bun')).not.toBe(id);
-  expect(fingerprint([['ab', bytes('c')], inputs[1]], 'source', 'bun-fixture')).not.toBe(id);
-  expect(fingerprint([['a', bytes('bd')], inputs[1]], 'source', 'bun-fixture')).not.toBe(id);
+  const id = fingerprint(inputs, 'source', 'deno-fixture');
+  expect(fingerprint([...inputs].reverse(), 'source', 'deno-fixture')).toBe(id);
+  expect(fingerprint(inputs, 'built', 'deno-fixture')).not.toBe(id);
+  expect(fingerprint(inputs, 'source', 'other-deno')).not.toBe(id);
+  expect(fingerprint([['ab', bytes('c')], inputs[1]], 'source', 'deno-fixture')).not.toBe(id);
+  expect(fingerprint([['a', bytes('bd')], inputs[1]], 'source', 'deno-fixture')).not.toBe(id);
 });
 
 test('source fingerprints change with assets and build configuration, not README, mtime or declarations', async () => {
   const root = mkdtempSync(resolve(tmpdir(), 'taskpath-fingerprint-'));
   const put = (name: string, value: string) => { mkdirSync(resolve(root, name, '..'), { recursive: true }); writeFileSync(resolve(root, name), value); };
   try {
-    for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-styles.ts', 'src/client-release.ts', 'package.json', 'bun.lock', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) put(name, name.endsWith('.json') ? '{}' : 'fixture');
+    for (const name of ['scripts/build.ts', 'src/client-assets.ts', 'src/client-styles.ts', 'src/client-release.ts', 'package.json', 'deno.json', 'tsconfig.base.json', 'tsconfig.json', 'tsconfig.browser.json', 'tsconfig.worker.json']) put(name, name.endsWith('.json') ? '{}' : 'fixture');
     put('public/app.tsx', 'export const url = "/assets/__TASKPATH_RELEASE__/app.js";');
     const first = sourceRelease('source', root);
     put('README.md', 'Documentation changed'); put('public/types.d.ts', 'interface Example {}');
@@ -63,7 +64,7 @@ test('production uses a verified immutable build snapshot and rejects damaged or
 });
 
 test('Tailwind CSS uses release snapshots and existing theme variables without a reset', async () => {
-  const { clientStyles } = await import('../src/client-styles');
+  const { clientStyles } = await import('../src/client-styles.ts');
   const release = sourceRelease();
   const snapshot = {...release, version:release.version + '-css-fixture', sources:new Map(release.sources)};
   snapshot.sources.set('ui/snapshot-check.tsx',bytes('<div className="p-[137px] text-muted"/>'));
@@ -78,7 +79,7 @@ test('Tailwind CSS uses release snapshots and existing theme variables without a
 });
 
 test('stylesheet fragments are inlined in order from the snapshot and missing imports fail', async () => {
-  const { clientStyles } = await import('../src/client-styles');
+  const { clientStyles } = await import('../src/client-styles.ts');
   const release = sourceRelease();
   const snapshot = {...release, version:release.version + '-imports', sources:new Map(release.sources)};
   snapshot.sources.set('style.css',bytes('@import "./ui/styles/first.css";\n@import "./ui/styles/second.css";'));

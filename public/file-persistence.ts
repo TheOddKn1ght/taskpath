@@ -1,5 +1,5 @@
-import { openDatabase, selectedAccount } from './persistence.js';
-import type { FileEntry, FileManifest, FileEnvelope } from './file-format.js';
+import { openDatabase, selectedAccount } from './persistence.ts';
+import type { FileEntry, FileManifest, FileEnvelope } from './file-format.ts';
 export interface LocalFile extends FileEntry { cached:boolean; uploaded:boolean; uploadEnvelope?:FileEnvelope; pending?:'upload'|'rename'; error?:string }
 export interface FileState { revision:number; files:Record<string,LocalFile>; deletions:string[]; quota:Pick<FileManifest,'quotaBytes'|'usedBytes'|'maxFileBytes'> | null; error?:string }
 export const emptyFiles = ():FileState => ({revision:0,files:{},deletions:[],quota:null});

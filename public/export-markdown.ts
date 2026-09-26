@@ -1,4 +1,4 @@
-import type { TaskInput } from './types.js';
+import type { TaskInput } from './types.d.ts';
 const columns = { later: 'Later', week: 'This Week', today: 'Today', done: 'Done' };
 const escapeText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/[\\`*~_{}\[\]()#+.!|\-]/g, '\\$&').replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');

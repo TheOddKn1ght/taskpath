@@ -1,5 +1,5 @@
-import { authApi } from '../api.js';
-import { startAuthentication } from "./auth-startup";
+import { authApi } from '../api.ts';
+import { startAuthentication } from "./auth-startup.ts";
 import { useEffect, useRef, useState } from "react";
 import {
   createVault,
@@ -7,7 +7,7 @@ import {
   replacePassword,
   validUserId,
   normalizeNickname,
-} from "../crypto.js";
+} from "../crypto.ts";
 import {
   localState,
   activate,
@@ -17,11 +17,11 @@ import {
   switchAccount,
   selectedAccount,
   offlineRequest,
-} from "../offline.js";
-import { loadAccount } from "../persistence.js";
-import { errorStatus } from "../errors.js";
-import { getSnapshot, publish, message } from "./store";
-import { Dialog } from "./dialog";
+} from "../offline.ts";
+import { loadAccount } from "../persistence.ts";
+import { errorStatus } from "../errors.ts";
+import { getSnapshot, publish, message } from "./store.ts";
+import { Dialog } from "./dialog.tsx";
 const fragment = new URLSearchParams(location.hash.slice(1));
 let token = fragment.get("setup"),
   invited = fragment.get("user");

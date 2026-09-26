@@ -41,17 +41,17 @@ At a 390×844 browser viewport, checked the navigation drawer, Escape dismissal/
 ## Reproduce
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run typecheck
-bun run build
-bun test
+deno install
+deno task typecheck
+deno task build
+deno task test
 ```
 
 In separate terminals, open each printed `/checks` URL in a fresh test origin/context:
 
 ```sh
-QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
-QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
+QA_ASSETS=source QA_PORT=3195 deno task qa
+QA_ASSETS=built QA_PORT=3196 deno task qa
 ```
 
 Use fresh disposable origins/accounts for reruns because the harness intentionally retains encrypted data to verify persistence. `/invitation` and `/phone-preview` support additional manual UI checks. Stop the temporary servers afterward.

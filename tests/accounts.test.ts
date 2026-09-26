@@ -1,14 +1,17 @@
-import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { Database } from '../src/db/connection.ts';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { Store } from '../src/store';
-import { AuthManager } from '../src/auth';
-import { createHandler } from '../src/server';
-import { invitationURL } from '../src/admin';
-import { createVault, encryptChange, decryptEnvelope, replacePassword, PROFILE_ID, normalizeNickname } from '../public/crypto.js';
-import { origin, request, testPassword } from './auth-helpers';
+import { Store } from '../src/store.ts';
+import { AuthManager } from '../src/auth.ts';
+import { createHandler } from '../src/server.ts';
+import { invitationURL } from '../src/admin.ts';
+import { createVault, encryptChange, decryptEnvelope, replacePassword, PROFILE_ID, normalizeNickname } from '../public/crypto.ts';
+import { origin, request, testPassword } from './auth-helpers.ts';
+
+const here = new URL('.', import.meta.url).pathname;
 
 async function twoUsers() {
   const store = new Store(), auth = new AuthManager(store.db), handle = createHandler(store, auth, origin);
@@ -55,7 +58,7 @@ test('changing password or disabling one user does not revoke another user', asy
     expect((await request(handle, '', '/api/auth/login', { userId: a.userId, credential: replacement.credential, revision: 2 })).status).toBe(401);
     expect(auth.configuration(a.userId)).toBeNull();
     expect(() => auth.renewInvitation(a.userId)).toThrow();
-    expect(store.db.query('SELECT count(*) AS n FROM accounts').get()).toEqual({ n: 2 });
+    expect(store.db.prepare('SELECT count(*) AS n FROM accounts').get()).toEqual({ n: 2 });
   } finally { store.close(); }
 });
 test('nickname is encrypted, independent of login, bounded, and bound to the vault', async () => {
@@ -64,7 +67,7 @@ test('nickname is encrypted, independent of login, bounded, and bound to the vau
     const editedAt = new Date().toISOString(), nickname = 'DISTINCTIVE_NICKNAME';
     const e = await encryptChange(a.key, a.config.vaultId, { task: { id: PROFILE_ID, updatedAt: editedAt, nickname }, editedAt, changeId: crypto.randomUUID() });
     await request(handle, a.cookie, '/api/sync', { workspaceKey: a.config.vaultId, changes: [e] });
-    expect(JSON.stringify(store.db.query('SELECT * FROM encrypted_tasks').all())).not.toContain(nickname);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM encrypted_tasks').all())).not.toContain(nickname);
     expect((await decryptEnvelope(a.key, a.config.vaultId, e)).nickname).toBe(nickname);
     await expect(decryptEnvelope(b.key, b.config.vaultId, e)).rejects.toThrow();
     expect((await request(handle, '', '/api/auth/login', { userId: nickname, credential: a.credential, revision: 1 })).status).toBe(401);
@@ -87,11 +90,12 @@ test('single-owner encrypted databases are refused without modifications', () =>
 test('admin CLI creates, lists, replaces and revokes invitations using the configured database', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'taskpath-admin-'));
   try {
-    const env = { ...process.env, DATABASE_PATH: join(directory, 'accounts.sqlite'), TASKPATH_ORIGIN: origin };
+    const env = { ...Deno.env.toObject(), DATABASE_PATH: join(directory, 'accounts.sqlite'), TASKPATH_ORIGIN: origin };
     const run = async (...args: string[]) => {
-      const child = Bun.spawn([process.execPath, resolve(import.meta.dir, '../src/admin.ts'), ...args], { env, stdout: 'pipe', stderr: 'pipe' });
-      const output = await new Response(child.stdout).text(), error = await new Response(child.stderr).text();
-      expect(await child.exited).toBe(0); expect(error).toBe(''); return output;
+      const command = new Deno.Command(Deno.execPath(), { args: ['run', '--allow-read', '--allow-write', '--allow-env', resolve(here, '../src/admin.ts'), ...args], env, cwd: directory, stdout: 'piped', stderr: 'piped' });
+      const { code, stdout, stderr } = await command.output();
+      const output = new TextDecoder().decode(stdout), error = new TextDecoder().decode(stderr);
+      expect(code).toBe(0); expect(error).toBe(''); return output;
     };
     const first = await run('invite'), userId = first.match(/User ID: (u_[a-f0-9]{32})/)![1];
     const link = new URL(first.match(/Setup link: (.+)/)![1]);

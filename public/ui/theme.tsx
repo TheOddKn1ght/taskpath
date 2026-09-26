@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Dialog } from "./dialog";
+import { Dialog } from "./dialog.tsx";
 export const themes = [
   { id: "system", name: "Follow system" },
   { id: "light", name: "Light" },

@@ -1,5 +1,5 @@
-import { RequestError } from './errors.js';
-import { selectedAccount } from './persistence.js';
+import { RequestError } from './errors.ts';
+import { selectedAccount } from './persistence.ts';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

@@ -1,9 +1,9 @@
-import { startInstallEvents } from "./ui/install";
+import { startInstallEvents } from "./ui/install.ts";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { App } from "./ui/app";
-import { startRuntime } from "./ui/store";
-import { initializeAuth } from "./ui/auth";
+import { App } from "./ui/app.tsx";
+import { startRuntime } from "./ui/store.ts";
+import { initializeAuth } from "./ui/auth.tsx";
 if ("serviceWorker" in navigator && window.isSecureContext) {
   navigator.serviceWorker
     .register("/sw.js", { type: "module", updateViaCache: "none" })

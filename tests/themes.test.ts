@@ -1,7 +1,10 @@
-import { test, expect } from 'bun:test';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
 import { runInNewContext } from 'node:vm';
+import { transformSync } from 'esbuild';
+import { readJSON, readText } from './test-utils.ts';
 const ids = ['midnight','plum','ocean','sand','lavender','ice'];
-const css = await Bun.file('public/ui/styles/themes.css').text();
+const css = readText('public/ui/styles/themes.css');
 const blocks = [...css.matchAll(/:root(?:\[data-theme="([^"]+)"\])?\s*\{([^}]+)\}/g)];
 const tokens = (body:string) => Object.fromEntries([...body.matchAll(/--([\w-]+):\s*(#[\da-f]+);/g)].map(m=>[m[1]!,m[2]!]));
 function luminance(hex:string) {
@@ -22,7 +25,7 @@ test('new themes define every semantic token and maintain normal text contrast',
   }
 });
 test('all new themes restore before render, follow cross-tab changes and keep system defaults',async()=>{
-  const source=new Bun.Transpiler({loader:'ts'}).transformSync(await Bun.file('public/theme.ts').text());
+  const source = transformSync(readText('public/theme.ts'), { loader: 'ts' }).code;
   for(const id of ids) {
     const attrs = new Map<string,string>(); const dataset:{theme?:string}={};
     const events=new Map<string,(e:{key?:string;newValue?:string|null;detail?:string})=>void>();
@@ -31,7 +34,7 @@ test('all new themes restore before render, follow cross-tab changes and keep sy
     runInNewContext(source,{localStorage:{getItem:()=>id},document:{documentElement:{dataset},querySelector:(selector:string)=>({setAttribute:(_name:string,value:string)=>attrs.set(selector,value)})},window:{matchMedia:()=>system,addEventListener:(name:string,fn:(e:object)=>void)=>events.set(name,fn)}});
     expect(dataset.theme).toBe(id);
     expect(attrs.get('link[rel="icon"]')).toContain('/'+id+'/favicon.svg');
-    const manifest=await Bun.file('public/themes/'+id+'/manifest.webmanifest').json();
+    const manifest = readJSON('public/themes/'+id+'/manifest.webmanifest') as { theme_color: string };
     expect(attrs.get('meta[name="theme-color"]')).toBe(manifest.theme_color);
     events.get('storage')!({key:'taskpath-theme',newValue:'ocean'});expect(dataset.theme).toBe('ocean');
     events.get('storage')!({key:'taskpath-theme',newValue:null});expect(dataset.theme).toBe('light');

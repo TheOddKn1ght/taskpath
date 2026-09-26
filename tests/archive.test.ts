@@ -1,11 +1,12 @@
-import { test, expect } from 'bun:test';
-import { ClientStore, statuses } from './client-helpers';
-import { queueChange, queueArchiveBatch, project, validate } from '../public/offline-model.js';
-import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
-import { fixture, testVault, testUserId } from './auth-helpers';
-import type { Envelope } from '../public/types.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { ClientStore, statuses } from './client-helpers.ts';
+import { queueChange, queueArchiveBatch, project, validate } from '../public/offline-model.ts';
+import { exportMarkdown, parseMarkdown } from '../public/markdown.ts';
+import { fixture, testVault, testUserId } from './auth-helpers.ts';
+import type { Envelope } from '../public/types.d.ts';
 async function decryptedTask(row: Envelope) { const task = await decryptEnvelope(testVault.key, testVault.config.vaultId, row); validate(task); return task; }
-import { encryptChange, decryptEnvelope } from '../public/crypto.js';
+import { encryptChange, decryptEnvelope } from '../public/crypto.ts';
 const start = new Date('2026-09-08T12:00:00Z');
 const change = (s: ClientStore, id: string, action: string) => queueChange(s.record, `/api/tasks/${id}/${action}`, 'POST', {}, s.now().getTime());
 

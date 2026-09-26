@@ -1,7 +1,7 @@
-import { AuthManager } from '../src/auth';
-import { Store } from '../src/store';
-import { createHandler } from '../src/server';
-import { createVault } from '../public/crypto.js';
+import { AuthManager } from '../src/auth.ts';
+import { Store } from '../src/store.ts';
+import { createHandler } from '../src/server.ts';
+import { createVault } from '../public/crypto.ts';
 export const testUserId = 'u_' + '1'.repeat(32);
 export const testPassword = 'correct horse battery staple';
 export const origin = 'https://tasks.example.com';
@@ -9,7 +9,7 @@ export const testVault = await createVault(testPassword);
 export async function fixture(path = ':memory:', now = () => new Date()) {
   const store = new Store(path, now, 'UTC'), auth = new AuthManager(store.db);
   const config = { ...testVault.config, vaultId: testVault.config.vaultId };
-  store.db.query("INSERT INTO accounts(userId,status,createdAt) VALUES (?,'pending',?)").run(testUserId, Date.now());
+  store.db.prepare("INSERT INTO accounts(userId,status,createdAt) VALUES (?,'pending',?)").run(testUserId, Date.now());
   await auth.setup(testUserId, auth.renewInvitation(testUserId).token, config, testVault.credential);
   const handle = createHandler(store, auth, origin);
   return { store, auth, handle, vault: testVault };

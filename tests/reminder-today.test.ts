@@ -1,7 +1,8 @@
-import { expect, test } from 'bun:test';
-import { ClientStore } from './client-helpers';
-import { project, queueChange, reminderIsToday, REMINDER_TODAY_MOVE_ERROR } from '../public/offline-model.js';
-import { parseMarkdown, exportMarkdown } from '../public/markdown.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { ClientStore } from './client-helpers.ts';
+import { project, queueChange, reminderIsToday, REMINDER_TODAY_MOVE_ERROR } from '../public/offline-model.ts';
+import { parseMarkdown, exportMarkdown } from '../public/markdown.ts';
 
 const noon = new Date('2026-09-03T10:00:00Z');
 const laterToday = '2026-09-03T19:30:15.123Z';

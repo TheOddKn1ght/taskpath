@@ -1,4 +1,4 @@
-import { pickerChecks } from './browser-picker-checks.js';
+import { pickerChecks } from './browser-picker-checks.tsx';
 const output = document.querySelector<HTMLElement>('#result')!;
 const results: string[] = [];
 try {

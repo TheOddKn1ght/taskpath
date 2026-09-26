@@ -1,7 +1,8 @@
-import { test, expect } from 'bun:test';
-import { ClientStore as Store } from './client-helpers';
-import { normalizeTags, importTaskKey } from '../public/tags.js';
-import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { ClientStore as Store } from './client-helpers.ts';
+import { normalizeTags, importTaskKey } from '../public/tags.ts';
+import { exportMarkdown, parseMarkdown } from '../public/markdown.ts';
 
 const time = '2026-09-08T12:00:00.000Z';
 const makeStore = () => new Store(':memory:', () => new Date(time), 'UTC');

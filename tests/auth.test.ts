@@ -1,9 +1,10 @@
-import { test, expect } from 'bun:test';
-import { Store } from '../src/store';
-import { AuthManager } from '../src/auth';
-import { createHandler } from '../src/server';
-import { fixture, login, request, origin, testVault, testPassword, testUserId } from './auth-helpers';
-import { base64, random, replacePassword } from '../public/crypto.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { Store } from '../src/store.ts';
+import { AuthManager } from '../src/auth.ts';
+import { createHandler } from '../src/server.ts';
+import { fixture, login, request, origin, testVault, testPassword, testUserId } from './auth-helpers.ts';
+import { base64, random, replacePassword } from '../public/crypto.ts';
 
 test('invitations expire after 24 hours, are hash-only, replaceable before activation, and consumed atomically', async () => {
   const store = new Store(); let time = Date.now(); const auth = new AuthManager(store.db, 30, () => time);
@@ -13,7 +14,7 @@ test('invitations expire after 24 hours, are hash-only, replaceable before activ
     await expect(auth.setup(other.userId, invite.token, testVault.config, testVault.credential)).rejects.toThrow();
     auth.revokeInvitation(other.userId);
     expect(JSON.stringify(auth.list())).not.toContain(invite.token);
-    expect(JSON.stringify(store.db.query('SELECT * FROM accounts').all())).not.toContain(invite.token);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM accounts').all())).not.toContain(invite.token);
     time += 86400001;
     await expect(auth.setup(invite.userId, invite.token, testVault.config, testVault.credential)).rejects.toThrow();
     const fresh = auth.renewInvitation(invite.userId);
@@ -21,7 +22,7 @@ test('invitations expire after 24 hours, are hash-only, replaceable before activ
     await expect(auth.setup(invite.userId, fresh.token, testVault.config, testVault.credential)).rejects.toThrow();
     const results = await Promise.allSettled([auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential), auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential)]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
-    expect(store.db.query('SELECT tokenHash,expiresAt FROM accounts WHERE userId=?').get(invite.userId)).toEqual({ tokenHash: null, expiresAt: null });
+    expect(store.db.prepare('SELECT tokenHash,expiresAt FROM accounts WHERE userId=?').get(invite.userId)).toEqual({ tokenHash: null, expiresAt: null });
     expect(() => auth.renewInvitation(invite.userId)).toThrow();
     await expect(auth.setup(invite.userId, replaced.token, testVault.config, testVault.credential)).rejects.toThrow();
     const restarted = new AuthManager(store.db);
@@ -43,7 +44,7 @@ test('user-ID and derived-credential login, public shell, protected APIs, secure
     expect((await login(handle, testVault.credential, 1, 'https://evil.example')).response.status).toBe(403);
     expect((await request(handle, cookie, '/api/auth/login', { password: testPassword })).status).toBe(400);
     for (const path of ['/api/tasks', '/api/import/preview', '/api/import/markdown', '/api/board', '/api/export']) expect((await request(handle, cookie, path, path.includes('export') || path.includes('board') ? undefined : {})).status).toBe(404);
-    const secrets = JSON.stringify(store.db.query('SELECT * FROM accounts').all());
+    const secrets = JSON.stringify(store.db.prepare('SELECT * FROM accounts').all());
     expect(secrets).not.toContain(testPassword); expect(secrets).not.toContain(testVault.credential); expect(secrets).toContain('$argon2id$');
     const config = await (await request(handle, '', '/api/auth/config?userId=' + testUserId)).json();
     expect(config).toEqual({ config: testVault.config });

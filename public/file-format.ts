@@ -1,4 +1,4 @@
-import { exact, validId, validUserId, unbase64 } from './crypto.js';
+import { exact, validId, validUserId, unbase64 } from './crypto.ts';
 export const FILE_MAX = 10_000_000, FILE_HEADER_MAX = 8192, FILE_COUNT_MAX = 1000;
 export interface FileMetadata { name:string; type:string; lastModified:number }
 export interface FileEnvelope {

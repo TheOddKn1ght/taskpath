@@ -1,8 +1,8 @@
-import { accountApi } from './api.js';
-import { RequestError } from './errors.js';
-import { fileState, fileBlob, writeFiles } from './file-persistence.js';
-import { localState, selectedAccount, loadAccount } from './persistence.js';
-import { newerFile, sameFile, type FileManifest } from './file-format.js';
+import { accountApi } from './api.ts';
+import { RequestError } from './errors.ts';
+import { fileState, fileBlob, writeFiles } from './file-persistence.ts';
+import { localState, selectedAccount, loadAccount } from './persistence.ts';
+import { newerFile, sameFile, type FileManifest } from './file-format.ts';
 const channel=typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('taskpath-files-v1') : null;
 export function filesChanged() { channel?.postMessage('changed'); if(typeof window !== 'undefined') window.dispatchEvent(new Event('taskpath-files')); }
 if(typeof window !== 'undefined' && channel) channel.onmessage=()=>window.dispatchEvent(new Event('taskpath-files'));

@@ -4,16 +4,16 @@ import type {
   Task,
   MutationResult,
   ArchiveResult,
-} from "../types.js";
+} from "../types.d.ts";
 import {
   offlineRequest,
   isUnlocked,
   selectedAccount,
   localState,
   syncAfterCurrent,
-} from "../offline.js";
-import { createRealtime } from "../realtime.js";
-import { emptyRoute, readRoute, routeHash } from "./routes";
+} from "../offline.ts";
+import { createRealtime } from "../realtime.ts";
+import { emptyRoute, readRoute, routeHash } from "./routes.ts";
 export const columns = {
   later: "Later",
   week: "This Week",

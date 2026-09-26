@@ -1,8 +1,8 @@
-import type { EncryptedRecord, VaultConfig, RememberedKey } from './types.js';
+import type { EncryptedRecord, VaultConfig, RememberedKey } from './types.d.ts';
 interface ActiveAccount { userId: string | null; epoch: number }
 // One database, account-scoped ciphertext records, and a shared active-account
 // epoch. Workers never read the separate key store.
-import { validUserId } from './crypto.js';
+import { validUserId } from './crypto.ts';
 export const DB_NAME = 'taskpath-accounts-v1';
 let database: Promise<IDBDatabase> | undefined, selected: string | null = null;
 export const selectedAccount = () => selected;

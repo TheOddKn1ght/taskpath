@@ -1,5 +1,7 @@
-import { test, expect } from "bun:test";
-import { startAuthentication } from "../public/ui/auth-startup";
+import { test } from "node:test";
+import { expect } from "@std/expect";
+import { startAuthentication } from "../public/ui/auth-startup.ts";
+import { readText } from "./test-utils.ts";
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: Error) => void;
   const promise = new Promise<T>((yes, no) => {
@@ -40,7 +42,7 @@ function fixture(invitation = false) {
   };
 }
 test("remembered startup does not expose sign-in while storage or keys are pending", async () => {
-  expect(await Bun.file("public/index.html").text()).not.toContain(
+  expect(readText("public/index.html")).not.toContain(
     'id="unlock-screen"',
   );
   const f = fixture();

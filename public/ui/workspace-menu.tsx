@@ -1,4 +1,4 @@
-import { ActionMenu } from './action-menu';
+import { ActionMenu } from './action-menu.tsx';
 export interface WorkspaceOption { label:string; disabled?:boolean; fn:()=>void }
 export function WorkspaceMenu({options}:{options:WorkspaceOption[]}) {
   return <ActionMenu label="Workspace options" triggerClassName="app-menu" popupClassName="app-menu-popover">

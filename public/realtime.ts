@@ -1,4 +1,4 @@
-import type { EncryptedRecord } from './types.js';
+import type { EncryptedRecord } from './types.d.ts';
 interface SocketLike {
   readyState:number; close():void;
   onmessage?: WebSocket['onmessage'];

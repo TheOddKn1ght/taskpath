@@ -1,13 +1,16 @@
-import { test, expect } from 'bun:test';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
 import { createECDH, randomBytes } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { Store } from '../src/store';
-import { PushService, subscription } from '../src/push';
-import { createHandler } from '../src/server';
-import { testVault, testUserId, fixture, login, request, origin } from './auth-helpers';
-import { encryptChange } from '../public/crypto.js';
-import { reminderMetadata, acceptEncrypted } from '../public/offline.js';
-import { ClientStore } from './client-helpers';
+import { transformSync } from 'esbuild';
+import { readText } from './test-utils.ts';
+import { Store } from '../src/store.ts';
+import { PushService, subscription } from '../src/push.ts';
+import { createHandler } from '../src/server.ts';
+import { testVault, testUserId, fixture, login, request, origin } from './auth-helpers.ts';
+import { encryptChange } from '../public/crypto.ts';
+import { reminderMetadata, acceptEncrypted } from '../public/offline.ts';
+import { ClientStore } from './client-helpers.ts';
 const time = Date.parse('2026-09-10T12:00:00Z');
 const sub = (suffix = 'one') => {
   const ec = createECDH('prime256v1'); ec.generateKeys();
@@ -15,7 +18,7 @@ const sub = (suffix = 'one') => {
 };
 function setup(send: any = async () => {}, now = () => time) {
   const store = new Store(':memory:', () => new Date(now()), 'UTC');
-  store.db.query("INSERT INTO accounts(userId,status,createdAt,config) VALUES (?,'active',?,?)").run(testUserId, time, JSON.stringify(testVault.config));
+  store.db.prepare("INSERT INTO accounts(userId,status,createdAt,config) VALUES (?,'active',?,?)").run(testUserId, time, JSON.stringify(testVault.config));
   const push = new PushService(store, origin, send, now);
   const device = new ClientStore(':memory:', () => new Date(now()));
   const sync = async () => {
@@ -37,21 +40,21 @@ test('opt-in metadata is atomic, revision checked, and cannot override a newer e
   const { store, push, device, sync } = setup();
   try {
     const task = device.create({ title: 'PUSH_PRIVATE_TITLE', notes: 'PUSH_PRIVATE_NOTES', reminderAt: new Date(time + 1000).toISOString() });
-    await sync(); expect(store.db.query('SELECT * FROM push_reminders').all()).toEqual([]);
+    await sync(); expect(store.db.prepare('SELECT * FROM push_reminders').all()).toEqual([]);
     push.subscribe(testUserId, sub()); await sync();
-    const original = store.db.query<any, []>('SELECT * FROM push_reminders').get();
+    const original = store.db.prepare('SELECT * FROM push_reminders').get();
     device.update(task.id, { reminderAt: new Date(time + 2000).toISOString() }); await sync();
-    const latest = store.db.query<any, []>('SELECT * FROM push_reminders').get();
+    const latest = store.db.prepare('SELECT * FROM push_reminders').get();
     expect(latest.token).not.toBe(original.token);
     store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [], reminders: [{ ...original, dueAt: new Date(original.dueAt).toISOString(), userId: undefined }].map(({ userId, ...r }) => r) });
-    expect(store.db.query('SELECT * FROM push_reminders').get()).toEqual(latest);
+    expect(store.db.prepare('SELECT * FROM push_reminders').get()).toEqual(latest);
     const last = device.record.pending.at(-1)!;
     const envelope = await encryptChange(testVault.key, testVault.config.vaultId, last);
     expect(() => store.sync(testUserId, { workspaceKey: testVault.config.vaultId, changes: [envelope], reminders: [{ ...reminderMetadata(last.task, last.changeId), title: 'forbidden' }] })).toThrow();
     expect(JSON.stringify(store.syncBoard(testUserId))).not.toContain(task.title);
-    expect(JSON.stringify(store.db.query('SELECT * FROM push_reminders').all())).not.toContain(task.notes);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM push_reminders').all())).not.toContain(task.notes);
     device.update(task.id, { status: 'done' as const }); await sync();
-    expect(store.db.query('SELECT * FROM push_reminders').all()).toEqual([]);
+    expect(store.db.prepare('SELECT * FROM push_reminders').all()).toEqual([]);
   } finally { store.close(); }
 });
 
@@ -79,12 +82,12 @@ test('durable fan-out retries independently after restart, keeps VAPID keys, and
     const task = device.create({ title: 'TITLE_NOT_IN_PUSH', reminderAt: new Date(time).toISOString() }); await sync();
     await Promise.all([push.tick(), push.tick()]); expect(sent).toHaveLength(2);
     for (const message of sent) expect(JSON.parse(message.payload)).toEqual({ token: task.reminderToken });
-    expect(store.db.query('SELECT * FROM push_deliveries').all()).toHaveLength(1);
+    expect(store.db.prepare('SELECT * FROM push_deliveries').all()).toHaveLength(1);
     fail = false; clock += 61000;
     const restarted = new PushService(store, origin, sender as any, () => clock);
     expect(restarted.status(testUserId).publicKey).toBe(push.status(testUserId).publicKey);
     await restarted.tick(); expect(sent).toHaveLength(3);
-    expect(store.db.query('SELECT * FROM push_deliveries').all()).toHaveLength(0);
+    expect(store.db.prepare('SELECT * FROM push_deliveries').all()).toHaveLength(0);
     await restarted.tick(); expect(sent).toHaveLength(3);
     expect(store.claim(testUserId, [task.reminderToken]).tokens).toEqual([]);
   } finally { store.close(); }
@@ -96,9 +99,9 @@ test('expired endpoints and disabled accounts stop delivery; subscription remova
     const { id } = push.subscribe(testUserId, sub());
     push.remove('another-user', id); expect(store.pushEnabled(testUserId)).toBe(true);
     device.create({ title: 'Private', reminderAt: new Date(time).toISOString() }); await sync();
-    store.db.query("UPDATE accounts SET status='disabled'").run(); await push.tick(); expect(sent).toHaveLength(0);
-    store.db.query("UPDATE accounts SET status='active'").run(); await push.tick();
-    expect(store.pushEnabled(testUserId)).toBe(false); expect(store.db.query('SELECT * FROM push_reminders').all()).toHaveLength(0);
+    store.db.prepare("UPDATE accounts SET status='disabled'").run(); await push.tick(); expect(sent).toHaveLength(0);
+    store.db.prepare("UPDATE accounts SET status='active'").run(); await push.tick();
+    expect(store.pushEnabled(testUserId)).toBe(false); expect(store.db.prepare('SELECT * FROM push_reminders').all()).toHaveLength(0);
   } finally { store.close(); }
 });
 
@@ -128,7 +131,7 @@ test('push endpoints require a session, enforce Origin and account binding, and 
 
 test('service worker displays only generic text while locked and ignores injected titles and click URLs', async () => {
   const listeners = new Map(), shown: any[] = [], opened: string[] = [];
-  const code = new Bun.Transpiler({loader: 'ts'}).transformSync((await Bun.file('public/sw.ts').text()).replace(/^import .*\n/gm, ''));
+  const code = transformSync(readText('public/sw.ts').replace(/^import .*\n/gm, ''), { loader: 'ts' }).code;
   runInNewContext(code, { URL, self: { location: { origin }, addEventListener: (name: string, handler: any) => listeners.set(name, handler),
     registration: { showNotification: async (title: string, options: any) => { shown.push({ title, ...options }); } },
     clients: { matchAll: async () => [], openWindow: async (url: string) => { opened.push(url); } },

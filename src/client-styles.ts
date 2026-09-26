@@ -1,4 +1,4 @@
-import type { ClientRelease } from './client-release';
+import type { ClientRelease } from './client-release.ts';
 
 // Compile only the immutable release snapshot, never scan a changing checkout.
 // Lazy imports keep the production server independent of build-only packages.

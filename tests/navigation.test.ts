@@ -1,5 +1,7 @@
-import { test, expect } from "bun:test";
-import { readRoute, routeHash, emptyRoute } from "../public/ui/routes";
+import { test } from "node:test";
+import { expect } from "@std/expect";
+import { readRoute, routeHash, emptyRoute } from "../public/ui/routes.ts";
+import { sleep } from "./test-utils.ts";
 test("all views round-trip through refresh and history fragments", () => {
   for (const view of ["board", "archive", "files"] as const) {
     const route = { ...emptyRoute, view };
@@ -38,15 +40,20 @@ test("view changes preserve filters while clearing filters restores the bare anc
 });
 test("fragment search is absent from actual HTTP requests", async () => {
   const requests: string[] = [];
-  const server = Bun.serve({
+  let origin = "";
+  const server = Deno.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch(request) {
+    onListen: (addr) => {
+      origin = `http://127.0.0.1:${addr.port}`;
+    },
+    handler(request) {
       requests.push(request.url);
       return new Response("ok");
     },
   });
   try {
+    while (!origin) await sleep(10);
     const url = new URL(
       "/login?source=saved" +
         routeHash({
@@ -54,7 +61,7 @@ test("fragment search is absent from actual HTTP requests", async () => {
           query: "PRIVATE_SEARCH_8284",
           tag: "private-tag",
         }),
-      server.url,
+      origin,
     );
     await fetch(url);
     await fetch(url);
@@ -65,6 +72,6 @@ test("fragment search is absent from actual HTTP requests", async () => {
       expect(request).not.toContain("private-tag");
     }
   } finally {
-    await server.stop(true);
+    await server.shutdown();
   }
 });

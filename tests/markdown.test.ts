@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { ClientStore as Store, statuses, type Task } from './client-helpers';
-import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
+import { afterEach, beforeEach, test } from 'node:test';
+import { expect } from '@std/expect';
+import { ClientStore as Store, statuses, type Task } from './client-helpers.ts';
+import { exportMarkdown, parseMarkdown } from '../public/markdown.ts';
 
 let store: Store;
 beforeEach(() => { store = new Store(':memory:', () => new Date('2026-09-03T10:00:00Z'), 'Europe/Moscow'); });

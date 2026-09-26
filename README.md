@@ -2,20 +2,20 @@
 
 Taskpath is an invite-only task board with a separate encrypted vault for each account. Collect tasks in Later, plan This Week, and choose Today. The board displays Today, This Week, Later, then Done.
 
-It uses Bun 1.4.2+, SQLite and TypeScript. The server uses Drizzle and Web Push. The React client uses TypeScript and a vendored Marked lexer for offline Markdown imports.
+It uses Deno 2.9+, SQLite and TypeScript. The server uses Node's built-in SQLite driver and Web Push. The React client uses TypeScript and a vendored Marked lexer for offline Markdown imports.
 
 ## Start locally
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run build
-bun run start
+deno install
+deno task build
+deno task start
 ```
 
 In another terminal, create an invitation for yourself or a friend:
 
 ```sh
-bun run admin invite
+deno task admin invite
 ```
 
 The command prints a permanent user ID and a one-use setup link valid for 24 hours. Open it, choose a password of 15 to 1,024 characters, and save both the ID and password. You can also set a nickname. Sign-in requires the user ID and password, never the nickname. Restarting the server does not issue invitations.
@@ -60,11 +60,11 @@ Import through workspace options. Parsing and preview work offline with the [ven
 Each account has its own vault, sessions and encrypted data. There are no shared boards, roles, public registration or email service. User IDs are permanent identifiers, not secrets.
 
 ```sh
-bun run admin invite
-bun run admin list
-bun run admin reinvite USER_ID
-bun run admin revoke USER_ID
-bun run admin disable USER_ID
+deno task admin invite
+deno task admin list
+deno task admin reinvite USER_ID
+deno task admin revoke USER_ID
+deno task admin disable USER_ID
 ```
 
 Reinvite replaces a pending link. Revoke cancels it. Neither reopens an activated vault. Disable blocks server access and revokes sessions while retaining encrypted data. Existing WebSockets close at the next authorization check. It cannot erase downloaded data or revoke copied keys. There is no account deletion command.
@@ -136,7 +136,7 @@ Each file is limited to 10 MB or the configured quota if lower. Accounts can hol
 cp .env.example .env
 # Set TASKPATH_ORIGIN and TASKPATH_TIMEZONE in .env.
 docker compose up -d --build
-docker compose exec taskpath bun run admin invite
+docker compose exec taskpath deno task admin invite
 ```
 
 Compose uses a persistent database volume and binds to `127.0.0.1:3000`. Keep that port private and use the [Nginx template](deploy/nginx/taskpath.conf.example) with valid HTTPS. It includes WebSocket forwarding and the file-upload limit. Follow the [deployment guide](DEPLOYMENT.md) for setup and backups. Never use the old username or password environment settings.
@@ -147,28 +147,26 @@ To update, sync devices, rebuild and restart the server, then load the app onlin
 
 ## Development and checks
 
-`bun run dev` watches TypeScript/TSX sources and bundles the React entry on demand, caching it by content fingerprint. It needs no preliminary build. Production serves `dist/public`. The build minifies client assets and bundles the app and worker separately to avoid import waterfalls. Rebuild after client changes. Production validates the build and snapshots it at startup.
-
-Use `bun run dev:smol` or `bun run start:smol` for lower memory use with more frequent garbage collection. Docker accepts `TASKPATH_START_SCRIPT=start:smol`.
+`deno task dev` watches TypeScript/TSX sources and bundles the React entry on demand, caching it by content fingerprint. It needs no preliminary build. Production serves `dist/public`. The build minifies client assets and bundles the app and worker separately to avoid import waterfalls. Rebuild after client changes. Production validates the build and snapshots it at startup.
 
 Client HTTP operations go through the typed adapters in `public/api.ts`; `public/api-client.ts` handles transport. UI and sync code pass domain data, while encryption and offline queues stay in their existing modules.
 
-Drizzle uses `bun:sqlite`. Typed tables and repositories live in `src/db/`. Schema changes require explicit initialization code. Deployment does not run Drizzle Kit or automatic schema push.
+Typed repositories in `src/db/` use Node's built-in SQLite driver directly, with no ORM. Schema changes require explicit initialization code.
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run typecheck
-bun run build
-bun test
+deno install
+deno task typecheck
+deno task build
+deno task test
 ```
 
-These commands reproduce the [GitHub Tests workflow](.github/workflows/tests.yml). CI runs on pushes, pull requests and manual dispatches with Bun 1.4.2 on Ubuntu 24.04. Bun executes TypeScript, but typecheck checks its types. Tests cover encryption, accounts, storage, sync, task behavior and WebSockets. Push tests use a fake sender. Source tests can run without a build. Build first to include production asset checks.
+These commands reproduce the [GitHub Tests workflow](.github/workflows/tests.yml). CI runs on pushes, pull requests and manual dispatches with Deno 2.9 on Ubuntu 24.04. `deno task typecheck` checks server, scripts and test types. The `tsconfig.browser.json` and `tsconfig.worker.json` projects remain for editors and can be checked with `tsc` where TypeScript is available. Tests cover encryption, accounts, storage, sync, task behavior and WebSockets. Push tests use a fake sender. Source tests can run without a build. Build first to include production asset checks.
 
 Run browser checks against separate disposable origins:
 
 ```sh
-QA_ASSETS=source QA_PORT=3195 bun run tests/browser-server.ts
-QA_ASSETS=built QA_PORT=3196 bun run tests/browser-server.ts
+QA_ASSETS=source QA_PORT=3195 deno task qa
+QA_ASSETS=built QA_PORT=3196 deno task qa
 ```
 
 Open each printed `/checks` URL in a fresh browser context. These servers use isolated in-memory databases and create test data in browser storage. `/invitation` provides a setup fixture, `/phone-preview` provides a 390px view, `/picker-checks` runs React selector checks, and `/react-checks` exercises setup, login, task/file actions, drafts, lock and account switching through the React interface. Run `/checks` and `/react-checks` sequentially, with no other app tabs at that test origin. Browser UI, physical phones and real push delivery need separate verification.

@@ -1,14 +1,14 @@
-import { accountApi } from './api.js';
-import type { Task, Profile, Envelope, Change, VaultConfig, EncryptedRecord, PlainRecord, PlainBoard, Board, ReminderMetadata, SyncResult, SyncBoard, ImportPreview, TaskInput } from './types.js';
-import { RequestError, errorMessage, errorStatus } from './errors.js';
-import { importTaskKey } from './tags.js';
-import { project, queueChange, queueArchiveBatch, validate } from './offline-model.js';
-import { exportMarkdown } from './export-markdown.js';
-import { parseMarkdown } from './markdown.js';
-import { decryptEnvelope, encryptChange, validateConfig, validateEnvelope, PROFILE_ID, normalizeNickname } from './crypto.js';
-import { localState, commit, rememberedKey, saveUnlock, forgetKeys, selectedAccount, selectAccount, loadAccount } from './persistence.js';
-import { syncFiles } from './file-sync.js';
-export { localState, selectedAccount } from './persistence.js';
+import { accountApi } from './api.ts';
+import type { Task, Profile, Envelope, Change, VaultConfig, EncryptedRecord, PlainRecord, PlainBoard, Board, ReminderMetadata, SyncResult, SyncBoard, ImportPreview, TaskInput } from './types.d.ts';
+import { RequestError, errorMessage, errorStatus } from './errors.ts';
+import { importTaskKey } from './tags.ts';
+import { project, queueChange, queueArchiveBatch, validate } from './offline-model.ts';
+import { exportMarkdown } from './export-markdown.ts';
+import { parseMarkdown } from './markdown.ts';
+import { decryptEnvelope, encryptChange, validateConfig, validateEnvelope, PROFILE_ID, normalizeNickname } from './crypto.ts';
+import { localState, commit, rememberedKey, saveUnlock, forgetKeys, selectedAccount, selectAccount, loadAccount } from './persistence.ts';
+import { syncFiles } from './file-sync.ts';
+export { localState, selectedAccount } from './persistence.ts';
 let vaultKey: CryptoKey | null = null, epoch = -1, generation = 0;
 const page = typeof window !== 'undefined';
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('taskpath-accounts-v1') : null;
@@ -229,7 +229,7 @@ async function write<T>(operation: (record: PlainRecord & {board:PlainBoard}, pr
   writing = next.then(() => {}, () => {});
   const result = await next;
   if (page) {
-    try { const registration = await navigator.serviceWorker?.getRegistration(); await registration?.sync?.register('taskpath-accounts-sync'); } catch {}
+    try { const registration = await navigator.serviceWorker?.getRegistration(); await (registration as unknown as { sync?: { register(tag: string): Promise<void> } } | undefined)?.sync?.register('taskpath-accounts-sync'); } catch {}
     void sync().catch(() => {});
   }
   return result;
@@ -252,8 +252,8 @@ export function offlineRequest(path: '/api/import/preview', method: string, body
 export function offlineRequest(path: '/api/import/markdown', method: string, body: unknown): Promise<{imported:number;skipped:number}>;
 export function offlineRequest(path: '/api/profile', method: string, body: unknown): Promise<{nickname:string}>;
 export function offlineRequest(path: '/api/reminders/claim', method: string, body?: unknown): Promise<{tasks:Task[]}>;
-export function offlineRequest(path: '/api/tasks/archive-completed' | '/api/tasks/archive-undo', method: string, body?: unknown): Promise<import('./types.js').ArchiveResult>;
-export function offlineRequest(path: string, method?: string, body?: unknown): Promise<import('./types.js').MutationResult>;
+export function offlineRequest(path: '/api/tasks/archive-completed' | '/api/tasks/archive-undo', method: string, body?: unknown): Promise<import('./types.d.ts').ArchiveResult>;
+export function offlineRequest(path: string, method?: string, body?: unknown): Promise<import('./types.d.ts').MutationResult>;
 export async function offlineRequest(path: string, method = 'GET', input?: unknown) {
   const token = generation; assertUnlocked(await localState(), token);
   if (input != null && (typeof input !== 'object' || Array.isArray(input))) throw new Error('Invalid task input.');

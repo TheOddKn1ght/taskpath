@@ -1,6 +1,7 @@
-import { expect, test } from 'bun:test';
-import { matchingOptions, monthDays, shiftDate, shiftMonth, validCalendarDate } from '../public/picker-model.js';
-import { localReminderValue, reminderFromInput } from '../public/dates.js';
+import { test } from 'node:test';
+import { expect } from '@std/expect';
+import { matchingOptions, monthDays, shiftDate, shiftMonth, validCalendarDate } from '../public/picker-model.ts';
+import { localReminderValue, reminderFromInput } from '../public/dates.ts';
 
 test('picker calendar validates exact calendar dates without timezone normalization', () => {
   for (const day of ['0001-01-01', '2024-02-29', '2026-12-31', '9999-12-31']) expect(validCalendarDate(day)).toBe(true);

@@ -7,7 +7,7 @@ import {
   DatePicker,
   TagButton,
   type Option,
-} from "../public/ui/pickers";
+} from "../public/ui/pickers.tsx";
 export async function pickerChecks(
   assert: (condition: unknown, message: string) => void,
 ) {

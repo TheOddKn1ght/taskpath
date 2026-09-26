@@ -1,5 +1,5 @@
 import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
-import type { VaultConfig } from '../public/types.js';
+import type { VaultConfig } from '../public/types.d.ts';
 import { activate, localState, lock, switchAccount, isUnlocked } from '/assets/__TASKPATH_RELEASE__/offline.js';
 import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
 import { addFile, listFiles, readStoredFile, renameStoredFile, deleteStoredFile } from '/assets/__TASKPATH_RELEASE__/file-client.js';
