@@ -27,6 +27,7 @@ const assets = new Map<string, [string, string]>([
   ["/markdown.js", ["markdown.js", "text/javascript; charset=utf-8"]],
   ["/vendor/marked.js", ["vendor/marked.js", "text/javascript; charset=utf-8"]],
   ["/tags.js", ["tags.js", "text/javascript; charset=utf-8"]],
+  ["/search.js", ["search.js", "text/javascript; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/dates.js", ["dates.js", "text/javascript; charset=utf-8"]],
   ["/theme.js", ["theme.js", "text/javascript; charset=utf-8"]],

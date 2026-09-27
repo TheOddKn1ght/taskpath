@@ -51,7 +51,7 @@ test.skipIf(!hasBuild)('minified client preserves module exports, reachable impo
     for (const name of files.filter(name => /\.(js|css|html|webmanifest|png|svg)$/.test(name))) {
       const path = name === 'index.html' ? '/' : name === 'sw.js' ? '/sw.js' : `/assets/${ASSET_VERSION}/${name}`;
       const response = (await handler(new Request('http://localhost' + path)))!;
-      expect(response.status).toBe(200);
+      expect(response.status, `GET ${path}`).toBe(200);
       expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
       expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(await Bun.file(resolve(built, name)).arrayBuffer()));
     }
