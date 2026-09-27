@@ -667,3 +667,83 @@
   --on-toast: #18191c;
   --error-bg: #31343a;
 }
+
+
+:root[data-theme="high-contrast-light"] {
+  color-scheme: light;
+  --paper: #ffffff;
+  --text: #000000;
+  --muted: #333333;
+  --line: #555555;
+  --green: #003399;
+  --on-green: #ffffff;
+  --green-hover: #000000;
+  --focus: #003399;
+  --selection: #e8e8e8;
+  --accent: #003399;
+  --surface: #ffffff;
+  --hover: #e8e8e8;
+  --column: #f5f5f5;
+  --today: #e8e8e8;
+  --accent-line: #555555;
+  --card-hover: #003399;
+  --check-line: #555555;
+  --done: #f5f5f5;
+  --done-text: #333333;
+  --done-fill: #555555;
+  --warning: #800000;
+  --brand: #003399;
+  --menu: #ffffff;
+  --shadow: #24304012;
+  --menu-shadow: #24304025;
+  --drop: #e8e8e8;
+  --drop-line: #003399;
+  --backdrop: #26304040;
+  --toast: #003399;
+  --on-toast: #ffffff;
+  --error-bg: #e8e8e8;
+}
+
+:root[data-theme="high-contrast-dark"] {
+  color-scheme: dark;
+  --paper: #000000;
+  --text: #ffffff;
+  --muted: #dddddd;
+  --line: #aaaaaa;
+  --green: #ffff00;
+  --on-green: #000000;
+  --green-hover: #ffffff;
+  --focus: #ffff00;
+  --selection: #1a1a1a;
+  --accent: #ffff00;
+  --surface: #080808;
+  --hover: #1a1a1a;
+  --column: #101010;
+  --today: #1a1a1a;
+  --accent-line: #aaaaaa;
+  --card-hover: #ffff00;
+  --check-line: #aaaaaa;
+  --done: #101010;
+  --done-text: #dddddd;
+  --done-fill: #cccccc;
+  --warning: #ffb8a6;
+  --brand: #ffff00;
+  --menu: #080808;
+  --shadow: #00000033;
+  --menu-shadow: #00000066;
+  --drop: #1a1a1a;
+  --drop-line: #ffff00;
+  --backdrop: #080e12bd;
+  --toast: #ffff00;
+  --on-toast: #000000;
+  --error-bg: #1a1a1a;
+}
+
+:root[data-theme^="high-contrast-"] :is(button,a,input,select,textarea,article,summary):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+:root[data-theme^="high-contrast-"] .task-actions { opacity: 1; }
+:root[data-theme^="high-contrast-"] input::placeholder,
+:root[data-theme^="high-contrast-"] textarea::placeholder { color: var(--muted); opacity: 1; }
+:root[data-theme="high-contrast-dark"] .is-done .complete-button { color: #000000; }
