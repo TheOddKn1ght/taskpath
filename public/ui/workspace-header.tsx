@@ -31,6 +31,7 @@ export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,optio
             onChange={(e) => navigate({ query: e.target.value }, true)}
           />
         </label>
+        <div className="task-filters">
         <Select
           id="category-filter"
           label="Filter tasks by category"
@@ -55,6 +56,20 @@ export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,optio
           ]}
           onChange={(tag) => navigate({ tag }, true)}
         />
+        {route.view === "board" && (
+          <button
+            id="focus-today"
+            className="secondary-button"
+            aria-label="Focus Today"
+            title="Focus Today"
+            aria-pressed={route.focus === "today"}
+            onClick={() => navigate({ focus: route.focus === "today" ? undefined : "today" })}
+          >
+            <Icon name="focus" />
+            <span>Focus Today</span>
+          </button>
+        )}
+        </div>
         <button
           id="new-task"
           className="primary-button"

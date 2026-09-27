@@ -101,6 +101,7 @@ function Workspace({
     { board, route } = state;
   const [editor, setEditor] = useState<{
       task: Task | null;
+      draft?: Pick<Task, "title" | "notes" | "tags" | "category">;
       status: Status;
     } | null>(null),
     [details, setDetails] = useState<string | null>(null),
@@ -160,7 +161,7 @@ function Workspace({
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
         if (getSnapshot().route.view !== "board") navigate({ view: "board" });
-        setEditor({ task: null, status: "later" });
+        setEditor({ task: null, status: getSnapshot().route.focus === "today" ? "today" : "later" });
       } else if (event.key === "/") {
         event.preventDefault();
         document.querySelector<HTMLInputElement>("#search")?.focus();
@@ -554,7 +555,7 @@ function Workspace({
           try { localStorage.setItem("taskpath-sidebar-collapsed",String(!collapsed)); } catch {}
         }} />
         <div className="workspace-content">
-          <WorkspaceHeader route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:"later"})} options={options} />
+          <WorkspaceHeader route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:route.focus === "today" ? "today" : "later"})} options={options} />
           {state.error && (
             <div id="error-banner" className="error-banner" role="alert">
               <span>{state.error}</span>
@@ -582,6 +583,11 @@ function Workspace({
               route={route}
               actions={{
                 edit,
+                duplicate: (task) => setEditor({
+                  task: null,
+                  status: task.status === "done" ? "later" : task.status,
+                  draft: { title: task.title, notes: task.notes, category: task.category, tags: [...task.tags] },
+                }),
                 create: (status) => setEditor({ task: null, status }),
                 remove,
                 archive,

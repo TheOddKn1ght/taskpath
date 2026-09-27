@@ -36,6 +36,12 @@ Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Vi
 
 The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha Rosé Pine Dawn, Midnight, Plum, Ocean, Sand, Lavender and Ice. Follow system chooses Light or Dark. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
 
+Use **Add task** beneath Today, This Week, or Later for quick entry. Enter saves and keeps the field ready for another task; Escape cancels. New tasks inherit the category and tag filters (All defaults to Personal). **New task** and `N` still open the full editor.
+
+Choose **Duplicate task** from an active task’s menu to review a new copy before saving. It copies text, category, and tags, clears dates and reminders, and keeps the column unless the original is Done, in which case it defaults to Later. Cancel leaves everything unchanged.
+
+**Focus Today** shows only Today while keeping your search and filters. It survives refresh through `#board?focus=today`; leaving Board clears focus. New task and `N` default to Today while focused. Completed tasks disappear from this view and remain in Done on the full board.
+
 ## Archive and export
 
 Archive a task through its menu or editor. In workspace options, Archive all completed includes every completed task regardless of filters. Nothing is archived automatically.
@@ -144,6 +150,20 @@ Compose uses a persistent database volume and binds to `127.0.0.1:3000`. Keep th
 Existing multi-user installations keep their accounts and data. Plaintext and single-owner databases require the [fresh-start procedure](DEPLOYMENT.md#start-fresh-from-a-plaintext-or-single-owner-release). The app rejects them before modification.
 
 To update, sync devices, rebuild and restart the server, then load the app online. Close all Taskpath tabs and installed-app windows before reopening. Do not clear site data. Automatic content fingerprints version client URLs and PWA caches. No manual `accounts-vN` bump is needed. README edits do not change the fingerprint.
+
+## Disposable QA session
+
+```sh
+bun run qa
+# Or print the launch link without opening a browser:
+bun run qa --no-open
+```
+
+Creates an established disposable account and opens its unlocked workspace without manual invitation or sign-in. Uses current frontend sources; refresh to pick up frontend edits. Restart the command after backend edits. No production build is needed.
+
+The launcher binds only to `127.0.0.1` on a random port, uses an in-memory database, and ignores deployment host, port, origin, and database settings. Normal authentication and encryption stay enabled. It refuses production mode and uses a separate random session-cookie name to avoid replacing another local Taskpath session. The bootstrap route exists only in this launcher.
+
+The printed link is private: it grants access once and expires after five minutes. Its token is removed from browser history immediately on opening. Do not share the link or use real data in this workspace. The browser remembers a non-extractable vault key so reloads work; Lock clears it. Encrypted browser caches can remain after exit; clear site data for that QA origin if needed. Ctrl+C discards server data, and each launch starts fresh. If the link expires, setup fails, or you lock the workspace, restart `bun run qa` for a fresh account.
 
 ## Development and checks
 

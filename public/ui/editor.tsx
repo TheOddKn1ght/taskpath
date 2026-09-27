@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { Board, Task, Status, Category } from "../types.js";
+import type { Board, Task, Status, Category, TaskDraft } from "../types.js";
 import { Dialog } from "./dialog";
 import { Select, TagButton, DatePicker } from "./pickers";
 import { columns, message, mutate } from "./store";
@@ -8,6 +8,7 @@ import { localReminderValue, reminderFromInput } from "../dates.js";
 import { reminderIsToday } from "../offline-model.js";
 export function Editor({
   task,
+  draft,
   status,
   board,
   initialTag,
@@ -19,6 +20,7 @@ export function Editor({
   notifications,
 }: {
   task: Task | null;
+  draft?: TaskDraft;
   status: Status;
   board: Board;
   initialTag: string;
@@ -29,13 +31,13 @@ export function Editor({
   notify: (s: string) => void;
   notifications: () => Promise<void>;
 }) {
-  const [title, setTitle] = useState(task?.title || ""),
-    [notes, setNotes] = useState(task?.notes || ""),
-    [tags, setTags] = useState(task?.tags || (initialTag ? [initialTag] : [])),
+  const [title, setTitle] = useState(task?.title ?? draft?.title ?? ""),
+    [notes, setNotes] = useState(task?.notes ?? draft?.notes ?? ""),
+    [tags, setTags] = useState(task?.tags ?? draft?.tags ?? (initialTag ? [initialTag] : [])),
     [tag, setTag] = useState(""),
     [column, setColumn] = useState(task?.status || status),
     [category, setCategory] = useState<Category>(
-      task?.category || initialCategory,
+      task?.category ?? draft?.category ?? initialCategory,
     ),
     [due, setDue] = useState(task?.dueDate || ""),
     [reminder, setReminder] = useState(

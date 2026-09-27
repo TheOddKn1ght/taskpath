@@ -147,16 +147,16 @@
     font-size: 16px;
     min-height: 44px;
   }
-  .toolbar > [data-picker-for="category-filter"] {
+  .task-filters {
     grid-area: 3 / 1 / auto / -1;
-    justify-self: start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
   }
-  .toolbar > [data-picker-for="tag-filter"] {
-    grid-area: 3 / 1 / auto / -1;
-    justify-self: end;
-  }
-  .toolbar > .picker-trigger {
-    width: calc(50% - 4px);
+  .task-filters > .picker-trigger {
+    flex: 1;
+    width: 0;
     max-width: none;
     min-width: 0;
     min-height: 44px;
@@ -166,6 +166,20 @@
     padding-inline: 12px;
     font-size: 13px;
   }
+  #focus-today {
+    display: grid;
+    place-items: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--muted);
+  }
+  #focus-today span { display: none; }
+  #focus-today svg { width: 19px; height: 19px; }
   .board {
     grid-template-columns: 1fr;
     gap: 16px;

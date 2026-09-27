@@ -68,3 +68,13 @@ test("fragment search is absent from actual HTTP requests", async () => {
     await server.stop(true);
   }
 });
+
+test("Today focus round-trips with filters and is restricted to Board", () => {
+  const route = { ...emptyRoute, focus: "today" as const, query: "coffee", category: "work" as const, tag: "home" };
+  expect(readRoute(routeHash(route))).toEqual(route);
+  expect(readRoute("#board?focus=unknown")).toEqual(emptyRoute);
+  expect(readRoute("#archive?focus=today")).toEqual({ ...emptyRoute, view: "archive" });
+  expect(readRoute("#files?focus=today")).toEqual({ ...emptyRoute, view: "files" });
+  expect(routeHash({ ...route, view: "archive" })).not.toContain("focus");
+  expect(routeHash({ ...route, view: "files" })).toBe("#files");
+});

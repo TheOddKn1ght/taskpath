@@ -55,6 +55,7 @@ export function publish(patch: Partial<Snapshot>) {
 }
 export function navigate(patch: Partial<Route>, replace = false) {
   const route = { ...snapshot.route, ...patch };
+  if (route.view !== "board") delete route.focus;
   const hash = routeHash(route);
   if (location.hash !== hash)
     history[replace ? "replaceState" : "pushState"](

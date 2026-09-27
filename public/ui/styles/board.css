@@ -552,3 +552,29 @@
 .offline .status-dot {
   background: var(--warning);
 }
+
+.board.is-focused {
+  grid-template-columns: minmax(0, 640px);
+  justify-content: center;
+}
+
+.quick-add-container { margin-top: auto; }
+.quick-add-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.quick-add-trigger[hidden] { display: none; }
+.quick-add-trigger svg { width: 14px; height: 14px; }
+.quick-add button { display: flex; }
+#focus-today[aria-pressed="true"] {
+  background: var(--today);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.task-filters { display: contents; }
+#focus-today svg { width: 16px; height: 16px; flex: none; }

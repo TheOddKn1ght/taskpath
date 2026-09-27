@@ -25,6 +25,7 @@ export const dateLabel = (iso: string | null) =>
     : "";
 interface Actions {
   edit: (task: Task) => void;
+  duplicate: (task: Task) => void;
   create: (status: Status) => void;
   remove: (t: Task) => Promise<void>;
   archive: (t: Task) => Promise<void>;
@@ -376,6 +377,7 @@ export function Board({
                 </button>
                 {!archived && (
                   <>
+                    <button type="button" role="menuitem" onClick={() => actions.duplicate(t)}>Duplicate task</button>
                     <button
                       type="button" role="menuitem"
                       disabled={index === 0}
@@ -412,7 +414,7 @@ export function Board({
     <>
       <section
         id="board"
-        className={"board" + (route.view === "archive" ? " is-archive" : "")}
+        className={"board" + (route.view === "archive" ? " is-archive" : route.focus === "today" ? " is-focused" : "")}
         tabIndex={-1}
         aria-label={
           route.view === "archive" ? "Archived tasks" : "Task planning board"
@@ -455,7 +457,7 @@ export function Board({
             </div>
           </>
         ) : (
-          boardOrder.map((status) => {
+          boardOrder.filter((status) => route.focus !== "today" || status === "today").map((status) => {
             const tasks = filtered.filter((t) => t.status === status);
             return (
               <section
@@ -475,17 +477,21 @@ export function Board({
                     tasks.map((t, i) => card(t, i, tasks.length))
                   ) : (
                     <div className="empty-state">
-                      {route.query || route.tag || route.category !== "all"
-                        ? "No matching tasks"
-                        : "Drop tasks here"}
+                      {route.focus === "today"
+                        ? board.tasks.some((t) => !t.archivedAt && t.status === "today")
+                          ? "No Today tasks match your filters."
+                          : "No tasks for Today. Add one below or move a task from the full board."
+                        : route.query || route.tag || route.category !== "all"
+                          ? "No matching tasks"
+                          : "Drop tasks here"}
                     </div>
                   )}
                 </div>
-                <QuickAdd
+                {status !== "done" && <QuickAdd
                   status={status}
                   route={route}
                   notify={actions.notify}
-                />
+                />}
               </section>
             );
           })
@@ -543,6 +549,7 @@ export function Board({
                   },
                 ]
               : [
+                  { label: "Duplicate task", fn: () => actions.duplicate(context.task) },
                   {
                     label:
                       context.task.status === "done"
@@ -590,61 +597,75 @@ export function Board({
     </>
   );
 }
-function QuickAdd({
-  status,
-  route,
-  notify,
-}: {
+function QuickAdd({ status, route, notify }: {
   status: Status;
   route: Route;
   notify: (s: string) => void;
 }) {
-  const [title, setTitle] = useState(""),
-    [busy, setBusy] = useState(false),
-    alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
+  const [title, setTitle] = useState("");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const saving = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  useEffect(() => {
+    if (open && !busy) input.current?.focus();
+  }, [open, busy]);
   return (
-    <form
-      className="quick-add"
-      data-status={status}
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (busy) return;
-        setBusy(true);
-        try {
-          await mutate("/api/tasks", "POST", {
-            title,
-            status,
-            category: route.category === "work" ? "work" : "personal",
-            tags: route.tag ? [route.tag] : [],
-          });
-          if (alive.current) setTitle("");
-        } catch (e) {
-          if (alive.current) notify(message(e));
-        } finally {
-          if (alive.current) setBusy(false);
-        }
-      }}
-    >
-      <Icon name="plus" />
-      <input
-        aria-label={"Quick add task to " + columns[status]}
-        placeholder="Add task"
-        required
-        maxLength={240}
-        autoComplete="off"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        disabled={busy}
-      />
-      <button aria-label={"Save task to " + columns[status]} disabled={busy}>
-        <Icon name="arrow-right" />
+    <div className="quick-add-container">
+      <button ref={trigger} type="button" className="quick-add-trigger" hidden={open}
+        aria-expanded={open} onClick={() => setOpen(true)}>
+        <Icon name="plus" /> Add task
       </button>
-    </form>
+      {open && <form className="quick-add" data-status={status}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
+          if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (saving.current) return;
+            setTitle(""); setError(""); setOpen(false);
+            requestAnimationFrame(() => trigger.current?.focus());
+          }
+        }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (saving.current) return;
+          saving.current = true;
+          setBusy(true); setError("");
+          try {
+            const result = await mutate("/api/tasks", "POST", {
+              title, status,
+              category: route.category === "work" ? "work" : "personal",
+              tags: route.tag ? [route.tag] : [],
+            });
+            if (alive.current) {
+              setTitle("");
+              notify(`Task added to ${columns[result.task.status]}.`);
+            }
+          } catch (e) {
+            if (alive.current) setError(message(e));
+          } finally {
+            saving.current = false;
+            if (alive.current) setBusy(false);
+          }
+        }}>
+        <Icon name="plus" />
+        <input ref={input} aria-label={"Quick add task to " + columns[status]}
+          aria-describedby={error ? `quick-add-error-${status}` : undefined}
+          placeholder="What needs doing?" required maxLength={240} autoComplete="off"
+          value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+        <button aria-label={"Save task to " + columns[status]} disabled={busy}>
+          <Icon name="arrow-right" />
+        </button>
+      </form>}
+      {error && <p id={`quick-add-error-${status}`} className="form-error" role="alert">{error}</p>}
+    </div>
   );
 }

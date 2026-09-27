@@ -10,6 +10,7 @@
   "scripts": {
     "start": "NODE_ENV=production bun run src/server.ts",
     "start:smol": "NODE_ENV=production bun --smol run src/server.ts",
+    "qa": "bun run scripts/qa-dev.ts",
     "dev": "NODE_ENV=development bun --watch src/server.ts",
     "dev:smol": "NODE_ENV=development bun --smol --watch src/server.ts",
     "test": "bun test",

@@ -313,6 +313,87 @@ try {
     flushSync(() => popup.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body })));
     textButton(label, popup);
   };
+  // Everyday-speed features run against real encrypted mutations and the React UI.
+  click('#focus-today');
+  assert(document.querySelectorAll('.column').length === 1 && location.hash.includes('focus=today'), 'focus shows only Today and persists in URL');
+  assert(node('.empty-state').textContent?.includes('No tasks for Today'), 'focus distinguishes a genuinely empty Today');
+  click('#new-task');
+  input('#task-title', 'QOL_FOCUS');
+  input('#task-notes', 'Notes to copy');
+  click('#save-task');
+  await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'focus editor save');
+  const sourceId = getSnapshot().board!.tasks.find(t => t.title === 'QOL_FOCUS')!.id;
+  await offlineRequest(`/api/tasks/${sourceId}`, 'PATCH', { category: 'work', tags: ['qol'], dueDate: '2099-01-01', reminderAt: '2099-01-01T09:00:00.000Z' });
+  await refresh();
+  const source = getSnapshot().board!.tasks.find(t => t.id === sourceId)!;
+  const focusedBoard = node('#board').getBoundingClientRect();
+  const focusedColumn = node('.column.today').getBoundingClientRect();
+  const focusToggle = node('#focus-today').getBoundingClientRect();
+  assert(focusedColumn.width <= 641 && Math.abs((focusedColumn.left + focusedColumn.right) / 2 - (focusedBoard.left + focusedBoard.right) / 2) < 2 && focusToggle.right <= innerWidth, 'focused column is centered and toggle fits viewport');
+  assert(source.status === 'today', 'New task defaults to Today in focus');
+  action('QOL_FOCUS', 'Duplicate task');
+  assert(node<HTMLInputElement>('#task-title').value === source.title && node<HTMLTextAreaElement>('#task-notes').value === source.notes, 'duplicate prefills title and notes');
+  textButton('Cancel', node('#task-dialog'));
+  assert(getSnapshot().board!.tasks.filter(t => t.title === 'QOL_FOCUS').length === 1, 'cancel duplicate creates nothing');
+  action('QOL_FOCUS', 'Duplicate task');
+  input('#task-title', 'QOL_COPY');
+  click('#save-task');
+  await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'duplicate saved');
+  const copy = getSnapshot().board!.tasks.find(t => t.title === 'QOL_COPY')!;
+  assert(copy.id !== source.id && copy.status === 'today' && copy.notes === source.notes && copy.category === source.category && copy.tags.join() === source.tags.join() && !copy.dueDate && !copy.reminderAt, 'duplicate creates a fresh unscheduled task');
+  assert(getSnapshot().board!.tasks.find(t => t.id === source.id)?.title === 'QOL_FOCUS', 'duplicate preserves original');
+  flushSync(() => menuTask('QOL_COPY').querySelector<HTMLButtonElement>('.complete-button')!.click());
+  await until(() => !menuTask('QOL_COPY') && !getSnapshot().busy, 'completion leaves focus');
+  assert(getSnapshot().board!.tasks.find(t => t.id === copy.id)?.status === 'done', 'completion leaves focus task in Done');
+  input('#search', 'NO_QOL_MATCH');
+  assert(node('.empty-state').textContent?.includes('match your filters'), 'focus distinguishes filtered empty state');
+  input('#search', '');
+  click('#focus-today');
+  assert(!document.querySelector('.column.done .quick-add-trigger'), 'Done has no quick add');
+  flushSync(() => menuTask('QOL_COPY').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+  textButton('Duplicate task', node('#task-context-menu'));
+  input('#task-title', 'QOL_REOPEN');
+  click('#save-task');
+  await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'Done copy saved');
+  assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_REOPEN')?.status === 'later', 'Done context-menu duplicate defaults to Later');
+  flushSync(() => navigate({ category: 'work', tag: 'qol', query: 'HIDE_QUICK_TASK' }));
+  click('.column.today .quick-add-trigger');
+  const quick = '.quick-add[data-status="today"]';
+  input(quick + ' input', '   ');
+  submit(quick);
+  await until(() => document.querySelector('#quick-add-error-today') && !getSnapshot().busy, 'quick add rejects whitespace');
+  assert(node<HTMLInputElement>(quick + ' input').value === '   ', 'quick add retains invalid draft');
+  input(quick + ' input', 'QOL_QUICK');
+  submit(quick); submit(quick);
+  await until(() => !getSnapshot().busy && getSnapshot().board!.tasks.some(t => t.title === 'QOL_QUICK'), 'quick add saved');
+  await until(() => document.activeElement === node(quick + ' input'), 'quick add refocused');
+  assert(getSnapshot().board!.tasks.filter(t => t.title === 'QOL_QUICK').length === 1 && node<HTMLInputElement>(quick + ' input').value === '', 'rapid quick submit creates once and clears input');
+  const quickTask = getSnapshot().board!.tasks.find(t => t.title === 'QOL_QUICK')!;
+  assert(quickTask.category === 'work' && quickTask.tags.includes('qol') && !menuTask('QOL_QUICK') && node('#toast').textContent?.includes('Task added'), 'quick add inherits filters and confirms a search-hidden save');
+  flushSync(() => navigate({ category: 'all', tag: '', query: '' }));
+  input(quick + ' input', 'Discard this draft');
+  key(node(quick + ' input'), 'Escape');
+  assert(!document.querySelector(quick), 'Escape closes quick add');
+  click('.column.today .quick-add-trigger');
+  assert(node<HTMLInputElement>(quick + ' input').value === '', 'Escape discards quick draft');
+  key(node(quick + ' input'), 'Escape');
+  click('#focus-today');
+  key(document.body, 'n');
+  input('#task-title', 'QOL_SHORTCUT');
+  click('#save-task');
+  await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'focus shortcut saved');
+  assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_SHORTCUT')?.status === 'today', 'N defaults to Today while focused');
+  click('[data-view="archive"]');
+  assert(!getSnapshot().route.focus && !location.hash.includes('focus'), 'leaving Board clears focus');
+  history.back();
+  await until(() => getSnapshot().route.focus === 'today', 'Back restores focus');
+  assert(document.querySelectorAll('.column').length === 1, 'history restores focused board');
+  click('#focus-today');
+  for (const title of ['QOL_FOCUS', 'QOL_COPY', 'QOL_REOPEN', 'QOL_QUICK', 'QOL_SHORTCUT']) {
+    action(title, 'Delete task');
+    await until(() => !menuTask(title) && !getSnapshot().busy, 'clean QoL fixture');
+  }
+  click('.column[data-status="later"] .quick-add-trigger');
   for (const title of ["MENU_A", "MENU_B"]) {
     input('.column[data-status="later"] .quick-add input', title);
     submit('.column[data-status="later"] .quick-add');
@@ -367,6 +448,7 @@ try {
   );
   click('[data-view="board"]');
   const before = getSnapshot().board!.tasks.length;
+  click('.column[data-status="today"] .quick-add-trigger');
   input('[aria-label="Quick add task to Today"]', "Inherited tag task");
   submit('.quick-add[data-status="today"]');
   await until(
@@ -563,6 +645,7 @@ try {
   await syncAfterCurrent();
   offline = true;
   click('[data-view="board"]');
+  click('.column[data-status="today"] .quick-add-trigger');
   input('[aria-label="Quick add task to Today"]', "React offline task");
   submit('.quick-add[data-status="today"]');
   await until(
@@ -589,6 +672,7 @@ try {
       !requests.join().includes(password),
     "React requests and workspace storage contain no test plaintext or password",
   );
+  input('[aria-label="Quick add task to Today"]', "LOCK_QUICK_DRAFT");
   click("#new-task");
   input("#task-title", "LOCK_PRIVATE_DRAFT");
   flushSync(() => clearMemory());
@@ -604,6 +688,7 @@ try {
   );
   window.dispatchEvent(new Event("taskpath-unlocked"));
   await until(() => document.querySelector("#main"), "remembered UI");
+  assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
   menu("Lock");
   await until(() => document.querySelector("#unlock-form"), "explicit lock");
   assert(!(await rememberedKey()), "explicit Lock removes remembered key");
@@ -646,6 +731,7 @@ try {
     () => !document.querySelector("#password-dialog"),
     "password changed",
   );
+  assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
   menu("Lock");
   await until(() => document.querySelector("#unlock-password"), "relogin");
   input("#unlock-password", "Changed React password 2026");
