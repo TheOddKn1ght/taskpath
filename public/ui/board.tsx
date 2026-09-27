@@ -67,12 +67,8 @@ export function Board({
     (t) =>
       !!t.archivedAt === (route.view === "archive") &&
       (route.category === "all" || t.category === route.category) &&
-      (!route.tag || t.tags.includes(route.tag)) &&
-      (!route.query ||
-        `${t.title} ${t.notes} ${t.tags.join(" ")}`
-          .normalize("NFC")
-          .toLocaleLowerCase()
-          .includes(route.query.normalize("NFC").toLocaleLowerCase())),
+      (!route.tag || t.tags.includes(route.tag)),
+
   );
   const run = (fn: () => Promise<unknown>) =>
     void fn().catch((e) => actions.notify(message(e)));
@@ -450,7 +446,7 @@ export function Board({
                   .map((t, i) => card(t, i, filtered.length))
               ) : (
                 <p className="archive-empty">
-                  {route.query || route.tag || route.category !== "all"
+                  {route.tag || route.category !== "all"
                     ? "No matching archived tasks."
                     : "No archived tasks yet. Archive a task from its menu."}
                 </p>
@@ -482,7 +478,7 @@ export function Board({
                         ? board.tasks.some((t) => !t.archivedAt && t.status === "today")
                           ? "No Today tasks match your filters."
                           : "No tasks for Today. Add one below or move a task from the full board."
-                        : route.query || route.tag || route.category !== "all"
+                        : route.tag || route.category !== "all"
                           ? "No matching tasks"
                           : "Drop tasks here"}
                     </div>

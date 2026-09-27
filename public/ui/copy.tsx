@@ -99,9 +99,10 @@ export function GuideCopy() {
         At midnight, unfinished Today tasks return to This Week. On Monday,
         unfinished weekly tasks return to Later. Done stays done.
       </p>
+      <p>Search titles, notes, and tags across active and archived tasks. Use filters or quoted phrases to narrow results. Searches stay in memory until you lock or reload.</p>
       <p>
-        Keyboard: <kbd>N</kbd> creates a task, <kbd>/</kbd> focuses search,
-        and <kbd>Enter</kbd> opens a focused task. <kbd>Escape</kbd> closes
+        Keyboard: <kbd>N</kbd> creates a task, <kbd>/</kbd> opens task search,
+        arrow keys select search results, and <kbd>Enter</kbd> opens a task. <kbd>Escape</kbd> closes
         the current dialog or menu. Shortcuts stay inactive while typing.
       </p>
     </div>

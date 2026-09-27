@@ -8,6 +8,7 @@ const originalFetch = window.fetch.bind(window),
 let offline = false,
   configGate: Promise<void> | null = null;
 window.fetch = async (input, init) => {
+  requests.push(String(input));
   if (init?.body) requests.push(String(init.body));
   if (offline && String(input).startsWith("/api/"))
     throw new TypeError("Offline fixture");
@@ -145,7 +146,7 @@ try {
   key(node(".app-menu-popover"),"Tab");
   assert(!document.querySelector(".app-menu-popover") && document.activeElement===workspaceTrigger,"workspace Tab closes and restores focus");
   click(".app-menu");
-  flushSync(()=>node("#search").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true})));
+  flushSync(()=>node("#open-search").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true})));
   assert(!document.querySelector(".app-menu-popover"),"workspace outside pointer dismisses the menu");
   key(document.body, "/");
   assert(document.activeElement === node("#search"), "slash focuses search");
@@ -155,6 +156,7 @@ try {
   key(document.body, "n", { metaKey: true });
   key(document.body, "n", { isComposing: true });
   assert(!document.querySelector("#task-dialog"), "shortcuts preserve browser modifiers and composition");
+  textButton("Close Search tasks");
   key(document.body, "N");
   assert(!!document.querySelector("#task-dialog"), "N opens a new task");
   key(node("#task-title"), "/");
@@ -299,7 +301,7 @@ try {
   key(node(".task-menu-popover button"), "Tab");
   assert(!document.querySelector(".task-menu-popover") && document.activeElement === taskTrigger, "Tab dismisses task actions and returns focus to their trigger");
   click(".task-card .task-menu-trigger");
-  flushSync(() => node("#search").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  flushSync(() => node("#open-search").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
   assert(!document.querySelector(".task-menu-popover"), "outside pointer closes the task menu");
   click(".task-card .task-menu-trigger");
   key(node(".task-menu-popover button"), "End");
@@ -345,9 +347,9 @@ try {
   flushSync(() => menuTask('QOL_COPY').querySelector<HTMLButtonElement>('.complete-button')!.click());
   await until(() => !menuTask('QOL_COPY') && !getSnapshot().busy, 'completion leaves focus');
   assert(getSnapshot().board!.tasks.find(t => t.id === copy.id)?.status === 'done', 'completion leaves focus task in Done');
-  input('#search', 'NO_QOL_MATCH');
+  flushSync(() => navigate({tag:'no-qol-match'}));
   assert(node('.empty-state').textContent?.includes('match your filters'), 'focus distinguishes filtered empty state');
-  input('#search', '');
+  flushSync(() => navigate({tag:''}));
   click('#focus-today');
   assert(!document.querySelector('.column.done .quick-add-trigger'), 'Done has no quick add');
   flushSync(() => menuTask('QOL_COPY').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
@@ -356,7 +358,7 @@ try {
   click('#save-task');
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'Done copy saved');
   assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_REOPEN')?.status === 'later', 'Done context-menu duplicate defaults to Later');
-  flushSync(() => navigate({ category: 'work', tag: 'qol', query: 'HIDE_QUICK_TASK' }));
+  flushSync(() => navigate({ category: 'work', tag: 'qol' }));
   click('.column.today .quick-add-trigger');
   const quick = '.quick-add[data-status="today"]';
   input(quick + ' input', '   ');
@@ -369,7 +371,7 @@ try {
   await until(() => document.activeElement === node(quick + ' input'), 'quick add refocused');
   assert(getSnapshot().board!.tasks.filter(t => t.title === 'QOL_QUICK').length === 1 && node<HTMLInputElement>(quick + ' input').value === '', 'rapid quick submit creates once and clears input');
   const quickTask = getSnapshot().board!.tasks.find(t => t.title === 'QOL_QUICK')!;
-  assert(quickTask.category === 'work' && quickTask.tags.includes('qol') && !menuTask('QOL_QUICK') && node('#toast').textContent?.includes('Task added'), 'quick add inherits filters and confirms a search-hidden save');
+  assert(quickTask.category === 'work' && quickTask.tags.includes('qol') && !!menuTask('QOL_QUICK'), 'quick add inherits filters');
   flushSync(() => navigate({ category: 'all', tag: '', query: '' }));
   input(quick + ' input', 'Discard this draft');
   key(node(quick + ' input'), 'Escape');
@@ -415,12 +417,14 @@ try {
     await until(() => !menuTask(title), "menu delete");
   }
   assert(true, "Delete menu action removes tasks after pointer blur");
+  click("#open-search");
   input("#search", "PRIVATE_EDIT");
   assert(
-    location.hash.includes("q=PRIVATE_EDIT") &&
+    !location.hash.includes("PRIVATE_EDIT") &&
       !location.search.includes("PRIVATE_EDIT"),
-    "search is stored only in fragment",
+    "search is absent from URL",
   );
+  textButton("Close Search tasks");
   textButton("Filter by tag home");
   assert(getSnapshot().route.tag === "home", "card tag updates active filter");
   const wasCollapsed =
@@ -436,7 +440,7 @@ try {
   history.back();
   await until(() => getSnapshot().route.view === "board", "Back");
   assert(
-    getSnapshot().route.query === "PRIVATE_EDIT" &&
+    getSnapshot().route.query === "" &&
       getSnapshot().route.tag === "home",
     "Back restores view and combined filters",
   );
@@ -661,6 +665,79 @@ try {
     JSON.stringify((await localState()).pending) === pending,
     "React offline edits preserve immutable retry ciphertext",
   );
+  // Search runs entirely against the unlocked offline workspace.
+  const searchIds: string[] = [];
+  for (let i = 0; i < 55; i++) {
+    const result = await offlineRequest('/api/tasks', 'POST', { title: `Search calendar ${String(i).padStart(2,'0')}`, notes: 'Secret meeting notes', tags: ['search-fixture'], category: 'work', status: 'later' });
+    searchIds.push(result.task.id);
+  }
+  await offlineRequest(`/api/tasks/${searchIds[0]}/archive`, 'POST');
+  await refresh();
+  flushSync(() => navigate({category:'personal',tag:'missing',focus:'today'}));
+  click('#open-search');
+  input('#search', 'calnedar');
+  assert(document.querySelectorAll('.task-search-result').length === 50 && node('.task-search-tools').textContent?.includes('55 results'), 'offline fuzzy search covers active and archived tasks independently of Board filters');
+  assert(!!document.querySelector('.task-search-result mark'), 'search highlights matching text safely');
+  await Promise.all(node('#task-search-dialog').getAnimations().map(animation => animation.finished.catch(() => {})));
+  const searchRect = node('#task-search-dialog').getBoundingClientRect();
+  assert(searchRect.left >= 0 && searchRect.right <= innerWidth + 1 && searchRect.top >= 0 && searchRect.bottom <= innerHeight + 1 && node('#task-search-dialog').scrollWidth <= searchRect.width, 'search dialog fits desktop/mobile viewport');
+  if (innerWidth <= 760) assert(Math.abs(searchRect.width-innerWidth)<2 && Math.abs(searchRect.height-innerHeight)<2, 'mobile search fills viewport');
+  const savedTheme = document.documentElement.dataset.theme;
+  for (const theme of ['light','dark','high-contrast-light','high-contrast-dark']) {
+    document.documentElement.dataset.theme = theme;
+    const mark = getComputedStyle(node('.task-search-result mark'));
+    assert(mark.color !== mark.backgroundColor && getComputedStyle(node('.task-search-result')).color !== getComputedStyle(node('.task-search-result')).backgroundColor, 'search text and highlights visible in '+theme);
+  }
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme; else delete document.documentElement.dataset.theme;
+
+  textButton('Show more');
+  assert(document.querySelectorAll('.task-search-result').length === 55, 'Show more reveals remaining matches');
+  const scrollArea = node('.task-search-scroll');
+  scrollArea.scrollTop = 200;
+  scrollArea.dispatchEvent(new Event('scroll', {bubbles:true}));
+  const savedScroll = scrollArea.scrollTop;
+  click('#search-result-' + searchIds[54]);
+  await until(() => !!document.querySelector('#task-dialog'), 'search opens active editor');
+  input('#task-notes', 'Live notes updated from search');
+  click('#save-task');
+  await until(() => !!document.querySelector('#task-search-dialog') && !getSnapshot().busy, 'save returns to search');
+  assert(node<HTMLInputElement>('#search').value === 'calnedar' && node('.task-search-scroll').scrollTop === savedScroll && document.querySelectorAll('.task-search-result').length === 55, 'editor return preserves query, pagination, and scroll');
+  textButton('Close Search tasks');
+  click('#open-search');
+  assert(node('.task-search-scroll').scrollTop === savedScroll, 'closing and reopening preserves search scroll');
+  textButton('Filters');
+  click('#search-filter-scope');
+  flushSync(() => node('dialog.picker-surface').dispatchEvent(new Event('cancel',{cancelable:true})));
+  assert(!!document.querySelector('#task-search-dialog') && !document.querySelector('dialog.picker-surface'), 'Escape dismisses only the top picker');
+  click('#search-filter-scope');
+  textButton('Archived', node('dialog.picker-surface'));
+  assert(document.querySelectorAll('.task-search-result').length === 1 && node('.task-search-result').textContent?.includes('Archived'), 'archive scope and badge');
+  key(node('#search'),'Enter',{isComposing:true});
+  assert(!document.querySelector('#archive-details-dialog'), 'composition does not open search result');
+  key(node('#search'),'ArrowDown'); key(node('#search'),'Enter');
+  assert(!!document.querySelector('#archive-details-dialog'), 'keyboard opens archived details');
+  textButton('Close Archived task');
+  assert(node('#search-filter-scope').textContent === 'Archived', 'details return preserves filters');
+  textButton('Remove filter Archived');
+  assert(node('.task-search-tools').textContent?.includes('55 results'), 'filter chip removes its filter');
+  textButton('Clear all');
+  input('#search','Live notes updated');
+  await until(() => document.querySelectorAll('.task-search-result').length === 1, 'edited note search');
+  assert(node('.task-search-result').textContent?.includes('Live notes updated'), 'results include newly edited unsynced notes');
+  input('#search','SEARCH_ONLY_PRIVATE_927');
+  assert(node('.task-search-empty').textContent?.includes('No matching tasks'), 'search distinguishes no matches');
+  assert(!location.href.includes('SEARCH_ONLY_PRIVATE_927') && !requests.join().includes('SEARCH_ONLY_PRIVATE_927') && !JSON.stringify(localStorage).includes('SEARCH_ONLY_PRIVATE_927') && !JSON.stringify(sessionStorage).includes('SEARCH_ONLY_PRIVATE_927') && !JSON.stringify(await localState()).includes('SEARCH_ONLY_PRIVATE_927'), 'search text never enters URLs, requests, or browser storage');
+  textButton('Close Search tasks');
+  history.replaceState(null,'','#archive?q=calendar&category=work&tag=search-fixture');
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
+  await until(() => !!document.querySelector('#search'), 'legacy link opens search');
+  assert(node<HTMLInputElement>('#search').value === 'calendar' && node('#search-filter-scope').textContent === 'Archived' && !location.hash.includes('q='), 'legacy query consumed once with scope and filters and removed from URL');
+  textButton('Clear all');
+  input('#search','SEARCH_ONLY_PRIVATE_927');
+  textButton('Close Search tasks');
+  for (const id of searchIds) await offlineRequest(`/api/tasks/${id}`,'DELETE');
+  await refresh();
+  flushSync(() => navigate({view:'board',category:'all',tag:'',focus:undefined}));
   offline = false;
   await syncAfterCurrent();
   await refresh();
@@ -674,6 +751,7 @@ try {
       !requests.join().includes(password),
     "React requests and workspace storage contain no test plaintext or password",
   );
+  if (!document.querySelector('[aria-label="Quick add task to Today"]')) click('.column.today .quick-add-trigger');
   input('[aria-label="Quick add task to Today"]', "LOCK_QUICK_DRAFT");
   click("#new-task");
   input("#task-title", "LOCK_PRIVATE_DRAFT");
@@ -691,6 +769,9 @@ try {
   window.dispatchEvent(new Event("taskpath-unlocked"));
   await until(() => document.querySelector("#main"), "remembered UI");
   assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
+  click("#open-search");
+  assert(node<HTMLInputElement>("#search").value === "" && !node(".task-search-tools").textContent?.includes("Clear all"), "lock clears query and filters");
+  textButton("Close Search tasks");
   menu("Lock");
   await until(() => document.querySelector("#unlock-form"), "explicit lock");
   assert(!(await rememberedKey()), "explicit Lock removes remembered key");
@@ -767,6 +848,9 @@ try {
     !getSnapshot().board!.tasks.some((task) => task.id === taskId),
     "second account opens its own workspace without first-account tasks",
   );
+  click("#open-search");
+  assert(node<HTMLInputElement>("#search").value === "", "account switch clears search state");
+  textButton("Close Search tasks");
   cleanup();
   flushSync(() => root.unmount());
   output.textContent += "\nALL " + results.length + " REACT CHECKS PASSED";

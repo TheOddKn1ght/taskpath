@@ -1,0 +1,45 @@
+#open-search { text-align: left; min-height: 44px; }
+#open-search:focus-visible { outline: none; }
+#open-search span { flex: 1; }
+#open-search kbd { font: inherit; border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+#open-search[hidden] { display: none; }
+#task-search-dialog[open] { display: flex; flex-direction: column; width: 720px; height: min(760px, 90dvh); max-height: 90dvh; overflow: hidden; }
+#task-search-dialog .dialog-top { flex: none; margin-bottom: 12px; }
+.task-search-controls { flex: none; max-height: 55%; overflow-y: auto; padding: 4px; }
+.task-search-field { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; background: var(--surface); }
+.task-search-field > svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.task-search-field input { flex: 1; min-width: 0; min-height: 44px; padding: 8px 0; border: 0; background: transparent; color: var(--text); font-size: 16px; }
+#task-search-dialog .task-search-field input:focus-visible { outline: none; }
+.task-search-field:focus-within { border-color: var(--focus); }
+.task-search-tools { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 12px; }
+.task-search-tools > span { flex: 1; color: var(--muted); }
+.task-search-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.task-search-filters > label { display: grid; gap: 5px; font-size: 12px; }
+.task-search-filters .picker-trigger { min-width: 0; width: 100%; min-height: 44px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px; }
+.task-search-tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; padding: 10px; max-height: 140px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.task-search-tags legend { font-size: 12px; color: var(--muted); }
+.task-search-tags label { display: flex; align-items: center; gap: 6px; font-size: 12px; min-height: 32px; overflow-wrap: anywhere; }
+.task-search-tags input { accent-color: var(--green); }
+.task-search-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.task-search-chips button { display: flex; align-items: center; gap: 6px; }
+.task-search-chips svg { width: 12px; height: 12px; }
+.task-search-hint { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 10px 0 0; }
+.task-search-scroll { overflow-anchor: none; min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 5px; margin-top: 12px; }
+.task-search-result { display: flex; flex-direction: column; gap: 7px; width: 100%; text-align: left; padding: 14px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow-wrap: anywhere; }
+.task-search-result:hover,.task-search-result[aria-selected="true"] { background: var(--hover); border-color: var(--focus); }
+.task-search-result strong { font-size: 14px; }
+.task-search-snippet,.task-search-meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.task-search-result-tags { display: flex; flex-wrap: wrap; gap: 8px; color: var(--accent); font-size: 11px; }
+.task-search-result mark { color: var(--on-green); background: var(--green); border-radius: 2px; }
+.task-search-empty { text-align: center; color: var(--muted); padding: 32px 12px; }
+.search-more { display: block; margin: 12px auto; }
+@media(max-width:760px) {
+  #task-search-dialog[open] { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; padding: max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom)); }
+  .task-search-filters { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .task-search-filters .picker-trigger { font-size: 16px; }
+  .task-search-chips button,.task-search-tags label { min-height: 44px; }
+  #open-search { font-size: 16px; }
+  #open-search kbd { display: none; }
+}
+
+.search-archive-badge { display: inline-block; margin-left: 8px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; color: var(--text); }

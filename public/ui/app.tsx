@@ -1,3 +1,5 @@
+import { TaskSearch } from "./search";
+import { emptySearch } from "../search.js";
 import { WorkspaceNav } from "./workspace-nav";
 import { WorkspaceHeader } from "./workspace-header";
 import { ReminderPanel } from "./reminders";
@@ -128,6 +130,14 @@ function Workspace({
       }
     }),
     [, render] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState(emptySearch);
+  useEffect(() => {
+    if (!route.query) return;
+    setSearch({ ...emptySearch(), query: route.query, scope: route.view === "archive" ? "archived" : "active", category: route.category, tags: route.tag ? [route.tag] : [] });
+    setSearchOpen(true);
+    navigate({ query: "" }, true);
+  }, [route.query, route.view, route.category, route.tag]);
   const install = useSyncExternalStore(subscribeInstall, getInstallPrompt);
   const alive = useRef(true),
     timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
@@ -164,7 +174,8 @@ function Workspace({
         setEditor({ task: null, status: getSnapshot().route.focus === "today" ? "today" : "later" });
       } else if (event.key === "/") {
         event.preventDefault();
-        document.querySelector<HTMLInputElement>("#search")?.focus();
+        if (getSnapshot().route.view !== "files") setSearchOpen(true);
+        else document.querySelector<HTMLInputElement>('[aria-label="Search files"]')?.focus();
       }
     };
     window.addEventListener("keydown", shortcuts);
@@ -557,7 +568,7 @@ function Workspace({
           try { localStorage.setItem("taskpath-sidebar-collapsed",String(!collapsed)); } catch {}
         }} />
         <div className="workspace-content">
-          <WorkspaceHeader route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:route.focus === "today" ? "today" : "later"})} options={options} />
+          <WorkspaceHeader openSearch={() => setSearchOpen(true)} route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:route.focus === "today" ? "today" : "later"})} options={options} />
           {state.error && (
             <div id="error-banner" className="error-banner" role="alert">
               <span>{state.error}</span>
@@ -627,6 +638,9 @@ function Workspace({
           </footer>
         </div>
       </main>
+      {board && <TaskSearch board={board} state={search} change={setSearch}
+        close={() => setSearchOpen(false)} openTask={edit} suspended={!searchOpen || !!editor || !!archived}
+        syncComplete={state.syncComplete} />}
       {editor && board && (
         <Editor
           key={editor.task?.id || "new"}

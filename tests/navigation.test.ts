@@ -6,7 +6,7 @@ test("all views round-trip through refresh and history fragments", () => {
     expect(readRoute(routeHash(route))).toEqual(route);
   }
 });
-test("Unicode and reserved search text stay inside the fragment", async () => {
+test("Legacy search can be read but is never serialized", async () => {
   const route = {
     view: "archive" as const,
     query:
@@ -19,7 +19,8 @@ test("Unicode and reserved search text stay inside the fragment", async () => {
     "https://test.example",
   );
   expect(url.search).toBe("?source=saved");
-  expect(readRoute(url.hash)).toEqual(route);
+  expect(readRoute(url.hash)).toEqual({ ...route, query: "" });
+  expect(readRoute("#archive?q=" + encodeURIComponent(route.query)).query).toBe(route.query);
   expect(new URLSearchParams(url.hash.slice(1)).has("setup")).toBe(false);
 });
 test("invalid links fall back and tags normalize", () => {
@@ -31,7 +32,7 @@ test("invalid links fall back and tags normalize", () => {
 test("view changes preserve filters while clearing filters restores the bare anchor", () => {
   const route = readRoute("#archive?q=first&category=work");
   expect(routeHash({ ...route, view: "board" })).toBe(
-    "#board?q=first&category=work",
+    "#board?category=work",
   );
   expect(routeHash({ ...emptyRoute, view: "archive" })).toBe("#archive");
   expect(routeHash(emptyRoute)).toBe("");
@@ -71,7 +72,7 @@ test("fragment search is absent from actual HTTP requests", async () => {
 
 test("Today focus round-trips with filters and is restricted to Board", () => {
   const route = { ...emptyRoute, focus: "today" as const, query: "coffee", category: "work" as const, tag: "home" };
-  expect(readRoute(routeHash(route))).toEqual(route);
+  expect(readRoute(routeHash(route))).toEqual({ ...route, query: "" });
   expect(readRoute("#board?focus=unknown")).toEqual(emptyRoute);
   expect(readRoute("#archive?focus=today")).toEqual({ ...emptyRoute, view: "archive" });
   expect(readRoute("#files?focus=today")).toEqual({ ...emptyRoute, view: "files" });

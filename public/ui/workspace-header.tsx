@@ -4,8 +4,8 @@ import { ThemeIcon } from './theme';
 import { Select } from './pickers';
 import { navigate } from './store';
 import { WorkspaceMenu, type WorkspaceOption } from './workspace-menu';
-export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,options}:{
-  route:Route;tags:string[];greeting:string;week:string;theme:()=>void;createTask:()=>void;options:WorkspaceOption[];
+export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,options,openSearch}:{
+  openSearch:()=>void;route:Route;tags:string[];greeting:string;week:string;theme:()=>void;createTask:()=>void;options:WorkspaceOption[];
 }) { return (
     <header className="app-header">
       <div className="app-heading">
@@ -20,17 +20,9 @@ export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,optio
         </span>
       </div>
       <div className="toolbar">
-        <label className="search">
-          <Icon name="search" />
-          <input
-            id="search"
-            type="search"
-            aria-label="Search tasks"
-            placeholder="Search"
-            value={route.query}
-            onChange={(e) => navigate({ query: e.target.value }, true)}
-          />
-        </label>
+        <button id="open-search" type="button" className="search" aria-label="Search all tasks" onClick={openSearch} hidden={route.view === "files"}>
+          <Icon name="search" /><span>Search tasks…</span><kbd>/</kbd>
+        </button>
         <div className="task-filters">
         <Select
           id="category-filter"

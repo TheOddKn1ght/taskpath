@@ -28,11 +28,11 @@ Drag tasks between columns or use a card's move control or right-click menu. At 
 
 An unfinished task with a reminder today appears in Today immediately, even if its reminder time is hours away. Change or clear the reminder before moving it to Later or This Week. Clearing it leaves the task in Today. Dismissing the notification also leaves it there. Completion, archiving and deletion remain available. Notifications still wait until the reminder time. Other reminder dates and due dates do not choose a column.
 
-Tasks support up to 10 tags, each up to 32 Unicode characters. Type a name and press Enter, or choose an existing tag. Names are trimmed, normalized, lowercased and deduplicated. Combine text search, category and one tag filter. New tasks inherit the selected tag.
+Tasks support up to 10 tags, each up to 32 Unicode characters. Type a name and press Enter, or choose an existing tag. Names are trimmed, normalized, lowercased and deduplicated. Filter the board by category and one tag. Search across active and archived tasks through the header search button or `/`. New tasks inherit the selected tag.
 
 Date and time pickers keep changes as a draft until you save the task. Reminders use device-local time. Choose both an hour and a minute, or type `HH:mm`. Escape closes the top picker. Due dates use `YYYY-MM-DD`.
 
-Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Views and filters survive refresh through the URL fragment, such as `#archive?q=trip&category=personal&tag=travel`. Search stays local and never reaches the server, but remains visible in browser history and copied links.
+Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Views and board filters survive refresh through the URL fragment, such as `#archive?category=personal&tag=travel`. Task search stays local and in memory: queries and search filters are cleared on reload, lock, and account switch. Old links containing `q` open search once and remove the query from the current URL.
 
 The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha Rosé Pine Dawn, Midnight, Plum, Ocean, Sand, Lavender, Ice, Mint, Blush, Paper, Ember, Forest, Graphite, High Contrast Light and High Contrast Dark. The high-contrast pair uses stronger text and borders, opaque menus, always-visible task actions, and thicker keyboard focus outlines. Follow system lets you choose separate themes for light and dark mode, and switches between them with your device’s appearance. It defaults to Light and Dark. These choices stay saved when you temporarily select a fixed theme. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
 
@@ -40,7 +40,15 @@ Use **Add task** beneath Today, This Week, or Later for quick entry. Enter saves
 
 Choose **Duplicate task** from an active task’s menu to review a new copy before saving. It copies text, category, and tags, clears dates and reminders, and keeps the column unless the original is Done, in which case it defaults to Later. Cancel leaves everything unchanged.
 
-**Focus Today** shows only Today while keeping your search and filters. It survives refresh through `#board?focus=today`; leaving Board clears focus. New task and `N` default to Today while focused. Completed tasks disappear from this view and remain in Done on the full board.
+**Focus Today** shows only Today while keeping your category and tag filters. It survives refresh through `#board?focus=today`; leaving Board clears focus. New task and `N` default to Today while focused. Completed tasks disappear from this view and remain in Done on the full board.
+
+## Search tasks
+
+Open **Search tasks** or press `/` from Board or Archive. Search titles, notes, and tags across active and archived tasks, including unsynced changes. Words can appear in any order; use straight double quotes for an exact phrase. Longer words tolerate minor typos. Exact matches rank ahead of similar matches, with titles preferred over tags and notes. Empty searches show recently updated tasks.
+
+Use **Filters** for active/archived scope, column, category, multiple tags (all must match), due dates, and reminders. Overdue excludes Done tasks; date filters use the workspace calendar. Has reminder includes dismissed and archived reminders. Search is independent of board filters and Focus Today. Files keeps its own filename search.
+
+Arrow keys select results and Enter opens one. Closing an editor or archived details returns to your search. Clear individual filter chips or choose Clear all. Results show 50 at a time with Show more. While sync is incomplete, results cover only downloaded tasks and expand as more arrive. No search history is saved or sent to the server.
 
 ## Archive and export
 

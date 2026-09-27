@@ -30,6 +30,7 @@ interface Snapshot {
   error: string;
   connection: string;
   authRequired: boolean;
+  syncComplete: boolean;
 }
 let snapshot: Snapshot = {
   phase: "loading",
@@ -40,6 +41,7 @@ let snapshot: Snapshot = {
   error: "",
   connection: "Connecting…",
   authRequired: false,
+  syncComplete: false,
 };
 const listeners = new Set<() => void>();
 export const subscribe = (fn: () => void) => {
@@ -89,6 +91,7 @@ export async function refresh() {
       board,
       error: local.error || "",
       authRequired: !!local.authRequired,
+      syncComplete: !!local.syncComplete,
       connection: local.authRequired
         ? `Sign in to sync · ${local.pending.length} pending`
         : local.error
@@ -178,6 +181,7 @@ export function startRuntime(immediate: (fn: () => void) => void) {
         error: "",
         connection: "",
         authRequired: false,
+        syncComplete: false,
       }),
     );
   };
