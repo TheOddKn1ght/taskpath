@@ -15,8 +15,14 @@ export const themes = [
   { id: "sand", name: "Sand" },
   { id: "lavender", name: "Lavender" },
   { id: "ice", name: "Ice" },
+  { id: "mint", name: "Mint" },
+  { id: "blush", name: "Blush" },
+  { id: "paper", name: "Paper" },
+  { id: "ember", name: "Ember" },
+  { id: "forest", name: "Forest" },
+  { id: "graphite", name: "Graphite" },
 ];
-const lightIds = new Set(["light", "gruvbox-light", "rose-pine", "sand", "lavender", "ice"]);
+const lightIds = new Set(["light", "gruvbox-light", "rose-pine", "sand", "lavender", "ice", "mint", "blush", "paper"]);
 const choicesFor = (mode: "light" | "dark") => themes.filter(t => t.id !== "system" && lightIds.has(t.id) === (mode === "light"));
 function readSystemTheme(mode: "light" | "dark") {
   try {

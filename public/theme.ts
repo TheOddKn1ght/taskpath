@@ -16,8 +16,14 @@
     { id: 'sand', name: 'Sand', color: '#faf3e8' },
     { id: 'lavender', name: 'Lavender', color: '#f6f2fc' },
     { id: 'ice', name: 'Ice', color: '#f1f7fc' },
+    { id: 'mint', name: 'Mint', color: '#f2faf5' },
+    { id: 'blush', name: 'Blush', color: '#fff4f4' },
+    { id: 'paper', name: 'Paper', color: '#f7f6f2' },
+    { id: 'ember', name: 'Ember', color: '#241915' },
+    { id: 'forest', name: 'Forest', color: '#102018' },
+    { id: 'graphite', name: 'Graphite', color: '#18191c' },
   ];
-  const lightIds = new Set(['light', 'gruvbox-light', 'rose-pine', 'sand', 'lavender', 'ice']);
+  const lightIds = new Set(['light', 'gruvbox-light', 'rose-pine', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper']);
   const modeTheme = (mode: 'light' | 'dark', value: string | null) =>
     themes.some(theme => theme.id === value) && lightIds.has(value!) === (mode === 'light') ? value! : mode;
   const pair = { light: 'light', dark: 'dark' };
