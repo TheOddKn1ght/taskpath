@@ -497,19 +497,20 @@ function Workspace({
     : "This week";
   const options = [
     {
+      icon: enabled ? "bell-off" : "bell",
       label: enabled
         ? "Turn off desktop notifications"
         : "Enable desktop notifications",
       fn: () => run(toggleNotifications),
     },
-    { label: "Background reminders…", fn: () => setModal("push") },
-    { label: "Import Markdown…", fn: () => setModal("import") },
-    { label: "Export Markdown", fn: () => run(() => download(true)) },
-    { label: "Export JSON", fn: () => run(() => download(false)) },
+    { icon: "bell", label: "Background reminders…", fn: () => setModal("push") },
+    { icon: "upload", label: "Import Markdown…", fn: () => setModal("import") },
+    { icon: "download", label: "Export Markdown", fn: () => run(() => download(true)) },
+    { icon: "download", label: "Export JSON", fn: () => run(() => download(false)) },
     ...(install
       ? [
           {
-            label: "Install Taskpath",
+            icon: "download", label: "Install Taskpath",
             fn: () =>
               run(async () => {
                 await installApp();
@@ -517,8 +518,9 @@ function Workspace({
           },
         ]
       : []),
-    { label: "How it works", fn: () => setModal("guide") },
+    { icon: "help", label: "How it works", fn: () => setModal("guide") },
     {
+      icon: "archive",
       label: `Archive all completed (${completed})`,
       disabled: !completed,
       fn: () =>
@@ -528,10 +530,10 @@ function Workspace({
           ),
         ),
     },
-    { label: "Nickname…", fn: () => setModal("nickname") },
-    { label: "Switch account", fn: () => run(changeAccount) },
-    { label: "Change password…", fn: () => setModal("password") },
-    { label: "Lock", fn: () => run(lock) },
+    { icon: "user", label: "Nickname…", fn: () => setModal("nickname") },
+    { icon: "switch", label: "Switch account", fn: () => run(changeAccount) },
+    { icon: "key", label: "Change password…", fn: () => setModal("password") },
+    { icon: "lock", label: "Lock", fn: () => run(lock) },
   ];
   return (
     <>

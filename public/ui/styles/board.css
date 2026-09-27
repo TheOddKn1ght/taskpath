@@ -578,3 +578,9 @@
 
 .task-filters { display: contents; }
 #focus-today svg { width: 16px; height: 16px; flex: none; }
+
+.menu-content button > svg,.context-menu button > svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}

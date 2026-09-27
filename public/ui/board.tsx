@@ -373,27 +373,28 @@ export function Board({
             )}
             <TaskMenu title={t.title}>
                 <button type="button" role="menuitem" onClick={() => actions.edit(t)}>
+                  <Icon name={archived ? "info" : "edit"} />
                   {archived ? "View details" : "Edit task"}
                 </button>
                 {!archived && (
                   <>
-                    <button type="button" role="menuitem" onClick={() => actions.duplicate(t)}>Duplicate task</button>
+                    <button type="button" role="menuitem" onClick={() => actions.duplicate(t)}><Icon name="copy" />Duplicate task</button>
                     <button
                       type="button" role="menuitem"
                       disabled={index === 0}
                       onClick={() => reordered(t, -1)}
                     >
-                      Move up
+                      <Icon name="up" />Move up
                     </button>
                     <button
                       type="button" role="menuitem"
                       disabled={index === total - 1}
                       onClick={() => reordered(t, 1)}
                     >
-                      Move down
+                      <Icon name="down" />Move down
                     </button>
                     <button type="button" role="menuitem" onClick={() => run(() => actions.archive(t))}>
-                      Archive task
+                      <Icon name="archive" />Archive task
                     </button>
                   </>
                 )}
@@ -402,7 +403,7 @@ export function Board({
                   className="danger"
                   onClick={() => run(() => actions.remove(t))}
                 >
-                  Delete task
+                  <Icon name="trash" />Delete task
                 </button>
             </TaskMenu>
           </div>
@@ -532,13 +533,14 @@ export function Board({
         >
           {[
             {
+              icon: context.task.archivedAt ? "info" : "edit",
               label: context.task.archivedAt ? "View details" : "Edit task",
               fn: () => actions.edit(context.task),
             },
             ...(context.task.archivedAt
               ? [
                   {
-                    label: "Restore task",
+                    icon: "restore", label: "Restore task",
                     fn: () =>
                       run(() =>
                         mutate(
@@ -549,8 +551,9 @@ export function Board({
                   },
                 ]
               : [
-                  { label: "Duplicate task", fn: () => actions.duplicate(context.task) },
+                  { icon: "copy", label: "Duplicate task", fn: () => actions.duplicate(context.task) },
                   {
+                    icon: context.task.status === "done" ? "restore" : "check-circle",
                     label:
                       context.task.status === "done"
                         ? "Reopen in Today"
@@ -566,18 +569,19 @@ export function Board({
                   ...Object.entries(columns)
                     .filter(([s]) => s !== context.task.status && s !== "done")
                     .map(([s, label]) => ({
+                      icon: s === "today" ? "sun" : s === "week" ? "calendar" : "inbox",
                       label: "Move to " + label,
                       fn: () => run(() => move(context.task, s as Status)),
                     })),
-                  { label: "Move up", fn: () => reordered(context.task, -1) },
-                  { label: "Move down", fn: () => reordered(context.task, 1) },
+                  { icon: "up", label: "Move up", fn: () => reordered(context.task, -1) },
+                  { icon: "down", label: "Move down", fn: () => reordered(context.task, 1) },
                   {
-                    label: "Archive task",
+                    icon: "archive", label: "Archive task",
                     fn: () => run(() => actions.archive(context.task)),
                   },
                 ]),
             {
-              label: "Delete task",
+              icon: "trash", label: "Delete task",
               fn: () => run(() => actions.remove(context.task)),
             },
           ].map((item) => (
@@ -589,6 +593,7 @@ export function Board({
                 setContext(null);
               }}
             >
+              <Icon name={item.icon} />
               {item.label}
             </button>
           ))}
