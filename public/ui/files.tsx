@@ -9,6 +9,8 @@ import {
   syncFiles,
 } from "../file-client.js";
 import { isUnlocked } from "../offline.js";
+import { Icon } from "./icons";
+import { ActionMenu } from "./action-menu";
 import { Dialog } from "./dialog";
 import { message } from "./store";
 const size = (bytes: number) =>
@@ -160,7 +162,7 @@ export function Files() {
           disabled={busy}
           onClick={() => input.current?.click()}
         >
-          Upload files
+          <Icon name="upload" /> Upload files
         </button>
         <input
           type="file"
@@ -173,10 +175,11 @@ export function Files() {
           }}
         />
         <button
-          className="secondary-button"
+          className="file-sync-button"
+          disabled={busy}
           onClick={() => void action(syncFiles)}
         >
-          Retry sync
+          <Icon name="sync" /> Retry sync
         </button>
       </header>
       <input
@@ -206,29 +209,30 @@ export function Files() {
             </div>
             <div className="file-actions">
               <button
-                className="secondary-button"
+                className="file-action-button"
                 disabled={busy || !f.cached || "unreadable" in f}
                 onClick={() =>
                   void action(() => open(f.envelope.fileId, false))
                 }
               >
-                Download
+                <Icon name="download" /> Download
               </button>
               {["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
                 f.details.type,
               ) && (
                 <button
-                  className="secondary-button"
+                  className="file-action-button"
                   disabled={busy || !f.cached || "unreadable" in f}
                   onClick={() =>
                     void action(() => open(f.envelope.fileId, true))
                   }
                 >
-                  Preview
+                  <Icon name="eye" /> Preview
                 </button>
               )}
+              <ActionMenu label={"More options for " + f.details.name} triggerClassName="file-menu-trigger" popupClassName="file-menu-popover">
               <button
-                className="secondary-button"
+                type="button" role="menuitem"
                 disabled={busy || "unreadable" in f}
                 onClick={() =>
                   setEdit({
@@ -238,10 +242,10 @@ export function Files() {
                   })
                 }
               >
-                Rename
+                <Icon name="edit" /> Rename
               </button>
               <button
-                className="secondary-button"
+                type="button" role="menuitem" className="danger"
                 disabled={busy}
                 onClick={() =>
                   setEdit({
@@ -251,8 +255,10 @@ export function Files() {
                   })
                 }
               >
+                <Icon name="trash" />
                 {f.pending === "upload" ? "Discard" : "Delete"}
               </button>
+              </ActionMenu>
             </div>
           </article>
         ))}

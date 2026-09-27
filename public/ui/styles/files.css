@@ -1,5 +1,5 @@
 /* The file vault shares the workspace palettes and keeps filenames out of markup. */
-.files-view .toolbar > .search,.files-view .toolbar > [data-picker-for="category-filter"],.files-view .toolbar > [data-picker-for="tag-filter"] {
+.files-view .toolbar > .search,.files-view .task-filters {
   display: none;
 }
 
@@ -139,13 +139,40 @@ body.vault-locked #files-view {
     flex-direction: column;
   }
   .file-actions {
-    display: grid;
-    grid-template-columns: repeat(2,minmax(0,1fr));
+    display: flex;
+    flex-wrap: nowrap;
   }
   .file-actions button {
-    width: 100%;
+    width: auto;
   }
   #files-view > input,.file-action-dialog input {
     font-size: 16px;
   }
+}
+
+.file-actions { align-items: center; }
+.file-action-button,.file-sync-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+}
+.file-action-button:hover,.file-sync-button:hover,.file-menu-trigger:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.file-action-button:disabled,.file-sync-button:disabled { opacity: .4; cursor: default; }
+.files-heading button > svg,.file-actions button > svg { width: 16px; height: 16px; flex: none; }
+.file-actions .file-menu-trigger { width: 44px; flex: none; border: 1px solid var(--line); border-radius: 9px; }
+.file-menu-popover button { min-height: 44px; }
+@media(max-width:760px) {
+  .file-actions .file-menu-trigger { margin-left: auto; }
+  .files-heading .primary-button { flex: 0 1 auto; }
+  .files-heading .file-sync-button { flex: 0 1 auto; margin-left: auto; border-color: transparent; }
 }

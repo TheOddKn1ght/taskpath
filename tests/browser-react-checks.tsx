@@ -585,7 +585,8 @@ try {
     node(".file-row").textContent?.includes("react-private.txt"),
     "React file upload renders encrypted file metadata",
   );
-  textButton("Rename", node(".file-row"));
+  click(".file-row .file-menu-trigger");
+  textButton("Rename", node(".file-menu-popover"));
   input('[aria-label="Filename"]', "renamed-private.txt");
   textButton("Save", node("#file-action"));
   await until(() => !document.querySelector("#file-action"), "file rename");
@@ -601,7 +602,8 @@ try {
     () => node(".file-row").textContent?.includes("Available offline"),
     "file synced",
   );
-  textButton("Delete", node(".file-row"));
+  click(".file-row .file-menu-trigger");
+  textButton("Delete", node(".file-menu-popover"));
   assert(
     node("#file-action").textContent?.includes("cannot be undone"),
     "file deletion requires a permanent-delete confirmation",
