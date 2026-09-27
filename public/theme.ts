@@ -17,13 +17,20 @@
     { id: 'lavender', name: 'Lavender', color: '#f6f2fc' },
     { id: 'ice', name: 'Ice', color: '#f1f7fc' },
   ];
+  const lightIds = new Set(['light', 'gruvbox-light', 'rose-pine', 'sand', 'lavender', 'ice']);
+  const modeTheme = (mode: 'light' | 'dark', value: string | null) =>
+    themes.some(theme => theme.id === value) && lightIds.has(value!) === (mode === 'light') ? value! : mode;
+  const pair = { light: 'light', dark: 'dark' };
+  for (const mode of ['light', 'dark'] as const) {
+    try { pair[mode] = modeTheme(mode, localStorage.getItem(key + '-' + mode)); } catch {}
+  }
   const system = window.matchMedia('(prefers-color-scheme: dark)');
   const valid = (value: string | null) => themes.some(theme => theme.id === value) ? value : null;
   let preference: string | null = null;
   try { preference = valid(localStorage.getItem(key)); } catch { /* Storage may be unavailable. */ }
 
   function apply() {
-    const theme = themes.find(theme => theme.id === (preference || (system.matches ? 'dark' : 'light')))!;
+    const theme = themes.find(theme => theme.id === (preference || pair[system.matches ? 'dark' : 'light']))!;
     const path = `${root}themes/${theme.id}/`;
     document.documentElement.dataset.theme = theme.id;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.color);
@@ -35,9 +42,22 @@
 
   apply();
   window.addEventListener('taskpath-theme', event => { preference = valid((event as CustomEvent<string>).detail); apply(); });
+  window.addEventListener('taskpath-system-themes', event => {
+    const { mode, theme } = (event as CustomEvent<{mode: 'light' | 'dark'; theme: string}>).detail;
+    if (mode !== 'light' && mode !== 'dark') return;
+    pair[mode] = modeTheme(mode, theme);
+    apply();
+  });
   system.addEventListener('change', () => { if (!preference) apply(); });
   window.addEventListener('storage', event => {
+    if (event.key === key + '-light' || event.key === key + '-dark') {
+      const mode = event.key === key + '-light' ? 'light' : 'dark';
+      pair[mode] = modeTheme(mode, event.newValue);
+      apply();
+      return;
+    }
     if (event.key !== key && event.key !== null) return;
+    if (event.key === null) { pair.light = 'light'; pair.dark = 'dark'; }
     preference = valid(event.newValue);
     apply();
   });

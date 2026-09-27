@@ -16,6 +16,15 @@ export const themes = [
   { id: "lavender", name: "Lavender" },
   { id: "ice", name: "Ice" },
 ];
+const lightIds = new Set(["light", "gruvbox-light", "rose-pine", "sand", "lavender", "ice"]);
+const choicesFor = (mode: "light" | "dark") => themes.filter(t => t.id !== "system" && lightIds.has(t.id) === (mode === "light"));
+function readSystemTheme(mode: "light" | "dark") {
+  try {
+    const value = localStorage.getItem("taskpath-theme-" + mode);
+    if (choicesFor(mode).some(t => t.id === value)) return value!;
+  } catch {}
+  return mode;
+}
 export function ThemeDialog({ close }: { close: () => void }) {
   const [selected, setSelected] = useState(() => {
     try {
@@ -24,8 +33,10 @@ export function ThemeDialog({ close }: { close: () => void }) {
       return "system";
     }
   });
+  const [pair, setPair] = useState(() => ({ light: readSystemTheme("light"), dark: readSystemTheme("dark") }));
   useEffect(() => {
     const update = () => {
+      setPair({ light: readSystemTheme("light"), dark: readSystemTheme("dark") });
       try {
         setSelected(localStorage.getItem("taskpath-theme") || "system");
       } catch {}
@@ -35,6 +46,29 @@ export function ThemeDialog({ close }: { close: () => void }) {
   }, []);
   return (
     <Dialog id="theme-dialog" title="Choose theme" onClose={close}>
+      {selected === "system" && (
+        <fieldset className="system-theme-settings">
+          <legend>Follow your device’s appearance</legend>
+          <div className="system-theme-pair">
+            {(["light", "dark"] as const).map(mode => (
+              <label key={mode}>
+                <span>{mode === "light" ? "Light mode" : "Dark mode"}</span>
+                <select aria-label={mode === "light" ? "Theme for light mode" : "Theme for dark mode"}
+                  value={pair[mode]}
+                  onChange={event => {
+                    const theme = event.target.value;
+                    try { localStorage.setItem("taskpath-theme-" + mode, theme); } catch {}
+                    setPair(current => ({ ...current, [mode]: theme }));
+                    window.dispatchEvent(new CustomEvent("taskpath-system-themes", { detail: { mode, theme } }));
+                  }}>
+                  {choicesFor(mode).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+          <p>Switches automatically with your device. Saved in this browser.</p>
+        </fieldset>
+      )}
       <div id="theme-choices" className="theme-choices">
         {themes.map((t) => (
           <button

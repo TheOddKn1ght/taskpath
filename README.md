@@ -34,7 +34,7 @@ Date and time pickers keep changes as a draft until you save the task. Reminders
 
 Board, Archive and Files appear in the desktop sidebar and phone bottom tabs. Views and filters survive refresh through the URL fragment, such as `#archive?q=trip&category=personal&tag=travel`. Search stays local and never reaches the server, but remains visible in browser history and copied links.
 
-The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha Rosé Pine Dawn, Midnight, Plum, Ocean, Sand, Lavender and Ice. Follow system chooses Light or Dark. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
+The theme menu offers Light, Dark, Gruvbox Light, Gruvbox Dark, Nord, Catppuccin Mocha Rosé Pine Dawn, Midnight, Plum, Ocean, Sand, Lavender and Ice. Follow system lets you choose separate themes for light and dark mode, and switches between them with your device’s appearance. It defaults to Light and Dark. These choices stay saved when you temporarily select a fixed theme. Themes have matching icons, work offline and apply across this browser's accounts. Installed home-screen icons may require reinstallation to change. The interface respects reduced motion.
 
 Use **Add task** beneath Today, This Week, or Later for quick entry. Enter saves and keeps the field ready for another task; Escape cancels. New tasks inherit the category and tag filters (All defaults to Personal). **New task** and `N` still open the full editor.
 

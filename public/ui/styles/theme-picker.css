@@ -91,3 +91,24 @@
 #push-dialog button {
   min-height: 44px;
 }
+
+.system-theme-settings {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 0 0 18px;
+  padding: 12px;
+  min-width: 0;
+}
+.system-theme-settings legend { font-size: 12px; color: var(--muted); padding: 0 5px; }
+.system-theme-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.system-theme-pair label { display: grid; gap: 7px; min-width: 0; font-size: 12px; }
+.system-theme-pair select {
+  width: 100%; min-width: 0; min-height: 44px; padding: 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+.system-theme-settings p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 10px 0 0; }
+@media (max-width: 480px) {
+  .system-theme-pair { grid-template-columns: minmax(0, 1fr); }
+  .system-theme-pair select { font-size: 16px; }
+}

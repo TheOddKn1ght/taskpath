@@ -28,7 +28,7 @@ test('all new themes restore before render, follow cross-tab changes and keep sy
     const events=new Map<string,(e:{key?:string;newValue?:string|null;detail?:string})=>void>();
     let systemChanged=()=>{};
     const system={matches:false,addEventListener:(_name:string,callback:()=>void)=>{systemChanged=callback;}};
-    runInNewContext(source,{localStorage:{getItem:()=>id},document:{documentElement:{dataset},querySelector:(selector:string)=>({setAttribute:(_name:string,value:string)=>attrs.set(selector,value)})},window:{matchMedia:()=>system,addEventListener:(name:string,fn:(e:object)=>void)=>events.set(name,fn)}});
+    runInNewContext(source,{localStorage:{getItem:(key:string)=>key === "taskpath-theme" ? id : null},document:{documentElement:{dataset},querySelector:(selector:string)=>({setAttribute:(_name:string,value:string)=>attrs.set(selector,value)})},window:{matchMedia:()=>system,addEventListener:(name:string,fn:(e:object)=>void)=>events.set(name,fn)}});
     expect(dataset.theme).toBe(id);
     expect(attrs.get('link[rel="icon"]')).toContain('/'+id+'/favicon.svg');
     const manifest=await Bun.file('public/themes/'+id+'/manifest.webmanifest').json();
@@ -36,5 +36,52 @@ test('all new themes restore before render, follow cross-tab changes and keep sy
     events.get('storage')!({key:'taskpath-theme',newValue:'ocean'});expect(dataset.theme).toBe('ocean');
     events.get('storage')!({key:'taskpath-theme',newValue:null});expect(dataset.theme).toBe('light');
     system.matches=true;systemChanged();expect(dataset.theme).toBe('dark');
+  }
+});
+
+function themeRuntime(values: Record<string, string> = {}, unavailable = false) {
+  const dataset: { theme?: string } = {};
+  const attrs = new Map<string, string>();
+  const events = new Map<string, (e: unknown) => void>();
+  let changed = () => {};
+  const system = { matches: false, addEventListener: (_: string, fn: () => void) => { changed = fn; } };
+  const source = new Bun.Transpiler({ loader: 'ts' }).transformSync(require('node:fs').readFileSync('public/theme.ts', 'utf8'));
+  runInNewContext(source, {
+    localStorage: { getItem: (key: string) => { if (unavailable) throw new Error('blocked'); return values[key] ?? null; } },
+    document: { documentElement: { dataset }, querySelector: (selector: string) => ({ setAttribute: (_: string, value: string) => attrs.set(selector, value) }) },
+    window: { matchMedia: () => system, addEventListener: (name: string, fn: (e: unknown) => void) => events.set(name, fn) },
+  });
+  return { dataset, attrs, emit: (name: string, event: unknown) => events.get(name)!(event), mode: (dark: boolean) => { system.matches = dark; changed(); } };
+}
+test('system theme pair restores, switches live, and preserves fixed theme choices', () => {
+  const r = themeRuntime({ 'taskpath-theme-light': 'sand', 'taskpath-theme-dark': 'nord' });
+  expect(r.dataset.theme).toBe('sand');
+  r.mode(true);
+  expect(r.dataset.theme).toBe('nord');
+  expect(r.attrs.get('link[rel="icon"]')).toContain('/nord/');
+  r.emit('taskpath-system-themes', { detail: { mode: 'dark', theme: 'ocean' } });
+  expect(r.dataset.theme).toBe('ocean');
+  r.emit('taskpath-theme', { detail: 'plum' });
+  r.mode(false);
+  r.emit('storage', { key: 'taskpath-theme-light', newValue: 'ice' });
+  expect(r.dataset.theme).toBe('plum');
+  r.emit('taskpath-theme', { detail: 'system' });
+  expect(r.dataset.theme).toBe('ice');
+  r.emit('storage', { key: null, newValue: null });
+  expect(r.dataset.theme).toBe('light');
+  r.mode(true);
+  expect(r.dataset.theme).toBe('dark');
+});
+test('invalid or mismatched system themes and inaccessible storage use safe defaults', () => {
+  for (const r of [themeRuntime({ 'taskpath-theme-light': 'nord', 'taskpath-theme-dark': 'missing' }), themeRuntime({}, true)]) {
+    expect(r.dataset.theme).toBe('light');
+    r.mode(true);
+    expect(r.dataset.theme).toBe('dark');
+    r.emit('storage', { key: 'taskpath-theme-dark', newValue: 'sand' });
+    expect(r.dataset.theme).toBe('dark');
+    r.emit('storage', { key: 'taskpath-theme-dark', newValue: 'midnight' });
+    expect(r.dataset.theme).toBe('midnight');
+    r.emit('storage', { key: 'taskpath-theme-dark', newValue: null });
+    expect(r.dataset.theme).toBe('dark');
   }
 });
