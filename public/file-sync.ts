@@ -40,10 +40,12 @@ export function syncFiles():Promise<void> {
     };
     try {
       // Refresh quota and deletion markers before transferring anything.
-      await refresh();
-      for(const id of (await fileState(userId)).deletions){await withAccount(()=>files.delete(id));await writeFiles(userId,epoch,(s,b)=>{s.deletions=s.deletions.filter(x=>x!==id);delete s.files[id];b.delete([userId,id]);});}
+      let manifest:FileManifest = await refresh();
+      let changed = false;
+      for(const id of (await fileState(userId)).deletions){changed = true;await withAccount(()=>files.delete(id));await writeFiles(userId,epoch,(s,b)=>{s.deletions=s.deletions.filter(x=>x!==id);delete s.files[id];b.delete([userId,id]);});}
       for(const initial of Object.values((await fileState(userId)).files)){
         const id=initial.envelope.fileId,current=(await fileState(userId)).files[id];if(!current?.pending)continue;
+        changed = true;
         const submitted=current.pending==='upload'?(current.uploadEnvelope || current.envelope):current.envelope;
         try {
           if(current.pending==='upload'){
@@ -62,7 +64,7 @@ export function syncFiles():Promise<void> {
           if(error instanceof RequestError && error.status===507){continue;}throw error;
         }
       }
-      const manifest:FileManifest=await refresh();
+      if (changed) manifest = await refresh();
       for(const entry of manifest.files){
         const id=entry.envelope.fileId,current=(await fileState(userId)).files[id];if(!current || current.cached)continue;
         const data=await withAccount(()=>files.download(id,entry.bytes));

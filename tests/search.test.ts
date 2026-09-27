@@ -56,3 +56,16 @@ test('due filters use supplied workspace calendar, inclusive week edges, and exc
  const boundary = searchTasks(tasks,{...emptySearch(),due:'today'},{day:'2026-09-28',week:'2026-09-28'});
  expect(boundary.map(r=>r.task.id)).toEqual(['future']);
 });
+
+test('cached index preserves results across cloned tasks, edits, removal and new accounts', async () => {
+ const { createSearchIndex } = await import('../public/search');
+ const index = createSearchIndex();
+ let tasks = [task('a',{title:'Café calendar',notes:'meeting notes',tags:['work']}),task('b',{title:'calnedar'})];
+ const verify = (query:string) => expect(searchTasks(tasks,{...emptySearch(),query},calendar,index)).toEqual(search(tasks,query));
+ for (const q of ['calendar','calnedar','"meeting notes"','café','work','']) verify(q);
+ tasks = structuredClone(tasks); verify('calendar');
+ tasks[0].title='Changed';tasks[0].notes='replacement';tasks[0].tags=['home']; // Same timestamp deliberately.
+ for (const q of ['café','replacement','home','work']) verify(q);
+ tasks=[tasks[1]];verify('calendar');
+ tasks=[task('a',{title:'Different account'})];verify('café');verify('different');
+});

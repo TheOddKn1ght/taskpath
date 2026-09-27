@@ -1,3 +1,4 @@
+import { assetEncoding, compressAsset } from "./asset-encoding";
 import { clientAsset } from './client-assets';
 import type { Server } from 'bun';
 import { Realtime, type RealtimeData } from './realtime';
@@ -55,6 +56,7 @@ for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', '
 
 export function createHandler(store: Store, auth = new AuthManager(store.db), publicOrigin?: string, realtime?: Realtime, assetDirectory = resolve(import.meta.dir, process.env.NODE_ENV === 'production' ? '../dist/public' : '../public'), push = new PushService(store), quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB)) {
   const fixedRelease = resolve(assetDirectory) === SOURCE_DIRECTORY ? null : releaseForDirectory(assetDirectory);
+  const compressed = new Map<string, Uint8Array<ArrayBuffer>>();
   const files = new FileRepository(store.orm,quota);
   const trustedOrigin = publicOrigin ? new URL(publicOrigin) : null;
   if (trustedOrigin && (!['http:', 'https:'].includes(trustedOrigin.protocol) || trustedOrigin.pathname !== '/' || trustedOrigin.search || trustedOrigin.hash || trustedOrigin.username || trustedOrigin.password)) throw new Error('TASKPATH_ORIGIN must be an HTTP(S) origin.');
@@ -112,7 +114,25 @@ export function createHandler(store: Store, auth = new AuthManager(store.db), pu
         if (assets.has(assetPath) && (shell || path === '/sw.js' || path.startsWith(`/assets/${assetVersion}/`))) {
           const [file, type] = assets.get(assetPath)!;
           const socketOrigin = origin.replace(/^http/, 'ws');
-          return new Response(request.method === 'HEAD' ? null : await clientAsset(assetDirectory, file, release), { headers: { ...headers, 'Content-Type': type,
+          const versioned = path.startsWith(`/assets/${assetVersion}/`);
+          // Only public text assets are compressed/cached; authenticated APIs
+          // and private file responses retain no-store and their existing body.
+          const compressible = !!fixedRelease && versioned && /(?:javascript|css|svg|json|manifest)/.test(type);
+          const encoding = compressible ? assetEncoding(request.headers.get('accept-encoding')) : null;
+          let body = await clientAsset(assetDirectory, file, release);
+          if (encoding) {
+            const key = file + ':' + encoding;
+            let bytes = compressed.get(key);
+            if (!bytes) {
+              bytes = new Uint8Array(compressAsset(typeof body === 'string' ? new TextEncoder().encode(body) : body instanceof Blob ? new Uint8Array(await body.arrayBuffer()) : body, encoding));
+              compressed.set(key, bytes);
+            }
+            body = bytes;
+          }
+          return new Response(request.method === 'HEAD' ? null : body, { headers: { ...headers, 'Content-Type': type,
+            ...(versioned ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {}),
+            ...(compressible ? { Vary: 'Accept-Encoding' } : {}),
+            ...(encoding ? { 'Content-Encoding': encoding } : {}),
             'Content-Security-Policy': headers['Content-Security-Policy'].replace("connect-src 'self'", `connect-src 'self' ${socketOrigin}`) } });
         }
       }

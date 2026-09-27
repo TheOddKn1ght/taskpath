@@ -136,7 +136,7 @@ try {
   });
   const cacheNames = await caches.keys(); let cacheText = '';
   for (const name of cacheNames) { const cache = await caches.open(name); for (const url of await cache.keys()) { if (url.url.includes('/api/')) throw new Error('API response was cached'); const response = await cache.match(url); if (/text|javascript|json/.test(response?.headers.get('content-type') || '')) cacheText += await response!.text(); } }
-  assert(cacheNames.includes('taskpath-shell-__TASKPATH_RELEASE__'), 'PWA installs the generated fingerprint cache');
+  assert(cacheNames.includes('taskpath-shell-__TASKPATH_RELEASE__'), 'PWA installs the generated fingerprint cache: ' + cacheNames.join(', '));
   assert(!cacheNames.includes('taskpath-shell-accounts-v18'), 'PWA activation retires numbered caches without resetting browser storage');
   assert(Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')), 'legacy shell cache remains untouched');
   assert(!/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText), 'PWA caches contain only static assets, not task plaintext');

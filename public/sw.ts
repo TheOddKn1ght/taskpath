@@ -5,8 +5,9 @@ import { sync } from '/assets/__TASKPATH_RELEASE__/offline.js';
 const CACHE = 'taskpath-shell-__TASKPATH_RELEASE__';
 const ROOT = '/assets/__TASKPATH_RELEASE__/';
 const FILES = (typeof TASKPATH_SHELL_FILES !== 'undefined' ? TASKPATH_SHELL_FILES : ['app.js', 'theme.js', 'style.css', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']).map(file => ROOT + file);
+const THEME_FILES: string[] = [];
 for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'high-contrast-light', 'high-contrast-dark']) {
-  for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) FILES.push(`${ROOT}themes/${theme}/${file}`);
+  for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) THEME_FILES.push(`${ROOT}themes/${theme}/${file}`);
 }
 self.addEventListener('install', event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
@@ -17,7 +18,7 @@ self.addEventListener('install', event => event.waitUntil((async () => {
       const path = remaining.shift()!;
       let response;
       for (let attempt = 0; attempt < 6; attempt++) {
-        response = await fetch(path, { cache: 'reload' });
+        response = await fetch(path);
         if (response.status !== 429 || attempt === 5) break;
         await response.body?.cancel();
         await new Promise(resolve => setTimeout(resolve, Math.min(2 ** attempt, 8) * 1000));
@@ -39,6 +40,22 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       try { return await fetch(event.request, { signal: AbortSignal.timeout(4000) }); }
       catch { return await (await caches.open(CACHE)).match('/offline-shell') || Response.error(); }
+    })());
+  } else if (THEME_FILES.includes(url.pathname)) {
+    // Themes share the same app identity; an unseen theme works offline with
+    // the default icon/manifest until its artwork can be downloaded.
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      const cached = await cache.match(url.pathname);
+      if (cached) return cached;
+      try {
+        const response = await fetch(event.request);
+        if (!response.ok || response.redirected) throw new Error('Theme unavailable');
+        await cache.put(url.pathname, response.clone());
+        return response;
+      } catch {
+        return await cache.match(ROOT + url.pathname.split('/').at(-1)) || Response.error();
+      }
     })());
   } else if (FILES.includes(url.pathname)) {
     event.respondWith((async () => await (await caches.open(CACHE)).match(url.pathname) || fetch(event.request))());

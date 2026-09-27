@@ -1,3 +1,4 @@
+import { fileState } from "../file-persistence.js";
 import type {
   Board,
   Route,
@@ -166,6 +167,10 @@ export function startRuntime(immediate: (fn: () => void) => void) {
     options = { signal: abort.signal };
   const realtime = createRealtime({
     sync: syncAfterCurrent,
+    needsRetry: async () => {
+      const files = await fileState();
+      return !!files.error || !!files.deletions.length || Object.values(files.files).some(file => !!file.pending || !!file.error);
+    },
     localState,
     url: location.href,
   });
@@ -224,7 +229,12 @@ export function startRuntime(immediate: (fn: () => void) => void) {
     },
     options,
   );
-  const timer = setInterval(foreground, 15000);
+  const timer = setInterval(() => {
+    if (isUnlocked() && !document.hidden) {
+      void refresh(); // Keep the workspace calendar and local reminders current.
+      void realtime.poll().catch(() => {});
+    }
+  }, 15000);
   return () => {
     abort.abort();
     clearInterval(timer);

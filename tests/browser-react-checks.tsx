@@ -673,6 +673,13 @@ try {
   }
   await offlineRequest(`/api/tasks/${searchIds[0]}/archive`, 'POST');
   await refresh();
+  const lastSearchCard = node(`[data-id="${searchIds[54]}"]`);
+  lastSearchCard.scrollIntoView({block:'center'});lastSearchCard.focus();
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  assert(getComputedStyle(lastSearchCard).contentVisibility === 'visible' && lastSearchCard.getBoundingClientRect().height > 0, 'off-screen cards reveal fully when keyboard focused');
+  key(lastSearchCard,'Enter');
+  assert(node<HTMLInputElement>('#task-title').value === 'Search calendar 54', 'off-screen task opens with keyboard');
+  textButton('Cancel',node('#task-dialog'));
   flushSync(() => navigate({category:'personal',tag:'missing',focus:'today'}));
   click('#open-search');
   input('#search', 'calnedar');

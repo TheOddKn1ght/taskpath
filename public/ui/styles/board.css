@@ -584,3 +584,13 @@
   height: 16px;
   flex: none;
 }
+
+/* Skip off-screen card layout/paint without removing focus, find-in-page,
+   accessibility or drag targets from the document. The browser remembers sizes. */
+.task-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
+}
+.task-card:focus-within,.task-card.dragging {
+  content-visibility: visible;
+}

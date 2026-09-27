@@ -638,7 +638,7 @@ function Workspace({
           </footer>
         </div>
       </main>
-      {board && <TaskSearch board={board} state={search} change={setSearch}
+      {board && <TaskSearch board={board} initialState={search}
         close={() => setSearchOpen(false)} openTask={edit} suspended={!searchOpen || !!editor || !!archived}
         syncComplete={state.syncComplete} />}
       {editor && board && (

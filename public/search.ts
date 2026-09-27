@@ -30,7 +30,7 @@ function field(text: string) {
       starts.push(item.index); ends.push(item.index + item.segment.length);
     }
   }
-  return { normalized, range: (start: number, end: number): MatchRange => [starts[start], ends[end - 1]] };
+  return { normalized, words: [...normalized.matchAll(/[\p{L}\p{N}\p{M}]+/gu)], range: (start: number, end: number): MatchRange => [starts[start], ends[end - 1]] };
 }
 export function mergeRanges(ranges: MatchRange[]): MatchRange[] {
   const result: MatchRange[] = [];
@@ -61,7 +61,7 @@ function terms(query: string) {
     .map(m => ({ value: normalize(m[1] ?? m[2] ?? m[3]), phrase: m[3] === undefined }))
     .filter(t => t.value.length);
 }
-function matches(f: ReturnType<typeof field>, term: ReturnType<typeof terms>[number]) {
+function matches(f: ReturnType<typeof field>, term: ReturnType<typeof terms>[number], approximate = false) {
   const ranges: MatchRange[] = [];
   let start = f.normalized.indexOf(term.value);
   while (start >= 0) {
@@ -71,7 +71,7 @@ function matches(f: ReturnType<typeof field>, term: ReturnType<typeof terms>[num
   if (ranges.length) return { ranges, exact: true };
   const length = Array.from(term.value).length;
   const limit = term.phrase || length < 4 ? 0 : length < 8 ? 1 : 2;
-  if (limit) for (const word of f.normalized.matchAll(/[\p{L}\p{N}\p{M}]+/gu)) {
+  if (approximate && limit) for (const word of f.words) {
     if (near(term.value, word[0], limit)) ranges.push(f.range(word.index, word.index + word[0].length));
   }
   return { ranges, exact: false };
@@ -89,18 +89,40 @@ function accepts(t: Task, s: SearchState, day: string, weekEnd: string, week: st
     default: return true;
   }
 }
-export function searchTasks(tasks: Task[], state: SearchState, calendar: { day: string; week: string }): SearchResult[] {
+// Owned by one unlocked dialog, never persisted or shared between accounts.
+export function createSearchIndex() {
+  const entries = new Map<string, { title: string; notes: string; tags: string[]; fields: ReturnType<typeof field>[] }>();
+  return {
+    retain(tasks: Task[]) { const ids = new Set(tasks.filter(t => !t.deletedAt).map(t => t.id)); for (const id of entries.keys()) if (!ids.has(id)) entries.delete(id); },
+    fields(task: Task) {
+      let entry = entries.get(task.id);
+      if (!entry || entry.title !== task.title || entry.notes !== task.notes || entry.tags.length !== task.tags.length || entry.tags.some((tag, i) => tag !== task.tags[i])) {
+        entry = { title: task.title, notes: task.notes, tags: [...task.tags], fields: [field(task.title), ...task.tags.map(field), field(task.notes)] };
+        entries.set(task.id, entry);
+      }
+      return entry.fields;
+    },
+  };
+}
+export function searchTasks(tasks: Task[], state: SearchState, calendar: { day: string; week: string }, index = createSearchIndex()): SearchResult[] {
   const query = terms(state.query.trim());
+  index.retain(tasks);
+  const whole = normalize(state.query.trim().replace(/^"(.*)"$/s, '$1'));
   const weekEnd = new Date(Date.parse(calendar.week + 'T12:00:00Z') + 6 * 86400000).toISOString().slice(0, 10);
   const found: (SearchResult & { tier: number; score: number })[] = [];
   for (const task of tasks) {
     if (!accepts(task, state, calendar.day, weekEnd, calendar.week)) continue;
-    const fields = [field(task.title), ...task.tags.map(field), field(task.notes)];
+    if (!query.length) {
+      found.push({ task, title: [], notes: [], tags: task.tags.map(() => []), approximate: false, tier: 1, score: 0 });
+      continue;
+    }
+    const fields = index.fields(task);
     const highlights: MatchRange[][] = fields.map(() => []);
     let score = 0, approximate = false, valid = true;
     for (const term of query) {
-      const hits = fields.map(f => matches(f, term));
+      let hits = fields.map(f => matches(f, term));
       const exact = hits.some(h => h.exact);
+      if (!exact) hits = fields.map(f => matches(f, term, true));
       let weight = Infinity;
       hits.forEach((hit, i) => {
         if (!hit.ranges.length || exact && !hit.exact) return;
@@ -112,7 +134,6 @@ export function searchTasks(tasks: Task[], state: SearchState, calendar: { day: 
       approximate ||= !exact;
     }
     if (!valid) continue;
-    const whole = normalize(state.query.trim().replace(/^"(.*)"$/s, '$1'));
     found.push({ task, title: mergeRanges(highlights[0]), notes: mergeRanges(highlights.at(-1)!), tags: highlights.slice(1, -1).map(mergeRanges), approximate,
       tier: query.length && normalize(task.title) === whole ? 0 : approximate ? 2 : 1, score });
   }

@@ -8,8 +8,10 @@ import { syncFiles } from '/assets/__TASKPATH_RELEASE__/file-sync.js';
 export async function fileChecks(assert:(value:unknown,message:string)=>void) {
   const nativeFetch=window.fetch.bind(window);
   let offline=false,full=false,loseReply=false,failBefore=false;
+  let manifestReads=0;
   const uploads:Uint8Array[]=[];
   window.fetch=async(input,init)=>{
+    if(String(input).split('?')[0] === '/api/files' && (!init?.method || init.method === 'GET')) manifestReads++;
     if(String(input).startsWith('/api/files')){
       if(offline)throw new TypeError('Simulated offline files');
       if(init?.method==='PUT'){
@@ -30,6 +32,7 @@ export async function fileChecks(assert:(value:unknown,message:string)=>void) {
     const activateAgain=()=>activate(config,unlocked.key,false,epoch);
     let epoch=(await localState()).lockEpoch;
     await login();await activateAgain();await syncFiles();
+    manifestReads=0;await syncFiles();assert(manifestReads===1,'unchanged file sync reads its manifest only once');
     const marker='FILE_VAULT_PRIVATE_CONTENT_2026',name='FILE_PRIVATE_NAME_2026.txt';
     offline=true;
     await addFile(new File([marker],name,{type:'text/plain',lastModified:123}));await syncFiles();

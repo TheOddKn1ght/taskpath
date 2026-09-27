@@ -124,3 +124,36 @@ test('client reconnects and catches up on wake, stops for locked/expired session
     expect(FakeSocket.instances).toHaveLength(count);
   } finally { client.pause(); }
 });
+
+test('connected idle polling waits for recovery while pending edits, wakes and notices catch up', async () => {
+ let calls=0,time=1000,visible=true;
+ const record={board:{},locked:false,authRequired:false,syncComplete:true,pending:[] as any[]};
+ const client=createRealtime({url:'http://localhost',Socket:FakeSocket,active:()=>visible,now:()=>time,recoveryMs:120000,localState:async()=>record,sync:async()=>{calls++;}});
+ try {
+  await client.reconcile(); FakeSocket.instances.at(-1)!.receive('ready');
+  await until(()=>calls===1);await Bun.sleep(0);
+  for(let i=0;i<4;i++){time+=15000;await client.poll();}
+  expect(calls).toBe(1);
+  time+=60000;await client.poll();expect(calls).toBe(2);
+  record.pending=[{}];await client.poll();expect(calls).toBe(3);record.pending=[];
+  record.syncComplete=false;await client.poll();expect(calls).toBe(4);record.syncComplete=true;
+  time+=2000;client.resume();await until(()=>calls===5);
+  client.resume();await Bun.sleep(0);expect(calls).toBe(5);
+  visible=false;time+=200000;await client.poll();expect(calls).toBe(5);
+  visible=true;record.locked=true;await client.poll();expect(calls).toBe(5);expect(client.connected).toBe(false);
+ }finally{client.pause();}
+});
+
+
+test('file retries and reminder metadata bypass the idle recovery delay', async () => {
+ let calls=0,filesPending=false;
+ const record={board:{},locked:false,syncComplete:true,error:null as string|null,reminderOutbox:{} as Record<string,any>};
+ const client=createRealtime({url:'http://localhost',Socket:FakeSocket,active:()=>true,now:()=>1000,needsRetry:async()=>filesPending,localState:async()=>record,sync:async()=>{calls++;}});
+ try {
+  await client.reconcile();FakeSocket.instances.at(-1)!.receive('ready');await Bun.sleep(0);
+  await client.poll();expect(calls).toBe(1);
+  filesPending=true;await client.poll();expect(calls).toBe(2);filesPending=false;
+  record.reminderOutbox={task:{}};await client.poll();expect(calls).toBe(3);record.reminderOutbox={};
+  record.error='Temporary failure';await client.poll();expect(calls).toBe(4);
+ }finally{client.pause();}
+});

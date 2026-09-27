@@ -1,6 +1,6 @@
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Board, Task } from '../types.js';
-import { emptySearch, noteSnippet, searchTasks, type MatchRange, type SearchState } from '../search.js';
+import { createSearchIndex, emptySearch, noteSnippet, searchTasks, type MatchRange, type SearchState } from '../search.js';
 import { Dialog } from './dialog';
 import { Select } from './pickers';
 import { Icon } from './icons';
@@ -14,17 +14,20 @@ function Highlight({ text, ranges }: { text: string; ranges: MatchRange[] }) {
   });
   return <>{chunks}{text.slice(end)}</>;
 }
-export function TaskSearch({ board, state, change, close, openTask, suspended, syncComplete }: {
-  board: Board; state: SearchState; change: (s: SearchState) => void; close: () => void;
+export function TaskSearch({ board, initialState, close, openTask, suspended, syncComplete }: {
+  board: Board; initialState: SearchState; close: () => void;
   openTask: (t: Task) => void; suspended: boolean; syncComplete: boolean;
 }) {
+  const [state, change] = useState(initialState);
+  useEffect(() => { change(initialState); setLimit(50); setSelected(null); scroll.current = 0; }, [initialState]);
+  const [indexCache] = useState(createSearchIndex);
   const [limit, setLimit] = useState(50), [selected, setSelected] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null), input = useRef<HTMLInputElement>(null), scroll = useRef(0);
   const rememberScroll = () => { if (list.current) scroll.current = list.current.scrollTop; };
   const open = (task: Task) => { rememberScroll(); openTask(task); };
   const dismiss = () => { rememberScroll(); close(); };
-  const results = useMemo(() => searchTasks(board.tasks, state, board), [board, state]);
+  const results = useMemo(() => suspended ? [] : searchTasks(board.tasks, state, board, indexCache), [board, state, suspended, indexCache]);
   const visible = results.slice(0, limit);
   const active = visible.findIndex(r => r.task.id === selected);
   const index = active >= 0 ? active : 0;

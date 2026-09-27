@@ -6,23 +6,26 @@ interface SocketLike {
   onerror?: WebSocket['onerror'];
 }
 interface RealtimeOptions {
-  sync:()=>Promise<unknown>; localState:()=>Promise<Pick<Partial<EncryptedRecord>, "locked" | "authRequired" | "inactive" | "userId"> & { board?: unknown }>; url:string;
+  sync:()=>Promise<unknown>; localState:()=>Promise<Pick<Partial<EncryptedRecord>, "locked" | "authRequired" | "inactive" | "userId" | "pending" | "syncComplete" | "error" | "reminderOutbox"> & { board?: unknown }>; url:string;
+  needsRetry?:()=>Promise<boolean>;
+  now?:()=>number; recoveryMs?:number;
   Socket?:new(url:string)=>SocketLike; active?:()=>boolean;
 }
 // Keep the durable HTTP queue as the only sync path, including after reconnects.
-export function createRealtime({ sync, localState, url, Socket = WebSocket, active = () => !document.hidden && navigator.onLine !== false }: RealtimeOptions) {
+export function createRealtime({ sync, localState, url, Socket = WebSocket, now = Date.now, recoveryMs = 120000, needsRetry = async () => false, active = () => !document.hidden && navigator.onLine !== false }: RealtimeOptions) {
   const endpoint = new URL('/api/events', url);
   endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
   let socket: SocketLike | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined, watchdog: ReturnType<typeof setTimeout> | undefined, attempts = 0, generation = 0;
-  let pulling = false, requested = false;
+  let pulling = false, requested = false, lastPull = -Infinity;
 
-  async function pull() {
+  async function pull(notice = true) {
+    if (pulling && !notice) return;
     requested = true;
     if (pulling) return;
     pulling = true;
     try {
       // A notice arriving during a request must cause another read afterwards.
-      while (requested) { requested = false; await sync(); }
+      while (requested) { requested = false; lastPull = now(); await sync(); }
     } catch { /* The offline queue and polling own error reporting and retries. */ }
     finally { pulling = false; }
   }
@@ -87,10 +90,17 @@ export function createRealtime({ sync, localState, url, Socket = WebSocket, acti
     get connected() { return socket?.readyState === 1; },
     reconcile,
     pause,
+    async poll() {
+      if (!active()) return;
+      await reconcile();
+      const record = await localState();
+      if (record.locked || record.inactive || record.authRequired || !record.board) return;
+      if (socket?.readyState !== 1 || record.pending?.length || record.error || Object.keys(record.reminderOutbox || {}).length || record.syncComplete === false || now() - lastPull >= recoveryMs || await needsRetry()) await pull(false);
+    },
     resume() {
       clearTimeout(retryTimer); retryTimer = undefined;
       void reconcile();
-      void pull();
+      if (now() - lastPull >= 1000) void pull(false);
     },
   };
 }
