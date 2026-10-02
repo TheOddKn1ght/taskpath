@@ -18,9 +18,11 @@ export interface ReminderMetadata { taskId: string; changeId: string; token: str
 export interface SyncBoard { format: number; workspaceKey: string; timezone: string; serverTime: string; rows: Envelope[]; pushEnabled?: boolean }
 export interface SyncResult extends SyncBoard { protocol?:2; cursor?:string; hasMore?:boolean; acknowledged: string[]; conflicts: number; reminderAcknowledged?: {taskId:string;changeId:string}[] }
 export interface PlainBoard { rows: Task[]; changeIds: Record<string,string>; timezone: string; nickname?: string; workspaceKey?: string; serverTime?: string; format?: number; pushEnabled?: boolean }
-export interface Board extends PlainBoard { tasks: Task[]; day: string; week: string; serverTime: string; reminders: Task[] }
+export interface Rollover { id: string; from: Status; to: Status }
+export interface Board extends PlainBoard { rollover?: Rollover[]; tasks: Task[]; day: string; week: string; serverTime: string; reminders: Task[] }
 export interface PlainRecord { board: PlainBoard | null; pending: Change[]; offset: number; lastEdit: number; locked?: boolean }
 export interface EncryptedRecord {
+  history?: Envelope[];
   syncCursor?:string | null; syncComplete?:boolean;
   revision: number; lockEpoch: number; config: VaultConfig | null; board: SyncBoard | null; pending: Envelope[]; offset: number; lastEdit: number;
   userId?: string | null; inactive?: boolean; locked?: boolean; online?: boolean; authRequired?: boolean;

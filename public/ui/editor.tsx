@@ -45,6 +45,16 @@ export function Editor({
     ),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const initial = useRef(JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }));
+  const dirty = JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }) !== initial.current;
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const requestClose = () => { if (dirty) setConfirmDiscard(true); else close(); };
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const alive = useRef(true);
   useEffect(
     () => () => {
@@ -86,6 +96,7 @@ export function Editor({
     }
   };
   async function run(work: () => Promise<void>) {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -102,9 +113,14 @@ export function Editor({
       id="task-dialog"
       title={task ? "Edit task" : "New task"}
       className="task-dialog"
-      onClose={close}
+      onClose={requestClose}
       busy={busy}
     >
+      {confirmDiscard && <div role="alert" className="form-error">
+        <p>Discard your unsaved changes?</p>
+        <button type="button" className="secondary-button" onClick={() => setConfirmDiscard(false)}>Keep editing</button>{" "}
+        <button type="button" className="secondary-button danger" onClick={close}>Discard changes</button>
+      </div>}
       <form
         id="task-form"
         onSubmit={(e) => {
@@ -320,7 +336,7 @@ export function Editor({
             type="button"
             className="secondary-button"
             disabled={busy}
-            onClick={close}
+            onClick={requestClose}
           >
             Cancel
           </button>

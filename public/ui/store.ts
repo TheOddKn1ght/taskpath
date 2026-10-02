@@ -1,3 +1,4 @@
+import { startAutoLock } from '../auto-lock.js';
 import { fileState } from "../file-persistence.js";
 import type {
   Board,
@@ -7,6 +8,7 @@ import type {
   ArchiveResult,
 } from "../types.js";
 import {
+  lock,
   offlineRequest,
   isUnlocked,
   selectedAccount,
@@ -163,6 +165,7 @@ export async function move(
   });
 }
 export function startRuntime(immediate: (fn: () => void) => void) {
+  const stopAutoLock = startAutoLock(isUnlocked, lock);
   const abort = new AbortController(),
     options = { signal: abort.signal };
   const realtime = createRealtime({
@@ -237,6 +240,7 @@ export function startRuntime(immediate: (fn: () => void) => void) {
   }, 15000);
   return () => {
     abort.abort();
+    stopAutoLock();
     clearInterval(timer);
     realtime.pause();
   };

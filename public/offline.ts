@@ -1,3 +1,5 @@
+import { rememberedLockExpired } from './auto-lock-settings.js';
+import { retainVersions } from './task-history.js';
 import { accountApi } from './api.js';
 import type { Task, Profile, Envelope, Change, VaultConfig, EncryptedRecord, PlainRecord, PlainBoard, Board, ReminderMetadata, SyncResult, SyncBoard, ImportPreview, TaskInput } from './types.js';
 import { RequestError, errorMessage, errorStatus } from './errors.js';
@@ -44,6 +46,7 @@ export async function activate(config: VaultConfig, key: CryptoKey, remember: bo
   emit('taskpath-unlocked');
 }
 export async function restoreRemembered() {
+  if (rememberedLockExpired()) { await forgetKeys(); return false; }
   const before = generation, record = await localState(), remembered = await rememberedKey();
   const current = await localState();
   if (current.inactive || current.userId !== remembered?.userId || current.lockEpoch !== record.lockEpoch || before !== generation || !remembered || remembered.lockEpoch !== record.lockEpoch || remembered.vaultId !== record.config?.vaultId || remembered.key.extractable) return false;
@@ -117,8 +120,20 @@ export function acceptEncrypted(record: EncryptedRecord, input: unknown, now = D
   if (!Number.isFinite(Date.parse(response.serverTime))) throw new Error('Invalid server time.');
   for (const e of response.rows) validateEnvelope(e, record.config!.vaultId);
   const rows = new Map((record.board?.rows || []).map(e => [e.taskId, e]));
-  for (const e of response.rows) if (newer(e, rows.get(e.taskId))) rows.set(e.taskId, e);
+  const displaced: Envelope[] = [];
+  for (const e of response.rows) {
+    const previous = rows.get(e.taskId);
+    if (newer(e, previous)) {
+      if (previous && previous.changeId !== e.changeId) displaced.push(previous);
+      rows.set(e.taskId, e);
+    } else if (previous && previous.changeId !== e.changeId) displaced.push(e);
+  }
   const ack = new Set(response.acknowledged || []);
+  for (const pending of record.pending) {
+    const winner = rows.get(pending.taskId);
+    if (ack.has(pending.changeId) && winner && winner.changeId !== pending.changeId) displaced.push(pending);
+  }
+  record.history = retainVersions(record.history, displaced);
   record.pending = record.pending.filter(e => !ack.has(e.changeId));
   record.pushEnabled = response.pushEnabled === true;
   if (!record.pushEnabled) { record.reminderOutbox = {}; record.reminderPublished = {}; }
@@ -215,13 +230,16 @@ async function write<T>(operation: (record: PlainRecord & {board:PlainBoard}, pr
       const decoded = await plaintext(current, token), count = decoded.pending.length;
       const profiles: Change<Profile>[] = [];
       const result = operation(decoded, profiles);
+      const history = [...(current.history || [])];
       const pending = [...current.pending], reminderOutbox = { ...current.reminderOutbox };
       for (const change of [...decoded.pending.slice(count), ...profiles]) {
+        const previous = [...pending, ...(current.board?.rows || [])].filter(e => e.taskId === change.task.id).reduce<Envelope | undefined>((best, next) => newer(next, best) ? next : best, undefined);
+        if (previous) history.push(previous);
         pending.push(await encryptChange<Task | Profile>(vaultKey!, current.config.vaultId, change));
         if (current.pushEnabled && !('nickname' in change.task)) reminderOutbox[change.task.id] = reminderMetadata(change.task, change.changeId);
       }
       assertUnlocked(await localState(), token);
-      if (await commit(current.revision, { ...current, pending, reminderOutbox, lastEdit: decoded.lastEdit })) { changed(); return result; }
+      if (await commit(current.revision, { ...current, history: retainVersions(history), pending, reminderOutbox, lastEdit: decoded.lastEdit })) { changed(); return result; }
     }
     throw new Error('Another tab is updating. Please try again.');
   };
@@ -297,5 +315,18 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
     if (path === '/api/tasks/archive-completed' && method === 'POST') return queueArchiveBatch(record, 'completed');
     if (path === '/api/tasks/archive-undo' && method === 'POST') return queueArchiveBatch(record, 'undo', body);
     return queueChange(record, path, method, body);
+  });
+}
+
+export async function readTaskHistory() {
+  return withFileKey(async (key, _userId, vaultId) => {
+    const record = await localState();
+    const latest = new Map<string, Envelope>();
+    for (const e of [...(record.board?.rows || []), ...record.pending]) latest.set(e.taskId, e);
+    const currentIds = new Set([...latest.values()].map(e => e.changeId));
+    return Promise.all((record.history || []).filter(e => !currentIds.has(e.changeId)).map(async e => {
+      const task = await decryptEnvelope(key, vaultId, e); validate(task);
+      return { changeId: e.changeId, task };
+    }));
   });
 }

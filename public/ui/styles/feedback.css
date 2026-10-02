@@ -29,3 +29,18 @@
   color: var(--muted);
   grid-column: 1/-1;
 }
+
+.rollover-notice {
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.rollover-notice p { margin: 0 0 10px; }
+#history-dialog details, #rollover-dialog section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+#history-dialog summary { cursor: pointer; overflow-wrap: anywhere; }
+#history-dialog p, #rollover-dialog h3 { overflow-wrap: anywhere; }

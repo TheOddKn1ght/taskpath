@@ -1,6 +1,6 @@
 FROM oven/bun:1.4.2-alpine AS build
 WORKDIR /app
-COPY --chown=bun:bun package.json bun.lock ./
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY --chown=bun:bun src ./src
 COPY --chown=bun:bun public ./public
@@ -12,7 +12,7 @@ RUN bun run build
 FROM oven/bun:1.4.2-alpine
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/taskpath-accounts.sqlite
-COPY --chown=bun:bun package.json bun.lock ./
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --production --ignore-scripts
 COPY --from=build --chown=bun:bun /app/src ./src
 COPY --from=build --chown=bun:bun /app/public ./public

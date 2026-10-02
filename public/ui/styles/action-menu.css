@@ -2,6 +2,10 @@
 .menu-content.action-menu-popover {
   position: fixed;
   right: auto;
+  max-height: calc(100dvh - 16px);
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .task-actions:has(.task-menu-trigger[aria-expanded="true"]) {

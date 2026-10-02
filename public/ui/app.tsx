@@ -1,3 +1,4 @@
+import { HistoryDialog, AutoLockDialog } from './recovery';
 import { TaskSearch } from "./search";
 import { emptySearch } from "../search.js";
 import { WorkspaceNav } from "./workspace-nav";
@@ -108,7 +109,7 @@ function Workspace({
     } | null>(null),
     [details, setDetails] = useState<string | null>(null),
     [modal, setModal] = useState<
-      "password" | "nickname" | "push" | "import" | "guide" | null
+      "password" | "nickname" | "push" | "import" | "guide" | "history" | "auto-lock" | "rollover" | null
     >(null),
     [toast, setToast] = useState<{
       text: string;
@@ -130,6 +131,9 @@ function Workspace({
       }
     }),
     [, render] = useState(0);
+  const [rolloverDismissed, setRolloverDismissed] = useState('');
+  const rollover = board?.rollover || [];
+  const rolloverKey = (board?.day || '') + ':' + rollover.map(item => item.id).sort().join(',');
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState(emptySearch);
   useEffect(() => {
@@ -529,6 +533,8 @@ function Workspace({
           },
         ]
       : []),
+    { icon: "restore", label: "Previous task versions…", fn: () => setModal("history") },
+    { icon: "lock", label: "Automatic locking…", fn: () => setModal("auto-lock") },
     { icon: "help", label: "How it works", fn: () => setModal("guide") },
     {
       icon: "archive",
@@ -585,6 +591,11 @@ function Workspace({
               </button>
             </div>
           )}
+          {route.view === "board" && rollover.length > 0 && rolloverDismissed !== rolloverKey && <aside className="rollover-notice" aria-label="Planning review">
+            <p>{rollover.length} unfinished task{rollover.length === 1 ? '' : 's'} moved back for replanning. At midnight, Today returns to This Week; on Monday, unfinished plans return to Later. Calendar: {board?.timezone}.</p>
+            <button type="button" className="secondary-button" onClick={() => setModal('rollover')}>Review and replan</button>{' '}
+            <button type="button" className="subtle-button" onClick={() => setRolloverDismissed(rolloverKey)}>Dismiss planning review</button>
+          </aside>}
           {route.view === "board" && !!board?.reminders.length && (
             <ReminderPanel tasks={board.reminders} busy={state.busy} edit={edit} act={(task,action) => run(() => mutate(`/api/tasks/${task.id}/reminder`,"POST",{action,reminderAt:task.reminderAt}))} />
           )}
@@ -659,6 +670,22 @@ function Workspace({
         remove={() => run(async () => { await remove(archived); setDetails(null); })}
         restore={() => run(async () => { await mutate(`/api/tasks/${archived.id}/unarchive`,"POST"); setDetails(null); })}
       />}
+      {modal === "history" && <HistoryDialog close={() => setModal(null)} notify={notify} />}
+      {modal === "auto-lock" && <AutoLockDialog close={() => setModal(null)} />}
+      {modal === "rollover" && <Dialog id="rollover-dialog" title="Review unfinished tasks" onClose={() => setModal(null)} busy={state.busy}>
+        <p>Choose a fresh plan for these tasks. This review includes tasks hidden by your board filters.</p>
+        {rollover.length === 0 && <p>All tasks in this review have been replanned.</p>}
+        {rollover.map(item => {
+          const task = board?.tasks.find(t => t.id === item.id);
+          return task && <section key={item.id}>
+            <h3>{task.title}</h3><p>{columns[item.from]} → {columns[item.to]}</p>
+            <button type="button" className="secondary-button" disabled={state.busy} onClick={() => run(() => move(task, 'today'))}>Plan for Today</button>{' '}
+            <button type="button" className="secondary-button" disabled={state.busy} onClick={() => run(() => move(task, 'week'))}>Plan for This Week</button>{' '}
+            <button type="button" className="subtle-button" disabled={state.busy} onClick={() => run(() => move(task, 'later'))}>Keep in Later</button>
+          </section>;
+        })}
+        <button type="button" className="primary-button" disabled={state.busy} onClick={() => {setRolloverDismissed(rolloverKey); setModal(null);}}>Finish review</button>
+      </Dialog>}
       {modal === "password" && <PasswordDialog close={() => setModal(null)} />}{" "}
       {modal === "nickname" && (
         <Nickname

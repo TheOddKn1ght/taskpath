@@ -11,6 +11,9 @@ import { FileRepository } from './db/files';
 import { decodeFile, fileEnvelope, fileQuota, FILE_MAX, FILE_HEADER_MAX } from '../public/file-format';
 import { validId } from '../public/crypto';
 const assets = new Map<string, [string, string]>([
+  ["/auto-lock-settings.js", ["auto-lock-settings.js", "text/javascript; charset=utf-8"]],
+  ["/auto-lock.js", ["auto-lock.js", "text/javascript; charset=utf-8"]],
+  ["/task-history.js", ["task-history.js", "text/javascript; charset=utf-8"]],
   ["/api.js", ["api.js", "text/javascript; charset=utf-8"]],
   ["/api-client.js", ["api-client.js", "text/javascript; charset=utf-8"]],
   ["/file-format.js", ["file-format.js", "text/javascript; charset=utf-8"]],

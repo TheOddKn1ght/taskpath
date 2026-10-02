@@ -161,7 +161,15 @@ try {
   assert(!!document.querySelector("#task-dialog"), "N opens a new task");
   key(node("#task-title"), "/");
   assert(document.activeElement === node("#task-title"), "slash does not steal editor focus");
-  textButton("Cancel", node("#task-dialog"));
+  input('#task-title', 'UNSAVED_DRAFT');
+  textButton('Cancel', node('#task-dialog'));
+  assert(!!document.querySelector('#task-dialog') && node('#task-dialog').textContent?.includes('Discard your unsaved changes?'), 'dirty editor asks before discarding');
+  textButton('Keep editing', node('#task-dialog'));
+  assert(node<HTMLInputElement>('#task-title').value === 'UNSAVED_DRAFT', 'keep editing preserves draft');
+  flushSync(() => node('#task-dialog').dispatchEvent(new Event('cancel', {cancelable: true})));
+  assert(node('#task-dialog').textContent?.includes('Discard your unsaved changes?'), 'Escape protects changed drafts');
+  textButton('Discard changes', node('#task-dialog'));
+  assert(!document.querySelector('#task-dialog') && !getSnapshot().board?.tasks.some(t => t.title === 'UNSAVED_DRAFT'), 'confirmed discard leaves stored tasks unchanged');
   assert(
     [...document.querySelectorAll(".column")]
       .map((e) => (e as HTMLElement).dataset.status)
@@ -858,6 +866,43 @@ try {
   click("#open-search");
   assert(node<HTMLInputElement>("#search").value === "", "account switch clears search state");
   textButton("Close Search tasks");
+  const original = (await offlineRequest('/api/tasks', 'POST', {title: 'VERSION_ORIGINAL', notes: 'RECOVERABLE_NOTES', tags: ['recover']})).task;
+  await offlineRequest(`/api/tasks/${original.id}`, 'PATCH', {title: 'VERSION_CURRENT', notes: 'Current notes'});
+  await syncAfterCurrent(); await refresh();
+  menu('Previous task versions…');
+  await until(() => node('#history-dialog').textContent?.includes('VERSION_ORIGINAL'), 'version history decrypted while unlocked');
+  const version = [...node('#history-dialog').querySelectorAll('details')].find(e => e.textContent?.includes('VERSION_ORIGINAL'))!;
+  click('#history-dialog details summary');
+  textButton('Restore as new task', version);
+  await until(() => !document.querySelector('#history-dialog'), 'version restoration');
+  assert(getSnapshot().board!.tasks.some(t => t.id === original.id && t.title === 'VERSION_CURRENT'), 'restoration preserves current task');
+  assert(getSnapshot().board!.tasks.some(t => t.id !== original.id && t.title === 'VERSION_ORIGINAL' && t.notes === 'RECOVERABLE_NOTES' && t.tags.includes('recover') && !t.reminderAt), 'previous version becomes a separate unscheduled task');
+  const rolloverTask = (await offlineRequest('/api/tasks', 'POST', {title: 'ROLLOVER_REVIEW', status: 'today'})).task;
+  const { withFileKey } = await import('../public/offline.js');
+  const { encryptChange, decryptEnvelope } = await import('../public/crypto.js');
+  await syncAfterCurrent();
+  await withFileKey(async (key, _account, vaultId) => {
+    const record = await localState();
+    const envelope = record.board!.rows.find(e => e.taskId === rolloverTask.id)!;
+    const task = await decryptEnvelope(key, vaultId, envelope);
+    const replacement = await encryptChange(key, vaultId, {task: {...task, plannedDay: '2000-01-01'}, editedAt: envelope.editedAt, changeId: envelope.changeId});
+    await localState(current => {current.board!.rows = current.board!.rows.map(e => e.taskId === replacement.taskId ? replacement : e);});
+  });
+  await refresh();
+  assert(!!document.querySelector('.rollover-notice'), 'rollover shows a planning review');
+  textButton('Review and replan');
+  assert(node('#rollover-dialog').textContent?.includes('ROLLOVER_REVIEW'), 'review lists tasks that moved back');
+  textButton('Plan for Today', node('#rollover-dialog'));
+  await until(() => getSnapshot().board!.tasks.find(t => t.id === rolloverTask.id)?.status === 'today' && !getSnapshot().busy, 'replan rollover');
+  assert(!getSnapshot().board!.rollover?.some(t => t.id === rolloverTask.id), 'fresh plan clears rollover marker');
+  textButton('Finish review', node('#rollover-dialog'));
+  menu('Automatic locking…');
+  assert(node<HTMLSelectElement>('#auto-lock-interval').value === '0', 'automatic locking defaults to disabled');
+  flushSync(() => { const select = node<HTMLSelectElement>('#auto-lock-interval'); select.value = '5'; select.dispatchEvent(new Event('change', {bubbles:true})); });
+  textButton('Save locking preference');
+  assert(localStorage.getItem('taskpath-auto-lock-minutes') === '5', 'lock interval is saved on this browser');
+  const {setLockMinutes} = await import('../public/auto-lock.js');
+  setLockMinutes(0);
   cleanup();
   flushSync(() => root.unmount());
   output.textContent += "\nALL " + results.length + " REACT CHECKS PASSED";

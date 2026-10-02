@@ -30,8 +30,8 @@ export function PrivacyCopy() {
         contain your password or decryption key.
       </p>
       <p>
-        Taskpath keeps encrypted tasks, files and pending changes in browser
-        storage for offline use, and caches app assets. Appearance preferences
+        Taskpath keeps encrypted tasks, previous task versions, files and pending changes in browser
+        storage for offline use, and caches app assets. Appearance and automatic locking preferences
         are stored locally. With <strong>Remember this device</strong> enabled,
         a decryption key is also saved in this browser profile; anyone using it
         may be able to open your workspace.
@@ -53,7 +53,7 @@ export function PrivacyCopy() {
       <h3>Deletion, backups and recovery</h3>
       <p>
         Data remains on the server and your devices until removed. Deleted tasks
-        may remain as encrypted sync records. Permanently deleting a file
+        may remain as encrypted sync records and in bounded, encrypted version history on this device. Previous versions are not uploaded or included in exports. Permanently deleting a file
         removes its live server copy after sync; deletion markers, backups and
         copies on devices that have not synced may remain. The operator controls
         backup and log retention. Old plaintext backups from earlier versions

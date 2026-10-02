@@ -28,6 +28,10 @@ Drag tasks between columns or use a card's move control or right-click menu. At 
 
 An unfinished task with a reminder today appears in Today immediately, even if its reminder time is hours away. Change or clear the reminder before moving it to Later or This Week. Clearing it leaves the task in Today. Dismissing the notification also leaves it there. Completion, archiving and deletion remain available. Notifications still wait until the reminder time. Other reminder dates and due dates do not choose a column.
 
+When rollover moves unfinished tasks back, a planning review above the board explains why and lets you choose Today, This Week, or Later. It includes tasks hidden by filters. Dismiss hides the review for the current unlocked session.
+
+Changed task drafts ask for confirmation before closing through Cancel, Escape, the close button, or a click outside. Keep editing preserves the draft; Discard changes leaves stored tasks unchanged. Reloading or navigating away requests the browser's unsaved-changes warning where supported. Locking still clears unsaved drafts.
+
 Tasks support up to 10 tags, each up to 32 Unicode characters. Type a name and press Enter, or choose an existing tag. Names are trimmed, normalized, lowercased and deduplicated. Filter the board by category and one tag. Search across active and archived tasks through the header search button or `/`. New tasks inherit the selected tag.
 
 Date and time pickers keep changes as a draft until you save the task. Reminders use device-local time. Choose both an hour and a minute, or type `HH:mm`. Escape closes the top picker. Due dates use `YYYY-MM-DD`.
@@ -89,7 +93,7 @@ Change the optional nickname through workspace options. It is encrypted, works o
 
 The password both signs in and decrypts the vault. It never reaches the server. There is no recovery key, password reset or administrator bypass. A forgotten password cannot be recovered. An unlocked or remembered browser may still export readable data.
 
-Remember this device is off by default. Otherwise, keys stay in memory and the page locks on close, reload or navigation away. There is no inactivity timer. Remembering stores a non-extractable key in IndexedDB. Anyone using that browser profile may access the vault. Scripts with access to that key can use it even though the browser will not export its raw bytes.
+Remember this device is off by default. Otherwise, keys stay in memory and the page locks on close, reload or navigation away. Automatic locking in workspace options is off by default. Choose 1, 5, 15, 30, or 60 minutes for all accounts in this browser. Activity in any unlocked Taskpath tab renews the interval. Background time counts; suspended browsers enforce expiry when they resume or reopen. Automatic locking clears remembered keys across tabs and retains encrypted saved changes, but discards unsaved editor drafts. Remembering stores a non-extractable key in IndexedDB. Anyone using that browser profile may access the vault. Scripts with access to that key can use it even though the browser will not export its raw bytes.
 
 Lock clears remembered keys and decrypted content across this browser's tabs while preserving encrypted pending changes. It leaves other devices unlocked and does not end the server session. Workers can still transfer ciphertext.
 
@@ -114,7 +118,7 @@ The app's Privacy notice explains local storage, cookies, push delivery and encr
 
 Unlock online once and let the workspace and offline resources download. Task edits, archive actions, imports and exports work offline. Each write is encrypted before storage. Retries preserve operation IDs, timestamps and ciphertext.
 
-Sync uses the most recent edit of the whole task, including deletion. Equal timestamps use operation IDs to break ties. Fields are not merged. Keep device clocks accurate. WebSockets announce changes, HTTP transfers ciphertext, and polling provides a fallback.
+Sync uses the most recent edit of the whole task, including deletion. Equal timestamps use operation IDs to break ties. Fields are not merged. Previous task versions in workspace options offers local recovery: replaced versions and acknowledged losing edits are kept encrypted on this device, up to five per task and 200 total within a 2 MB ciphertext budget. Versions are not synchronized or included in exports, and clearing browser data removes them. Restore as new task copies title, notes, category, tags and due date into Later with no reminder, preserving the current task. History starts with this release. Keep device clocks accurate. WebSockets announce changes, HTTP transfers ciphertext, and polling provides a fallback.
 
 Session expiry preserves pending changes. Sign in again to sync. Browser eviction or clearing site data can lose unsynced work. Server backups contain only changes that reached the server. Reopen online to finish transfers when the browser suspends background work.
 
@@ -189,6 +193,10 @@ bun run typecheck
 bun run build
 bun test
 ```
+
+Dependency resolution observes the 14-day minimum release age in `bunfig.toml`; already locked packages remain unchanged.
+
+Run `bunx --no-install playwright install chromium` once, then `bun run test:browser` after building for automated Chromium checks against an isolated in-memory server. CI installs Chromium and runs these checks, retaining traces on failures.
 
 These commands reproduce the [GitHub Tests workflow](.github/workflows/tests.yml). CI runs on pushes, pull requests and manual dispatches with Bun 1.4.2 on Ubuntu 24.04. Bun executes TypeScript, but typecheck checks its types. Tests cover encryption, accounts, storage, sync, task behavior and WebSockets. Push tests use a fake sender. Source tests can run without a build. Build first to include production asset checks.
 

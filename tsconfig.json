@@ -17,6 +17,8 @@
     "tests/*helpers.ts",
     "tests/browser-server.ts",
     "types/experimental.d.ts",
-    "types/browser.d.ts"
+    "types/browser.d.ts",
+    "playwright.config.ts",
+    "tests/e2e/**/*.pw.ts"
   ]
 }

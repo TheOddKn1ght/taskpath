@@ -16,7 +16,7 @@ export function reminderIsToday(task: Pick<Task, 'status' | 'reminderAt' | 'arch
 }
 export function project(record: PlainRecord & {board:PlainBoard}, time?: number): Board;
 export function project(record: PlainRecord | null, time?: number): Board | null;
-export function project(record: PlainRecord | null, time = Date.now() + (record?.offset || 0)) {
+export function project(record: PlainRecord | null, time = Date.now() + (record?.offset || 0)): Board | null {
   if (!record?.board) return null;
   const rows = new Map(record.board.rows.map(task => [task.id, { ...task }]));
   const changeIds = { ...record.board.changeIds };
@@ -30,6 +30,7 @@ export function project(record: PlainRecord | null, time = Date.now() + (record?
   const { day, week } = calendarAt(time, timezone);
   const order = (a: Task, b: Task) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
   const moving = [...rows.values()].filter(task => !task.archivedAt && ['today', 'week'].includes(task.status) && (task.plannedWeek !== week || (task.status === 'today' && task.plannedDay !== day))).sort(order);
+  const originalStatuses = new Map(moving.map(t => [t.id, t.status]));
   const ids = new Set(moving.map(t => t.id));
   const ends = Object.fromEntries(['later', 'week'].map(status => [status, Math.max(-1, ...[...rows.values()].filter(t => !ids.has(t.id) && !t.deletedAt && !t.archivedAt && t.status === status).map(t => t.position))]));
   for (const task of moving) {
@@ -44,7 +45,8 @@ export function project(record: PlainRecord | null, time = Date.now() + (record?
   }
   const tasks = [...rows.values()].filter(t => !t.deletedAt).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   const serverTime = new Date(time).toISOString();
-  return { ...record.board, changeIds, rows: [...rows.values()], tasks, day, week, serverTime,
+  const rollover = moving.filter(t => !t.deletedAt && t.status !== originalStatuses.get(t.id)).map(t => ({ id: t.id, from: originalStatuses.get(t.id)!, to: t.status }));
+  return { ...record.board, rollover, changeIds, rows: [...rows.values()], tasks, day, week, serverTime,
     reminders: tasks.filter(t => !t.archivedAt && t.status !== 'done' && t.reminderAt && !t.reminderDismissedAt && t.reminderAt <= serverTime) };
 }
 function validDate(value: unknown) {
