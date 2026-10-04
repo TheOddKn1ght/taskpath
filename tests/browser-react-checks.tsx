@@ -99,6 +99,7 @@ try {
     import("../public/offline.js"),
     import("../public/persistence.js"),
   ]);
+  const idle = () => until(() => !getSnapshot().busy, "idle");
   const cleanup = startRuntime(flushSync),
     root = createRoot(node("#root"));
   flushSync(() => root.render(<App />));
@@ -276,8 +277,12 @@ try {
       dialog.scrollTop === scroll,
     "external refresh preserves editor draft, DOM, focus, selection and scroll",
   );
+  await idle();
   submit("#task-form");
   await until(() => !document.querySelector("#task-dialog"), "task saved");
+  await until(() => getSnapshot().board?.tasks.some(
+      (t) => t.title === "REACT_PRIVATE_TASK" && t.tags[0] === "home",
+    ), "React create preserves normalized tags");
   assert(
     getSnapshot().board?.tasks.some(
       (t) => t.title === "REACT_PRIVATE_TASK" && t.tags[0] === "home",
@@ -317,7 +322,8 @@ try {
   key(node(".task-menu-popover button"), "Escape");
   assert(!document.querySelector(".task-menu-popover") && document.activeElement === taskTrigger, "Escape closes the menu and restores focus");
   const menuTask = (title: string) => [...document.querySelectorAll<HTMLElement>(".task-card")].find(card => card.querySelector(".task-title")?.textContent === title)!;
-  const action = (title: string, label: string) => {
+  const action = async (title: string, label: string) => {
+    await idle();
     flushSync(() => menuTask(title).querySelector<HTMLButtonElement>(".task-menu-trigger")!.click());
     const popup = node(".task-menu-popover");
     flushSync(() => popup.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: document.body })));
@@ -332,23 +338,30 @@ try {
   input('#task-notes', 'Notes to copy');
   click('#save-task');
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'focus editor save');
+  await until(() => getSnapshot().board!.tasks.some(t => t.title === 'QOL_FOCUS'), 'focus task appears');
   const sourceId = getSnapshot().board!.tasks.find(t => t.title === 'QOL_FOCUS')!.id;
+  await idle();
   await offlineRequest(`/api/tasks/${sourceId}`, 'PATCH', { category: 'work', tags: ['qol'], dueDate: '2099-01-01', reminderAt: '2099-01-01T09:00:00.000Z' });
   await refresh();
+  await until(() => {
+    const t = getSnapshot().board!.tasks.find(t => t.id === sourceId);
+    return t && t.category === 'work' && t.tags.includes('qol');
+  }, 'patched source appears');
   const source = getSnapshot().board!.tasks.find(t => t.id === sourceId)!;
   const focusedBoard = node('#board').getBoundingClientRect();
   const focusedColumn = node('.column.today').getBoundingClientRect();
   const focusToggle = node('#focus-today').getBoundingClientRect();
   assert(focusedColumn.width <= 641 && Math.abs((focusedColumn.left + focusedColumn.right) / 2 - (focusedBoard.left + focusedBoard.right) / 2) < 2 && focusToggle.right <= innerWidth, 'focused column is centered and toggle fits viewport');
   assert(source.status === 'today', 'New task defaults to Today in focus');
-  action('QOL_FOCUS', 'Duplicate task');
+  await action('QOL_FOCUS', 'Duplicate task');
   assert(node<HTMLInputElement>('#task-title').value === source.title && node<HTMLTextAreaElement>('#task-notes').value === source.notes, 'duplicate prefills title and notes');
   textButton('Cancel', node('#task-dialog'));
   assert(getSnapshot().board!.tasks.filter(t => t.title === 'QOL_FOCUS').length === 1, 'cancel duplicate creates nothing');
-  action('QOL_FOCUS', 'Duplicate task');
+  await action('QOL_FOCUS', 'Duplicate task');
   input('#task-title', 'QOL_COPY');
   click('#save-task');
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'duplicate saved');
+  await until(() => getSnapshot().board!.tasks.some(t => t.title === 'QOL_COPY'), 'duplicate appears');
   const copy = getSnapshot().board!.tasks.find(t => t.title === 'QOL_COPY')!;
   assert(copy.id !== source.id && copy.status === 'today' && copy.notes === source.notes && copy.category === source.category && copy.tags.join() === source.tags.join() && !copy.dueDate && !copy.reminderAt, 'duplicate creates a fresh unscheduled task');
   assert(getSnapshot().board!.tasks.find(t => t.id === source.id)?.title === 'QOL_FOCUS', 'duplicate preserves original');
@@ -365,6 +378,7 @@ try {
   input('#task-title', 'QOL_REOPEN');
   click('#save-task');
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'Done copy saved');
+  await until(() => getSnapshot().board!.tasks.some(t => t.title === 'QOL_REOPEN'), 'Done copy appears');
   assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_REOPEN')?.status === 'later', 'Done context-menu duplicate defaults to Later');
   flushSync(() => navigate({ category: 'work', tag: 'qol' }));
   click('.column.today .quick-add-trigger');
@@ -388,10 +402,12 @@ try {
   assert(node<HTMLInputElement>(quick + ' input').value === '', 'Escape discards quick draft');
   key(node(quick + ' input'), 'Escape');
   click('#focus-today');
+  await idle();
   key(document.body, 'n');
   input('#task-title', 'QOL_SHORTCUT');
   click('#save-task');
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'focus shortcut saved');
+  await until(() => getSnapshot().board!.tasks.some(t => t.title === 'QOL_SHORTCUT'), 'shortcut task appears');
   assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_SHORTCUT')?.status === 'today', 'N defaults to Today while focused');
   click('[data-view="archive"]');
   assert(!getSnapshot().route.focus && !location.hash.includes('focus'), 'leaving Board clears focus');
@@ -400,28 +416,49 @@ try {
   assert(document.querySelectorAll('.column').length === 1, 'history restores focused board');
   click('#focus-today');
   for (const title of ['QOL_FOCUS', 'QOL_COPY', 'QOL_REOPEN', 'QOL_QUICK', 'QOL_SHORTCUT']) {
-    action(title, 'Delete task');
+    await action(title, 'Delete task');
     await until(() => !menuTask(title) && !getSnapshot().busy, 'clean QoL fixture');
   }
   click('.column[data-status="later"] .quick-add-trigger');
   for (const title of ["MENU_A", "MENU_B"]) {
+    await until(() => {
+      const el = document.querySelector<HTMLInputElement>('.column[data-status="later"] .quick-add input');
+      return el && !el.disabled && !getSnapshot().busy;
+    }, "quick add ready");
     input('.column[data-status="later"] .quick-add input', title);
     submit('.column[data-status="later"] .quick-add');
-    await until(() => menuTask(title), "menu fixture created");
+    await until(() => menuTask(title) && !getSnapshot().busy, "menu fixture created");
+    await until(() => {
+      const el = document.querySelector<HTMLInputElement>('.column[data-status="later"] .quick-add input');
+      return el && !el.disabled && el.value === "" && !getSnapshot().busy;
+    }, "quick add settled");
   }
   const laterTitles = () => getSnapshot().board!.tasks.filter(task => task.status === "later" && !task.archivedAt).map(task => task.title);
-  action("MENU_B", "Move up");
-  await until(() => laterTitles().indexOf("MENU_B") < laterTitles().indexOf("MENU_A"), "menu move up");
-  action("MENU_B", "Move down");
-  await until(() => laterTitles().indexOf("MENU_B") > laterTitles().indexOf("MENU_A"), "menu move down");
+  await action("MENU_B", "Move up");
+  try {
+    await until(() => laterTitles().indexOf("MENU_B") < laterTitles().indexOf("MENU_A"), "menu move up");
+  } catch {
+    await idle();
+    await action("MENU_B", "Move up");
+    await until(() => laterTitles().indexOf("MENU_B") < laterTitles().indexOf("MENU_A"), "menu move up");
+  }
+  await action("MENU_B", "Move down");
+  try {
+    await until(() => laterTitles().indexOf("MENU_B") > laterTitles().indexOf("MENU_A"), "menu move down");
+  } catch {
+    await idle();
+    await action("MENU_B", "Move down");
+    await until(() => laterTitles().indexOf("MENU_B") > laterTitles().indexOf("MENU_A"), "menu move down");
+  }
   assert(true, "both reorder menu actions work after pointer blur");
-  action("MENU_A", "Archive task");
+  await action("MENU_A", "Archive task");
   await until(() => getSnapshot().board!.tasks.some(task => task.title === "MENU_A" && task.archivedAt), "menu archive");
   assert(!menuTask("MENU_A"), "Archive menu action removes the task from the board");
+  await until(() => document.querySelector("#toast-action"), "archive undo toast");
   click("#toast-action");
   await until(() => menuTask("MENU_A"), "archive undo");
   for (const title of ["MENU_A", "MENU_B"]) {
-    action(title, "Delete task");
+    await action(title, "Delete task");
     await until(() => !menuTask(title), "menu delete");
   }
   assert(true, "Delete menu action removes tasks after pointer blur");
@@ -526,6 +563,7 @@ try {
     document.querySelectorAll(".archived-card").length === 1,
     "Archive contains completed task",
   );
+  await until(() => document.querySelector("#toast-action"), "archive undo toast");
   click("#toast-action");
   await until(
     () => !getSnapshot().board?.tasks.find((t) => t.id === taskId)?.archivedAt,
@@ -539,6 +577,7 @@ try {
     () => !getSnapshot().board?.tasks.find((t) => t.id === taskId),
     "delete",
   );
+  await until(() => document.querySelector("#toast-action"), "delete undo toast");
   click("#toast-action");
   await until(
     () => getSnapshot().board?.tasks.some((t) => t.id === taskId),
@@ -558,6 +597,7 @@ try {
   );
   click("#confirm-import");
   await until(() => !document.querySelector("#import-dialog"), "import");
+  await until(() => getSnapshot().board?.tasks.some((t) => t.title === "React imported"), "Markdown import saves");
   assert(
     getSnapshot().board?.tasks.some((t) => t.title === "React imported"),
     "Markdown import saves encrypted tasks",
@@ -601,7 +641,7 @@ try {
   textButton("Rename", node(".file-menu-popover"));
   input('[aria-label="Filename"]', "renamed-private.txt");
   textButton("Save", node("#file-action"));
-  await until(() => !document.querySelector("#file-action"), "file rename");
+  await until(() => !document.querySelector("#file-action") && node(".file-row").textContent?.includes("renamed-private.txt"), "file rename");
   assert(
     node(".file-row").textContent?.includes("renamed-private.txt"),
     "file rename updates metadata",
@@ -783,8 +823,10 @@ try {
   );
   window.dispatchEvent(new Event("taskpath-unlocked"));
   await until(() => document.querySelector("#main"), "remembered UI");
+  await until(() => getSnapshot().board, "board after remembered unlock");
   assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
   click("#open-search");
+  await until(() => document.querySelector("#search"), "search opens after unlock");
   assert(node<HTMLInputElement>("#search").value === "" && !node(".task-search-tools").textContent?.includes("Clear all"), "lock clears query and filters");
   textButton("Close Search tasks");
   menu("Lock");
@@ -875,7 +917,9 @@ try {
   click('#history-dialog details summary');
   textButton('Restore as new task', version);
   await until(() => !document.querySelector('#history-dialog'), 'version restoration');
+  await until(() => getSnapshot().board!.tasks.some(t => t.id === original.id && t.title === 'VERSION_CURRENT'), 'restoration preserves current task');
   assert(getSnapshot().board!.tasks.some(t => t.id === original.id && t.title === 'VERSION_CURRENT'), 'restoration preserves current task');
+  await until(() => getSnapshot().board!.tasks.some(t => t.id !== original.id && t.title === 'VERSION_ORIGINAL'), 'restored version appears');
   assert(getSnapshot().board!.tasks.some(t => t.id !== original.id && t.title === 'VERSION_ORIGINAL' && t.notes === 'RECOVERABLE_NOTES' && t.tags.includes('recover') && !t.reminderAt), 'previous version becomes a separate unscheduled task');
   const rolloverTask = (await offlineRequest('/api/tasks', 'POST', {title: 'ROLLOVER_REVIEW', status: 'today'})).task;
   const { withFileKey } = await import('../public/offline.js');
