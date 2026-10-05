@@ -48,3 +48,17 @@ test('public shells use versioned assets and every service-worker shell resource
     expect(await Bun.file('.dockerignore').text()).toContain('!public/vendor/marked.LICENSE.md');
   } finally { store.close(); }
 });
+
+test('every client module in public/ has a server route', async () => {
+  // Routes are an explicit allowlist in src/server.ts; a new module must be added there.
+  const modules = [...new Bun.Glob('*.ts').scanSync({ cwd: 'public' })].filter(name => !name.endsWith('.d.ts'));
+  expect(modules).toContain('offline-model.ts');
+  const store = new Store();
+  try {
+    const handle = createHandler(store);
+    for (const name of modules) {
+      const path = name === 'sw.ts' ? '/sw.js' : `/assets/${ASSET_VERSION}/${name.replace(/\.ts$/, '.js')}`;
+      expect((await handle(new Request('http://localhost' + path)))!.status, `GET ${path}`).toBe(200);
+    }
+  } finally { store.close(); }
+});

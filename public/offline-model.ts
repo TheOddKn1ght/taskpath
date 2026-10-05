@@ -1,8 +1,15 @@
 import type { Task, PlainRecord, PlainBoard, Board, ArchiveReceipt, MutationResult, ArchiveResult } from './types.js';
 import { normalizeTags } from './tags.js';
 // Pure projections shared by the page and service worker. Pending edits stay immutable.
+// Constructing a formatter is far costlier than formatting; boards call this per task on every projection.
+const calendarFormats = new Map<string, Intl.DateTimeFormat>();
 export function calendarAt(time: number, timezone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));
+  let format = calendarFormats.get(timezone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    calendarFormats.set(timezone, format);
+  }
+  const parts = format.formatToParts(new Date(time));
   const part = (name: string) => parts.find(p => p.type === name)!.value;
   const day = `${part('year')}-${part('month')}-${part('day')}`;
   const monday = new Date(`${day}T12:00:00Z`);
