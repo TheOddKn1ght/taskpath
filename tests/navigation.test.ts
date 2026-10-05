@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { readRoute, routeHash, emptyRoute } from "../public/ui/routes";
 test("all views round-trip through refresh and history fragments", () => {
-  for (const view of ["board", "archive", "files"] as const) {
+  for (const view of ["board", "calendar", "stats", "archive", "files"] as const) {
     const route = { ...emptyRoute, view };
     expect(readRoute(routeHash(route))).toEqual(route);
   }

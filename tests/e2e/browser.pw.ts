@@ -71,3 +71,35 @@ test('automatic lock expires in the background and prevents remembered reopening
   await expect(page.locator('#unlock-form')).toBeVisible();
   await expect(page.locator('#main')).toHaveCount(0);
 });
+
+test('phone layout fits five tabs and both new views without horizontal scroll', async ({page}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({width: 390, height: 844});
+  const {userId} = await (await page.request.get('/test-account')).json();
+  await page.goto('/');
+  await page.locator('#unlock-user').fill(userId);
+  await page.locator('#unlock-password').fill('browser harness password 2026');
+  await page.locator('#unlock-submit').click();
+  await expect(page.locator('#main')).toBeVisible();
+  const tabs = page.locator('#sidebar nav button');
+  await expect(tabs).toHaveCount(5);
+  for (const tab of await tabs.all()) {
+    const box = (await tab.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  const noHorizontalScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+  await page.locator('[data-view="calendar"]').click();
+  await expect(page.locator('.month-grid')).toBeVisible();
+  await expect(page.locator('.month-chips').first()).toBeHidden();
+  expect(await noHorizontalScroll()).toBe(true);
+  await page.getByRole('button', {name:'Week', exact:true}).click();
+  await expect(page.locator('.week-day')).toHaveCount(7);
+  expect(await page.locator('.week-grid').evaluate(g => getComputedStyle(g).gridTemplateColumns.split(' ').length)).toBe(1);
+  expect(await noHorizontalScroll()).toBe(true);
+  await page.locator('[data-view="stats"]').click();
+  await expect(page.locator('#stats-view')).toBeVisible();
+  expect(await page.locator('.stat-tiles').first().evaluate(g => getComputedStyle(g).gridTemplateColumns.split(' ').length)).toBe(2);
+  expect(await noHorizontalScroll()).toBe(true);
+});

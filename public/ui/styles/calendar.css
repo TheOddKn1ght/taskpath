@@ -1,0 +1,433 @@
+/* Calendar and statistics share the quiet view heading used by the archive. */
+.view-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin: 0 0 20px;
+}
+
+.view-heading h2 {
+  font-size: 22px;
+  letter-spacing: -.5px;
+}
+
+.view-heading p {
+  flex-basis: 100%;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.calendar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.segmented button {
+  min-height: 30px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.segmented button:hover {
+  background: var(--hover);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--selection);
+  color: var(--accent);
+  font-weight: 550;
+}
+
+.calendar-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-step .icon-button {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+}
+
+/* Month: a hairline grid. The day button fills each cell; chips sit above it. */
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.month-weekday {
+  padding: 8px 10px;
+  background: var(--column);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.weekday-narrow,.month-dots {
+  display: none;
+}
+
+.month-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 112px;
+  padding: 6px;
+  background: var(--surface);
+}
+
+.month-cell.is-empty {
+  background: var(--column);
+}
+
+.month-cell.is-past {
+  background: color-mix(in srgb,var(--surface) 55%,var(--column));
+}
+
+.month-day {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  padding: 6px;
+  border-radius: 0;
+}
+
+.month-day:hover {
+  background: var(--hover);
+}
+
+.month-day:focus-visible {
+  outline-offset: -2px;
+}
+
+.month-cell.is-selected .month-day {
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+}
+
+.month-day-number {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.month-cell.is-today .month-day-number {
+  background: var(--green);
+  color: var(--on-green);
+  font-weight: 600;
+}
+
+.month-chips {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 28px;
+  pointer-events: none;
+}
+
+.month-chips > * {
+  pointer-events: auto;
+}
+
+.month-more {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Tasks: compact chips in month cells, full rows in agenda and week lists. */
+.calendar-task {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.calendar-task:hover {
+  border-color: var(--card-hover);
+}
+
+.calendar-task-title {
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.calendar-task.is-chip {
+  padding: 3px 6px;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb,var(--accent) 9%,var(--surface));
+}
+
+.calendar-task.is-chip .calendar-task-title {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-task.is-chip.is-overdue {
+  border-left-color: var(--warning);
+}
+
+.calendar-task.is-chip.is-done {
+  border-left-color: var(--done-fill);
+  background: var(--done);
+}
+
+.calendar-task.is-done .calendar-task-title {
+  color: var(--done-text);
+  text-decoration: line-through;
+}
+
+.calendar-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calendar-task-meta svg {
+  width: 13px;
+  height: 13px;
+}
+
+.calendar-task.is-overdue .calendar-task-meta {
+  color: var(--warning);
+}
+
+.calendar-task-status,.calendar-task-tag {
+  color: var(--muted);
+}
+
+.calendar-agenda {
+  margin-top: 20px;
+  padding: 0 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--column);
+}
+
+.calendar-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 0 12px;
+}
+
+.calendar-day-header h3 {
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-empty {
+  padding: 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.calendar-note {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Week: seven columns on wide screens, a day-by-day list otherwise. */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.week-day {
+  min-width: 0;
+  min-height: 260px;
+  padding: 0 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--column);
+}
+
+.week-day.is-today {
+  border-color: var(--accent-line);
+  background: var(--today);
+}
+
+.week-day h3 {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-day-name {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.week-day.is-today .week-day-date {
+  color: var(--accent);
+}
+
+.week-day .calendar-task {
+  padding: 8px;
+}
+
+@media (max-width:1100px) {
+  .week-grid {
+    grid-template-columns: minmax(0,1fr);
+  }
+  .week-day {
+    min-height: 0;
+  }
+  .week-day h3 {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+}
+
+/* Compact month: day numbers with dots; the agenda below lists the tasks. */
+@media (max-width:900px) {
+  .month-weekday {
+    padding: 8px 0;
+    text-align: center;
+  }
+  .month-cell {
+    min-height: 56px;
+    padding: 0;
+  }
+  .month-chips {
+    display: none;
+  }
+  .month-day {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 4px;
+  }
+  .month-dots {
+    display: flex;
+    gap: 3px;
+    height: 5px;
+  }
+  .month-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .month-dots .is-overdue {
+    background: var(--warning);
+  }
+  .month-dots .is-done {
+    background: var(--done-fill);
+  }
+}
+
+@media (max-width:760px) {
+  .calendar-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .calendar-controls {
+    justify-content: space-between;
+  }
+  .segmented button {
+    min-height: 38px;
+    padding-inline: 18px;
+  }
+  .calendar-step .icon-button,.calendar-add.icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .calendar-step .secondary-button {
+    min-height: 44px;
+  }
+  .month-grid {
+    border-radius: 14px;
+  }
+  .weekday-short {
+    display: none;
+  }
+  .weekday-narrow {
+    display: inline;
+  }
+  .month-cell {
+    min-height: 50px;
+  }
+  .month-cell.is-selected .month-day {
+    box-shadow: none;
+  }
+  .month-cell.is-selected:not(.is-today) .month-day-number {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    color: var(--accent);
+  }
+  .month-day-number {
+    min-width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+  .calendar-agenda,.week-day {
+    padding: 0 12px 12px;
+    border-radius: 16px;
+  }
+  .calendar-day-header {
+    padding: 12px 0 10px;
+  }
+  .calendar-day-header h3 {
+    font-size: 15px;
+  }
+  .calendar-task {
+    min-height: 44px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+  .week-day .calendar-task {
+    padding: 12px;
+  }
+}

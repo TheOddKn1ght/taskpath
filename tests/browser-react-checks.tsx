@@ -584,6 +584,43 @@ try {
     "delete undo",
   );
   assert(true, "delete Undo preserves content");
+  // Calendar and statistics are derived views over the same decrypted board.
+  localStorage.removeItem("taskpath-calendar-mode");
+  click('[data-view="calendar"]');
+  assert(String(location.hash) === "#calendar", "Calendar navigation writes fragment");
+  await until(() => document.querySelector("#calendar-view"), "calendar view");
+  const today = getSnapshot().board!.day;
+  assert(node(".month-cell.is-today .month-day").getAttribute("aria-current") === "date", "calendar marks the workspace day");
+  textButton("Add task", node(".calendar-agenda"));
+  assert(node<HTMLDetailsElement>("#task-schedule").open, "adding from a calendar day opens the schedule");
+  input("#task-title", "REACT_DATED_TASK");
+  click("#save-task");
+  await until(() => getSnapshot().board?.tasks.find((t) => t.title === "REACT_DATED_TASK"), "calendar task saves");
+  const dated = getSnapshot().board!.tasks.find((t) => t.title === "REACT_DATED_TASK")!;
+  assert(dated.dueDate === today && dated.status === "today", "calendar day pre-fills due date and column");
+  await until(() => document.querySelector(".calendar-agenda .calendar-task"), "agenda lists task");
+  assert(node(".month-cell.is-today .month-chips").textContent?.includes("REACT_DATED_TASK"), "month cell shows the task chip");
+  textButton("Week", node("#calendar-view"));
+  assert(document.querySelector(".week-day h3[aria-current=date]") && localStorage.getItem("taskpath-calendar-mode") === "week", "week layout includes today and is remembered");
+  const weekTask = [...document.querySelectorAll<HTMLElement>(".week-day .calendar-task")].find((b) => b.textContent?.includes("REACT_DATED_TASK"));
+  assert(weekTask, "week layout lists the dated task");
+  flushSync(() => weekTask.click());
+  assert(node<HTMLInputElement>("#task-title").value === "REACT_DATED_TASK", "calendar task opens the editor");
+  textButton("Close Edit task");
+  await until(() => !document.querySelector("#task-dialog"), "calendar editor closes");
+  textButton("Next week", node("#calendar-view"));
+  assert(!document.querySelector(".week-day h3[aria-current=date]"), "week navigation moves forward");
+  textButton("Today", node("#calendar-view"));
+  textButton("Month", node("#calendar-view"));
+  click('[data-view="stats"]');
+  assert(String(location.hash) === "#stats", "Stats navigation writes fragment");
+  await until(() => document.querySelector("#stats-view"), "stats view");
+  const tile = (label: string) => [...document.querySelectorAll(".stat-tile")].find((t) => t.querySelector(".stat-label")?.textContent === label)?.querySelector(".stat-value")?.textContent;
+  const open = getSnapshot().board!.tasks.filter((t) => !t.archivedAt && t.status === "today").length;
+  assert(tile("Today") === String(open), "stats snapshot counts Today tasks");
+  assert(document.querySelectorAll("#stats-weeks-title, #stats-days-title").length === 2 && document.querySelectorAll(".chart-col").length === 26, "stats renders weekly and daily completion charts");
+  assert(node(".chart-col").getAttribute("aria-label")?.includes("completed"), "chart columns have accessible values");
+  click('[data-view="board"]');
   menu("Import Markdown…");
   input(
     "#markdown-text",

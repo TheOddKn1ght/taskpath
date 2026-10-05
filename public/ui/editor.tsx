@@ -9,6 +9,7 @@ import { reminderIsToday } from "../offline-model.js";
 export function Editor({
   task,
   draft,
+  due: initialDue,
   status,
   board,
   initialTag,
@@ -21,6 +22,7 @@ export function Editor({
 }: {
   task: Task | null;
   draft?: TaskDraft;
+  due?: string;
   status: Status;
   board: Board;
   initialTag: string;
@@ -39,7 +41,7 @@ export function Editor({
     [category, setCategory] = useState<Category>(
       task?.category ?? draft?.category ?? initialCategory,
     ),
-    [due, setDue] = useState(task?.dueDate || ""),
+    [due, setDue] = useState(task?.dueDate || initialDue || ""),
     [reminder, setReminder] = useState(
       localReminderValue(task?.reminderAt || null),
     ),
@@ -263,7 +265,7 @@ export function Editor({
           open={undefined}
           ref={(el) => {
             if (el && !el.dataset.initialized) {
-              el.open = !!(task?.dueDate || task?.reminderAt);
+              el.open = !!(task?.dueDate || task?.reminderAt || initialDue);
               el.dataset.initialized = "true";
             }
           }}

@@ -20,6 +20,8 @@
 @import "./ui/styles/pickers.css";
 @import "./ui/styles/files.css";
 @import "./ui/styles/privacy.css";
+@import "./ui/styles/calendar.css";
+@import "./ui/styles/stats.css";
 @import "./ui/styles/mobile.css";
 @import "./ui/styles/action-menu.css";
 

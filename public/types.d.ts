@@ -35,5 +35,5 @@ export interface ArchiveResult { archived:number; restored:number; skipped:numbe
 export interface ImportPreview { tasks:Task[]; skipped:number }
 export type TaskInput = Partial<Task> & { beforeId?:string | null; action?:string };
 export type TaskDraft = Pick<Task, 'title' | 'notes' | 'tags' | 'category'>;
-export interface Route { focus?: 'today'; view:'board'|'archive'|'files'; query:string; category:'all'|Category; tag:string }
+export interface Route { focus?: 'today'; view:'board'|'calendar'|'stats'|'archive'|'files'; query:string; category:'all'|Category; tag:string }
 export interface PushStatus { available:boolean; publicKey:string | null; subscriptionIds:string[]; enabled?:boolean }

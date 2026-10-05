@@ -1,6 +1,7 @@
 import type { Route } from '../types.js';
 import { Icon } from './icons';
 import { navigate } from './store';
+const views = { board: 'Board', calendar: 'Calendar', stats: 'Stats', archive: 'Archive', files: 'Files' } as const;
 export function WorkspaceNav({collapsed,view,toggleCollapsed}:{collapsed:boolean;view:Route['view'];toggleCollapsed:()=>void}) {
   return (
     <aside id="sidebar">
@@ -14,11 +15,11 @@ export function WorkspaceNav({collapsed,view,toggleCollapsed}:{collapsed:boolean
         <Icon name="sidebar" />
       </button>
       <nav aria-label="Workspace">
-        {(["board", "archive", "files"] as const).map((target) => (
+        {(Object.keys(views) as (keyof typeof views)[]).map((target) => (
           <button
             key={target}
             data-view={target}
-            aria-label={target[0].toUpperCase() + target.slice(1)}
+            aria-label={views[target]}
             aria-current={view === target ? "page" : undefined}
             onClick={() => {
               navigate({ view:target });
@@ -30,9 +31,7 @@ export function WorkspaceNav({collapsed,view,toggleCollapsed}:{collapsed:boolean
             }}
           >
             <Icon name={target} />
-            <span className="nav-label">
-              {target[0].toUpperCase() + target.slice(1)}
-            </span>
+            <span className="nav-label">{views[target]}</span>
           </button>
         ))}
       </nav>

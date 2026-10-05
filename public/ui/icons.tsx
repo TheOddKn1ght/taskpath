@@ -68,6 +68,12 @@ const paths: Record<string, ReactNode> = {
       <path d="M12 5v14M5 12h14" />
     </>
   ),
+  stats: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7 16v-5m5 5V6m5 10v-8" />
+    </>
+  ),
   calendar: (
     <>
       <rect x="3" y="5" width="18" height="16" rx="3" />

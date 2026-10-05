@@ -227,7 +227,7 @@ export function startRuntime(immediate: (fn: () => void) => void) {
   window.addEventListener(
     "hashchange",
     () => {
-      if (!location.hash || /^#(board|archive|files)(\?|$)/.test(location.hash))
+      if (!location.hash || /^#(board|calendar|stats|archive|files)(\?|$)/.test(location.hash))
         publish({ route: readRoute(location.hash) });
     },
     options,

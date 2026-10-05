@@ -7,7 +7,7 @@ export const emptyRoute: Route = {
   tag: "",
 };
 export function readRoute(hash: string): Route {
-  const match = hash.match(/^#(board|archive|files)(?:\?(.*))?$/);
+  const match = hash.match(/^#(board|calendar|stats|archive|files)(?:\?(.*))?$/);
   if (!match) return { ...emptyRoute };
   const params = new URLSearchParams(match[2] || "");
   let tag = "";
@@ -35,7 +35,7 @@ export function routeHash(route: Route) {
   if (route.tag) p.set("tag", route.tag);
   return p.size
     ? `#${route.view}?${p}`
-    : route.view === "archive"
-      ? "#archive"
-      : "";
+    : route.view === "board"
+      ? ""
+      : `#${route.view}`;
 }

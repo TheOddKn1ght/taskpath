@@ -38,6 +38,9 @@ import { Board } from "./board";
 import { Files } from "./files";
 import { Editor } from "./editor";
 import { Dialog } from "./dialog";
+import { CalendarView } from "./calendar";
+import { StatsView } from "./stats";
+import { weekStart } from "../calendar-model.js";
 import { ThemeDialog } from "./theme";
 import { PrivacyCopy, GuideCopy } from "./copy";
 import { PushDialog } from "./push";
@@ -105,6 +108,7 @@ function Workspace({
   const [editor, setEditor] = useState<{
       task: Task | null;
       draft?: Pick<Task, "title" | "notes" | "tags" | "category">;
+      due?: string;
       status: Status;
     } | null>(null),
     [details, setDetails] = useState<string | null>(null),
@@ -319,7 +323,9 @@ function Workspace({
   useLayoutEffect(() => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const view = document.getElementById(
-      route.view === "files" ? "files-view" : "board",
+      route.view === "files" || route.view === "calendar" || route.view === "stats"
+        ? `${route.view}-view`
+        : "board",
     );
     const animation = view?.animate(
       [
@@ -601,6 +607,19 @@ function Workspace({
           )}
           {route.view === "files" ? (
             <Files />
+          ) : board && route.view === "calendar" ? (
+            <CalendarView
+              board={board}
+              route={route}
+              edit={edit}
+              create={(due) => setEditor({
+                task: null,
+                due,
+                status: due === board.day ? "today" : weekStart(due) === board.week ? "week" : "later",
+              })}
+            />
+          ) : board && route.view === "stats" ? (
+            <StatsView board={board} route={route} />
           ) : board ? (
             <Board
               board={board}
