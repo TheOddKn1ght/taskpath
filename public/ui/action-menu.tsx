@@ -22,11 +22,17 @@ export function ActionMenu({ label, children, triggerClassName, popupClassName }
       popup.style.top = Math.max(8, Math.min(rect.bottom + 6, innerHeight - bounds.height - 8)) + 'px';
     };
     position();
+    const opened = anchor.getBoundingClientRect();
     popup.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
       if (!popup.contains(event.target as Node) && !anchor.contains(event.target as Node)) close();
     };
-    const scroll = (event: Event) => { if (!popup.contains(event.target as Node)) close(); };
+    // Scroll events arrive a frame late, so one from a scroll that finished before opening must not dismiss.
+    const scroll = (event: Event) => {
+      if (popup.contains(event.target as Node)) return;
+      const now = anchor.getBoundingClientRect();
+      if (Math.abs(now.top - opened.top) > 1 || Math.abs(now.left - opened.left) > 1) close();
+    };
     const resize = () => close();
     document.addEventListener('pointerdown', outside);
     document.addEventListener('scroll', scroll, true);

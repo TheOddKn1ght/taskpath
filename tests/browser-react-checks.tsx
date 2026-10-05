@@ -149,6 +149,16 @@ try {
   click(".app-menu");
   flushSync(()=>node("#open-search").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true})));
   assert(!document.querySelector(".app-menu-popover"),"workspace outside pointer dismisses the menu");
+  const spacer = document.body.appendChild(document.createElement("div"));
+  spacer.style.height = "3000px";
+  click(".app-menu");
+  flushSync(()=>document.dispatchEvent(new Event("scroll")));
+  assert(document.querySelector(".app-menu-popover"),"a late scroll event without movement keeps the menu open");
+  window.scrollTo(0, 200);
+  await until(()=>!document.querySelector(".app-menu-popover"),"scrolling the page dismisses the menu");
+  assert(true,"scrolling the page dismisses the menu");
+  window.scrollTo(0, 0);
+  spacer.remove();
   key(document.body, "/");
   assert(document.activeElement === node("#search"), "slash focuses search");
   key(node("#search"), "n");

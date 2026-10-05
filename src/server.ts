@@ -23,6 +23,8 @@ const assets = new Map<string, [string, string]>([
   ["/file-client.js", ["file-client.js", "text/javascript; charset=utf-8"]],
 
   ["/picker-model.js", ["picker-model.js", "text/javascript; charset=utf-8"]],
+  ["/calendar-model.js", ["calendar-model.js", "text/javascript; charset=utf-8"]],
+  ["/stats.js", ["stats.js", "text/javascript; charset=utf-8"]],
   ["/errors.js", ["errors.js", "text/javascript; charset=utf-8"]],
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/login", ["index.html", "text/html; charset=utf-8"]],
