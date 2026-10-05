@@ -326,7 +326,7 @@ export function Files() {
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setEdit(null)}
+                data-dialog-close
                 disabled={busy}
               >
                 Cancel

@@ -114,6 +114,7 @@ export function Editor({
       title={task ? "Edit task" : "New task"}
       className="task-dialog"
       onClose={requestClose}
+      animateClose={!dirty}
       busy={busy}
     >
       {confirmDiscard && <div role="alert" className="form-error">
@@ -336,7 +337,7 @@ export function Editor({
             type="button"
             className="secondary-button"
             disabled={busy}
-            onClick={requestClose}
+            data-dialog-close
           >
             Cancel
           </button>
