@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.2-alpine AS build
+FROM oven/bun:1.4.3-alpine AS build
 WORKDIR /app
 COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --ignore-scripts
@@ -9,7 +9,7 @@ COPY --chown=bun:bun tsconfig*.json ./
 RUN mkdir -p /app/data /app/dist && chown bun:bun /app/data /app/dist
 USER bun
 RUN bun run build
-FROM oven/bun:1.4.2-alpine
+FROM oven/bun:1.4.3-alpine
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATABASE_PATH=/app/data/taskpath-accounts.sqlite
 COPY --chown=bun:bun package.json bun.lock bunfig.toml ./

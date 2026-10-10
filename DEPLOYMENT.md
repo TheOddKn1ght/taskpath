@@ -4,7 +4,7 @@ This guide deploys an invite-only Taskpath installation with private per-user va
 
 **Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. The picker update (`accounts-v16`) preserves the database and encrypted browser storage; it does not require a new vault, password, or migration command. Only older plaintext/single-owner installations need the separate fresh-start procedure.
 
-The image uses Bun **1.4.2**. Docker installs the versions in `bun.lock`, including React, Drizzle ORM and `web-push`, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
+The image uses Bun **1.4.3**. Docker installs the versions in `bun.lock`, including React, Drizzle ORM and `web-push`, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
 
 You need:
 
@@ -330,7 +330,7 @@ Continue only if the image build succeeds. The named volume survives image repla
 7. With changes synchronized on all devices before upgrading, on **every device**, open Taskpath online so it can download the new PWA shell, close all Taskpath tabs and installed-app windows, then reopen and unlock. Keep browser storage intact. The worker waits for old windows to close before activating; refreshing one tab may not be enough.
 8. Enable background reminders on each desired device using the section below. Confirm a test notification arrives with the app closed.
 
-For a local checkout with Bun 1.4.2, the same dependency/build/test sequence used by CI is:
+For a local checkout with Bun 1.4.3, the same dependency/build/test sequence used by CI is:
 
 ```sh
 bun install --frozen-lockfile --ignore-scripts
