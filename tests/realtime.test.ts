@@ -1,5 +1,6 @@
-import { test, expect } from 'bun:test';
-import { Realtime } from '../src/realtime';
+import { test, expect, mock } from 'bun:test';
+import type { ServerWebSocket } from 'bun';
+import { Realtime, type RealtimeData } from '../src/realtime';
 import { createHandler } from '../src/server';
 import { createRealtime } from '../public/realtime.js';
 import { fixture, testVault, testUserId } from './auth-helpers';
@@ -10,6 +11,72 @@ const until = async (condition: () => boolean, timeout = 4000) => {
   const end = Date.now() + timeout;
   while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await Bun.sleep(10); }
 };
+
+function serverSocket(userId: string) {
+  const authorized = mock(() => true), send = mock((_message: string) => 1), close = mock((_code?: number, _reason?: string) => {});
+  const socket = { data: { userId, authorized }, send, close } as unknown as ServerWebSocket<RealtimeData>;
+  return { socket, authorized, send, close };
+}
+
+test('notifications authorize only the affected user devices regardless of connected user count', () => {
+  const hub = new Realtime(), devices = [serverSocket('owner'), serverSocket('owner')];
+  const others = Array.from({ length: 1000 }, (_, i) => serverSocket(`other-${i}`));
+  try {
+    for (const device of [...devices, ...others]) {
+      hub.websocket.open!(device.socket);
+      device.authorized.mockClear(); device.send.mockClear();
+    }
+    hub.notify('owner');
+    for (const device of devices) {
+      expect(device.authorized).toHaveBeenCalledTimes(1);
+      expect(device.send).toHaveBeenCalledTimes(1);
+      expect(device.send).toHaveBeenCalledWith('{"type":"changed"}');
+    }
+    for (const other of others) {
+      expect(other.authorized).not.toHaveBeenCalled();
+      expect(other.send).not.toHaveBeenCalled();
+    }
+    hub.notify('unknown');
+    expect(devices[0].authorized).toHaveBeenCalledTimes(1);
+  } finally { hub.close(); }
+});
+
+test('notification membership handles revoked sessions, disconnects, reconnects and shutdown', () => {
+  const hub = new Realtime(), revoked = serverSocket('owner'), live = serverSocket('owner'), other = serverSocket('other');
+  try {
+    for (const device of [revoked, live, other]) hub.websocket.open!(device.socket);
+    revoked.authorized.mockReturnValue(false);
+    hub.notify('owner');
+    expect(revoked.close).toHaveBeenCalledTimes(1);
+    expect(revoked.close).toHaveBeenCalledWith(4401, 'Sign in to sync');
+    expect(revoked.send).toHaveBeenCalledTimes(1); // Only the initial ready message.
+    revoked.authorized.mockClear();
+    hub.notify('owner');
+    expect(revoked.authorized).not.toHaveBeenCalled();
+
+    hub.websocket.close!(live.socket, 1000, '');
+    live.authorized.mockClear();
+    hub.notify('owner');
+    expect(live.authorized).not.toHaveBeenCalled();
+    const reconnected = serverSocket('owner');
+    hub.websocket.open!(reconnected.socket);
+    hub.websocket.close!(revoked.socket, 4401, '');
+    hub.notify('owner');
+    expect(reconnected.send).toHaveBeenLastCalledWith('{"type":"changed"}');
+
+    other.authorized.mockReturnValue(false);
+    hub.checkSessions();
+    expect(other.close).toHaveBeenCalledTimes(1);
+    expect(other.close).toHaveBeenCalledWith(4401, 'Sign in to sync');
+    hub.close();
+    expect(reconnected.close).toHaveBeenCalledTimes(1);
+    expect(reconnected.close).toHaveBeenCalledWith(1001, 'Server restarting');
+    reconnected.authorized.mockClear();
+    hub.notify('owner'); hub.checkSessions();
+    expect(reconnected.authorized).not.toHaveBeenCalled();
+  } finally { hub.close(); }
+});
+
 test('real WebSockets propagate encrypted edits between devices, enforce Origin, and close revoked sessions', async () => {
   const { store, auth } = await fixture(); const hub = new Realtime(50);
   const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: hub.websocket, fetch: createHandler(store, auth, undefined, hub) });
