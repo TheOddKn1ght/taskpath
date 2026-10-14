@@ -35,11 +35,18 @@ function CalendarTask({ entry, today, timezone, edit, chip = false }: {
   return (
     <button
       type="button"
-      className={`calendar-task${chip ? " is-chip" : ""}${done ? " is-done" : ""}${overdue ? " is-overdue" : ""}`}
+      className={`calendar-task${entry.reminder && !entry.due ? " is-reminder" : ""}${chip ? " is-chip" : ""}${done ? " is-done" : ""}${overdue ? " is-overdue" : ""}`}
       aria-label={`${task.title}. ${meta.join(", ")}. ${columns[task.status]}.`}
+      title={`${task.title} · ${meta.join(" · ")}`}
       onClick={() => edit(task)}
     >
-      <span className="calendar-task-title">{task.title}</span>
+      <span className="calendar-task-heading">
+        <span className="calendar-task-kind" aria-hidden="true">
+          {entry.due && <Icon name="calendar" />}
+          {entry.reminder && <Icon name="bell" />}
+        </span>
+        <span className="calendar-task-title">{task.title}</span>
+      </span>
       {!chip && (
         <span className="calendar-task-meta">
           {overdue && <Icon name="info" />}
@@ -104,6 +111,10 @@ export function CalendarView({ board, route, edit, create }: {
           </div>
         </div>
       </header>
+      <div className="calendar-legend" aria-label="Calendar entry types">
+        <span><Icon name="calendar" />Task due</span>
+        <span><Icon name="bell" />Reminder</span>
+      </div>
       {mode === "month" ? (
         <>
           <div className="month-grid">
@@ -114,7 +125,7 @@ export function CalendarView({ board, route, edit, create }: {
             ))}
             {monthDays(anchor).map((day, i) => {
               if (!day) return <span key={`pad-${i}`} className="month-cell is-empty" aria-hidden="true" />;
-              const list = entries(day), open = list.filter((e) => e.task.status !== "done");
+              const list = entries(day);
               const overdue = list.some((e) => isOverdue(e, today));
               return (
                 <div key={day} className={`month-cell${day === today ? " is-today" : ""}${day === selected ? " is-selected" : ""}${day < today ? " is-past" : ""}`}>
@@ -128,9 +139,15 @@ export function CalendarView({ board, route, edit, create }: {
                   >
                     <span className="month-day-number">{Number(day.slice(8))}</span>
                     {list.length > 0 && (
-                      <span className="month-dots" aria-hidden="true">
-                        {open.slice(0, 3).map((e) => <span key={e.task.id} className={isOverdue(e, today) ? "is-overdue" : ""} />)}
-                        {!open.length && <span className="is-done" />}
+                      <span className="month-markers" aria-hidden="true">
+                        {(["due", "reminder"] as const).map((kind) => {
+                          const matching = list.filter((e) => e[kind]);
+                          if (!matching.length) return null;
+                          const done = matching.every((e) => e.task.status === "done");
+                          return <span key={kind} className={done ? "is-done" : kind === "due" && overdue ? "is-overdue" : ""}>
+                            <Icon name={kind === "due" ? "calendar" : "bell"} />
+                          </span>;
+                        })}
                       </span>
                     )}
                   </button>

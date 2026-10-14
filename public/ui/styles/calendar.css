@@ -82,7 +82,7 @@
   font-size: 11px;
 }
 
-.weekday-narrow,.month-dots {
+.weekday-narrow,.month-markers {
   display: none;
 }
 
@@ -178,9 +178,47 @@
 }
 
 .calendar-task-title {
+  min-width: 0;
   font-size: 13px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.calendar-task-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.calendar-task-kind,.calendar-legend,.calendar-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-task-kind {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.calendar-task-kind svg,.calendar-legend svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.calendar-legend {
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: -8px 0 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calendar-task.is-reminder {
+  border-style: dashed;
 }
 
 .calendar-task.is-chip {
@@ -196,6 +234,20 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calendar-task.is-chip .calendar-task-kind {
+  margin-top: 1px;
+}
+
+.calendar-task.is-chip .calendar-task-kind svg {
+  width: 12px;
+  height: 12px;
+}
+
+.calendar-task.is-chip.is-reminder {
+  border-left-style: dashed;
+  background: var(--column);
 }
 
 .calendar-task.is-chip.is-overdue {
@@ -330,7 +382,7 @@
   }
 }
 
-/* Compact month: day numbers with dots; the agenda below lists the tasks. */
+/* Compact month: day numbers with due/reminder icons; details in the agenda. */
 @media (max-width:900px) {
   .month-weekday {
     padding: 8px 0;
@@ -350,22 +402,22 @@
     gap: 3px;
     padding: 4px;
   }
-  .month-dots {
+  .month-markers {
     display: flex;
     gap: 3px;
-    height: 5px;
+    height: 12px;
+    color: var(--accent);
   }
-  .month-dots span {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
+  .month-markers svg {
+    display: block;
+    width: 12px;
+    height: 12px;
   }
-  .month-dots .is-overdue {
-    background: var(--warning);
+  .month-markers .is-overdue {
+    color: var(--warning);
   }
-  .month-dots .is-done {
-    background: var(--done-fill);
+  .month-markers .is-done {
+    color: var(--done-text);
   }
 }
 
