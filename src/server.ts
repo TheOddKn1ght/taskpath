@@ -51,7 +51,7 @@ const assets = new Map<string, [string, string]>([
   ["/icon-512.png", ["icon-512.png", "image/png"]],
   ["/apple-touch-icon.png", ["apple-touch-icon.png", "image/png"]],
 ]);
-for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'high-contrast-light', 'high-contrast-dark']) {
+for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'apricot', 'matcha', 'periwinkle', 'linen', 'twilight', 'aubergine', 'espresso', 'aurora', 'high-contrast-light', 'high-contrast-dark']) {
   for (const [file, type] of [['favicon.svg', 'image/svg+xml'], ['manifest.webmanifest', 'application/manifest+json'],
     ['icon-192.png', 'image/png'], ['icon-512.png', 'image/png'], ['apple-touch-icon.png', 'image/png']]) {
     const path = `themes/${theme}/${file}`;

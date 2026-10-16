@@ -6,7 +6,7 @@ const CACHE = 'taskpath-shell-__TASKPATH_RELEASE__';
 const ROOT = '/assets/__TASKPATH_RELEASE__/';
 const FILES = (typeof TASKPATH_SHELL_FILES !== 'undefined' ? TASKPATH_SHELL_FILES : ['app.js', 'theme.js', 'style.css', 'manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']).map(file => ROOT + file);
 const THEME_FILES: string[] = [];
-for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'high-contrast-light', 'high-contrast-dark']) {
+for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'apricot', 'matcha', 'periwinkle', 'linen', 'twilight', 'aubergine', 'espresso', 'aurora', 'high-contrast-light', 'high-contrast-dark']) {
   for (const file of ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) THEME_FILES.push(`${ROOT}themes/${theme}/${file}`);
 }
 self.addEventListener('install', event => event.waitUntil((async () => {

@@ -22,10 +22,18 @@
     { id: 'ember', name: 'Ember', color: '#241915' },
     { id: 'forest', name: 'Forest', color: '#102018' },
     { id: 'graphite', name: 'Graphite', color: '#18191c' },
+    { id: 'apricot', name: 'Apricot', color: '#fff5eb' },
+    { id: 'matcha', name: 'Matcha', color: '#f4f6e9' },
+    { id: 'periwinkle', name: 'Periwinkle', color: '#f3f4ff' },
+    { id: 'linen', name: 'Linen', color: '#faf5ef' },
+    { id: 'twilight', name: 'Twilight', color: '#1c2034' },
+    { id: 'aubergine', name: 'Aubergine', color: '#281c29' },
+    { id: 'espresso', name: 'Espresso', color: '#211d1a' },
+    { id: 'aurora', name: 'Aurora', color: '#13252b' },
     { id: 'high-contrast-light', name: 'High Contrast Light', color: '#ffffff' },
     { id: 'high-contrast-dark', name: 'High Contrast Dark', color: '#000000' },
   ];
-  const lightIds = new Set(['light', 'gruvbox-light', 'rose-pine', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'high-contrast-light']);
+  const lightIds = new Set(['light', 'gruvbox-light', 'rose-pine', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'apricot', 'matcha', 'periwinkle', 'linen', 'high-contrast-light']);
   const modeTheme = (mode: 'light' | 'dark', value: string | null) =>
     themes.some(theme => theme.id === value) && lightIds.has(value!) === (mode === 'light') ? value! : mode;
   const pair = { light: 'light', dark: 'dark' };

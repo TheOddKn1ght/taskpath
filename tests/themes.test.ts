@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { runInNewContext } from 'node:vm';
-const ids = ['midnight','plum','ocean','sand','lavender','ice','mint','blush','paper','ember','forest','graphite', 'high-contrast-light', 'high-contrast-dark'];
+const ids = ['midnight','plum','ocean','sand','lavender','ice','mint','blush','paper','ember','forest','graphite', 'apricot', 'matcha', 'periwinkle', 'linen', 'twilight', 'aubergine', 'espresso', 'aurora', 'high-contrast-light', 'high-contrast-dark'];
 const css = await Bun.file('public/ui/styles/themes.css').text();
 const blocks = [...css.matchAll(/:root(?:\[data-theme="([^"]+)"\])?\s*\{([^}]+)\}/g)];
 const tokens = (body:string) => Object.fromEntries([...body.matchAll(/--([\w-]+):\s*(#[\da-f]+);/g)].map(m=>[m[1]!,m[2]!]));
@@ -87,7 +87,7 @@ test('invalid or mismatched system themes and inaccessible storage use safe defa
 });
 
 test('added palettes are selectable for their matching automatic appearance', () => {
-  for (const id of ['mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'high-contrast-light', 'high-contrast-dark']) {
+  for (const id of ['mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'apricot', 'matcha', 'periwinkle', 'linen', 'twilight', 'aubergine', 'espresso', 'aurora', 'high-contrast-light', 'high-contrast-dark']) {
     const dark = blocks.find(m => m[1] === id)![2]!.includes('color-scheme: dark');
     const r = themeRuntime({ ['taskpath-theme-' + (dark ? 'dark' : 'light')]: id });
     r.mode(dark);
