@@ -6,6 +6,7 @@ import { createHandler } from '../src/server';
 import { Realtime } from '../src/realtime';
 import { sourceRelease } from '../src/client-release';
 import { createVault } from '../public/crypto';
+import { seedQaWorkspace } from './qa-seed';
 
 const headers = {
   'Cache-Control': 'no-store',
@@ -26,6 +27,7 @@ export async function startQaSession(now = () => Date.now()) {
   const vault = await createVault(password);
   const invitation = auth.createInvitation();
   await auth.setup(invitation.userId, invitation.token, vault.config, vault.credential);
+  await seedQaWorkspace({ store, userId: invitation.userId, vaultId: vault.config.vaultId, key: vault.key });
   const token = randomBytes(32).toString('base64url');
   const tokenHash = digest(token);
   const expiresAt = now() + 5 * 60_000;

@@ -19,7 +19,7 @@ bun run admin invite
 
 Open the one-use setup link within 24 hours, choose a password, and save your permanent user ID. Sign-in requires the ID and password.
 
-For a disposable workspace without manual setup, run `bun run qa`. It uses a local in-memory database; exiting discards server data.
+For a disposable workspace without manual setup, run `bun run qa`. It uses a local in-memory database seeded with sample tasks and files; exiting discards server data.
 
 ## Using the board
 
