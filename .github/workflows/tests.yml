@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
-    name: Tests
+  unit:
+    name: Unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -37,12 +37,37 @@ jobs:
       - name: Minify client
         run: bun run build
 
-      - name: Run tests
-        run: bun test
+      # CI-only: run the isolated test files across worker processes. Locally
+      # `bun test` stays sequential so failures are easier to read.
+      - name: Run tests in parallel
+        run: bun run test:ci
+
+  browser:
+    name: Browser regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Minify client
+        run: bun run build
 
       - name: Install Chromium
         run: bunx --no-install playwright install --with-deps chromium
 
+      # The browser harnesses share one in-memory account and server, so this
+      # suite stays serial (workers: 1) while it runs alongside the unit suite.
       - name: Run browser regressions
         run: bun run test:browser
 
