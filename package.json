@@ -14,6 +14,7 @@
     "dev": "NODE_ENV=development bun --watch src/server.ts",
     "dev:smol": "NODE_ENV=development bun --smol --watch src/server.ts",
     "test": "bun test",
+    "test:ci": "bun test --parallel",
     "build": "bun run scripts/build.ts",
     "admin": "bun run src/admin.ts",
     "typecheck": "bun check -p tsconfig.json && bun check -p tsconfig.browser.json && bun check -p tsconfig.worker.json",

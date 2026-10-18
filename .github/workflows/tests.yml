@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
-    name: Tests
+  unit:
+    name: Unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -37,19 +37,52 @@ jobs:
       - name: Minify client
         run: bun run build
 
-      - name: Run tests
-        run: bun test
+      # CI-only: run the isolated test files across worker processes. Locally
+      # `bun test` stays sequential so failures are easier to read.
+      - name: Run tests in parallel
+        run: bun run test:ci
 
-      - name: Install Chromium
-        run: bunx --no-install playwright install --with-deps chromium
+  browser:
+    name: Browser regressions (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Chromium is the baseline and blocks merges. Firefox and WebKit run in
+    # parallel to surface engine-specific regressions, but stay advisory until
+    # they have a stable green history on the runners.
+    continue-on-error: ${{ matrix.browser != 'chromium' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Minify client
+        run: bun run build
+
+      - name: Install ${{ matrix.browser }}
+        run: bunx --no-install playwright install --with-deps ${{ matrix.browser }}
+
+      # The browser harnesses share one in-memory account and server, so each
+      # project stays serial (workers: 1); engines run as separate matrix jobs.
       - name: Run browser regressions
-        run: bun run test:browser
+        run: bun run test:browser -- --project=${{ matrix.browser }}
 
       - name: Save browser failure traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-failures
+          name: browser-failures-${{ matrix.browser }}
           path: test-results/
           retention-days: 7
