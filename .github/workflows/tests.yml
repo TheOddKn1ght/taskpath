@@ -43,9 +43,17 @@ jobs:
         run: bun run test:ci
 
   browser:
-    name: Browser regressions
+    name: Browser regressions (${{ matrix.browser }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    # Chromium is the baseline and blocks merges. Firefox and WebKit run in
+    # parallel to surface engine-specific regressions, but stay advisory until
+    # they have a stable green history on the runners.
+    continue-on-error: ${{ matrix.browser != 'chromium' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -63,18 +71,18 @@ jobs:
       - name: Minify client
         run: bun run build
 
-      - name: Install Chromium
-        run: bunx --no-install playwright install --with-deps chromium
+      - name: Install ${{ matrix.browser }}
+        run: bunx --no-install playwright install --with-deps ${{ matrix.browser }}
 
-      # The browser harnesses share one in-memory account and server, so this
-      # suite stays serial (workers: 1) while it runs alongside the unit suite.
+      # The browser harnesses share one in-memory account and server, so each
+      # project stays serial (workers: 1); engines run as separate matrix jobs.
       - name: Run browser regressions
-        run: bun run test:browser
+        run: bun run test:browser -- --project=${{ matrix.browser }}
 
       - name: Save browser failure traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-failures
+          name: browser-failures-${{ matrix.browser }}
           path: test-results/
           retention-days: 7

@@ -999,5 +999,5 @@ try {
   output.textContent += "\nALL " + results.length + " REACT CHECKS PASSED";
 } catch (error) {
   output.textContent +=
-    "\nFAIL " + (error instanceof Error ? error.stack : String(error));
+    "\nFAIL " + (error instanceof Error ? error.message + "\n" + error.stack : String(error));
 }

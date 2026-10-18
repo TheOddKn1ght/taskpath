@@ -56,4 +56,4 @@ bun run start
 
 The build is required for production. Dependencies use a frozen lockfile and a 14-day minimum release age.
 
-See [React verification](docs/react-regression.md), the [CI workflow](.github/workflows/tests.yml), and [vendored Markdown tooling](public/vendor/README.md) for further details. Browser checks: install Chromium with `bunx --no-install playwright install chromium`, then run `bun run test:browser` after building.
+See [React verification](docs/react-regression.md), the [CI workflow](.github/workflows/tests.yml), and [vendored Markdown tooling](public/vendor/README.md) for further details. Browser checks: install the engines with `bunx --no-install playwright install chromium firefox webkit`, build, then run `bun run test:browser` (or one engine with `bun run test:browser -- --project=firefox`). CI runs each engine as a separate job; only Chromium blocks merges.
