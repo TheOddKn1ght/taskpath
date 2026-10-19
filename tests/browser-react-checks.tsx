@@ -341,7 +341,8 @@ try {
   };
   // Everyday-speed features run against real encrypted mutations and the React UI.
   click('#focus-today');
-  assert(document.querySelectorAll('.column').length === 1 && location.hash.includes('focus=today'), 'focus shows only Today and persists in URL');
+  await until(() => getSnapshot().urlSaved, 'encrypted Today focus');
+  assert(document.querySelectorAll('.column').length === 1 && location.hash.startsWith('#state='), 'focus shows only Today and persists encrypted in URL');
   assert(node('.empty-state').textContent?.includes('No tasks for Today'), 'focus distinguishes a genuinely empty Today');
   click('#new-task');
   input('#task-title', 'QOL_FOCUS');
@@ -419,7 +420,9 @@ try {
   await until(() => !document.querySelector('#task-dialog') && !getSnapshot().busy, 'focus shortcut saved');
   await until(() => getSnapshot().board!.tasks.some(t => t.title === 'QOL_SHORTCUT'), 'shortcut task appears');
   assert(getSnapshot().board!.tasks.find(t => t.title === 'QOL_SHORTCUT')?.status === 'today', 'N defaults to Today while focused');
+  await until(() => getSnapshot().urlSaved, 'focused board saved before navigation');
   click('[data-view="archive"]');
+  await until(() => getSnapshot().urlSaved, 'archive saved before Back');
   assert(!getSnapshot().route.focus && !location.hash.includes('focus'), 'leaving Board clears focus');
   history.back();
   await until(() => getSnapshot().route.focus === 'today', 'Back restores focus');
@@ -490,8 +493,9 @@ try {
       String(!wasCollapsed),
     "sidebar collapse persists in this browser",
   );
+  await until(() => getSnapshot().urlSaved, 'tag filter saved before navigation');
   click('[data-view="archive"]');
-  await new Promise((r) => setTimeout(r, 40));
+  await until(() => getSnapshot().urlSaved, 'archive saved before history navigation');
   history.back();
   await until(() => getSnapshot().route.view === "board", "Back");
   assert(
@@ -568,7 +572,8 @@ try {
     "archive",
   );
   click('[data-view="archive"]');
-  assert(location.hash === "#archive", "Archive navigation writes fragment");
+  await until(() => getSnapshot().urlSaved, 'encrypted Archive URL');
+  assert(location.hash.startsWith('#state='), "Archive navigation writes encrypted fragment");
   assert(
     document.querySelectorAll(".archived-card").length === 1,
     "Archive contains completed task",
@@ -597,7 +602,8 @@ try {
   // Calendar and statistics are derived views over the same decrypted board.
   localStorage.removeItem("taskpath-calendar-mode");
   click('[data-view="calendar"]');
-  assert(String(location.hash) === "#calendar", "Calendar navigation writes fragment");
+  await until(() => getSnapshot().urlSaved, 'encrypted Calendar URL');
+  assert(location.hash.startsWith('#state='), "Calendar navigation writes encrypted fragment");
   await until(() => document.querySelector("#calendar-view"), "calendar view");
   const today = getSnapshot().board!.day;
   assert(node(".month-cell.is-today .month-day").getAttribute("aria-current") === "date", "calendar marks the workspace day");
@@ -623,7 +629,8 @@ try {
   textButton("Today", node("#calendar-view"));
   textButton("Month", node("#calendar-view"));
   click('[data-view="stats"]');
-  assert(String(location.hash) === "#stats", "Stats navigation writes fragment");
+  await until(() => getSnapshot().urlSaved, 'encrypted Stats URL');
+  assert(location.hash.startsWith('#state='), "Stats navigation writes encrypted fragment");
   await until(() => document.querySelector("#stats-view"), "stats view");
   const tile = (label: string) => [...document.querySelectorAll(".stat-tile")].find((t) => t.querySelector(".stat-label")?.textContent === label)?.querySelector(".stat-value")?.textContent;
   const open = getSnapshot().board!.tasks.filter((t) => !t.archivedAt && t.status === "today").length;
@@ -833,7 +840,7 @@ try {
   history.replaceState(null,'','#archive?q=calendar&category=work&tag=search-fixture');
   window.dispatchEvent(new HashChangeEvent('hashchange'));
   await until(() => !!document.querySelector('#search'), 'legacy link opens search');
-  assert(node<HTMLInputElement>('#search').value === 'calendar' && node('#search-filter-scope').textContent === 'Archived' && !location.hash.includes('q='), 'legacy query consumed once with scope and filters and removed from URL');
+  assert(node<HTMLInputElement>('#search').value === 'calendar' && !!document.querySelector('[aria-label="Remove filter Archived"]') && !location.hash.includes('q='), 'legacy query consumed once with scope and filters and removed from URL');
   textButton('Clear all');
   input('#search','SEARCH_ONLY_PRIVATE_927');
   textButton('Close Search tasks');
@@ -857,6 +864,7 @@ try {
   input('[aria-label="Quick add task to Today"]', "LOCK_QUICK_DRAFT");
   click("#new-task");
   input("#task-title", "LOCK_PRIVATE_DRAFT");
+  await until(() => getSnapshot().urlSaved, 'encrypted unfinished drafts');
   flushSync(() => clearMemory());
   assert(
     !document.body.textContent?.includes("LOCK_PRIVATE_DRAFT") &&
@@ -871,10 +879,13 @@ try {
   window.dispatchEvent(new Event("taskpath-unlocked"));
   await until(() => document.querySelector("#main"), "remembered UI");
   await until(() => getSnapshot().board, "board after remembered unlock");
-  assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
+  assert(node<HTMLInputElement>('[aria-label="Quick add task to Today"]').value === 'LOCK_QUICK_DRAFT', "unlock restores encrypted quick-add draft");
+  assert(node<HTMLInputElement>('#task-title').value === 'LOCK_PRIVATE_DRAFT', 'unlock restores encrypted editor draft');
+  textButton('Cancel', node('#task-dialog'));
+  textButton('Discard changes', node('#task-dialog'));
   click("#open-search");
   await until(() => document.querySelector("#search"), "search opens after unlock");
-  assert(node<HTMLInputElement>("#search").value === "" && !node(".task-search-tools").textContent?.includes("Clear all"), "lock clears query and filters");
+  assert(node<HTMLInputElement>("#search").value === "SEARCH_ONLY_PRIVATE_927", "unlock restores encrypted search query");
   textButton("Close Search tasks");
   menu("Lock");
   await until(() => document.querySelector("#unlock-form"), "explicit lock");
@@ -918,7 +929,7 @@ try {
     () => !document.querySelector("#password-dialog"),
     "password changed",
   );
-  assert(!document.querySelector(".quick-add input"), "lock clears inline quick-add drafts");
+  assert(node<HTMLInputElement>('[aria-label="Quick add task to Today"]').value === 'LOCK_QUICK_DRAFT', "password unlock restores encrypted quick-add draft");
   menu("Lock");
   await until(() => document.querySelector("#unlock-password"), "relogin");
   input("#unlock-password", "Changed React password 2026");

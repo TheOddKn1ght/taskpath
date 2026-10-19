@@ -37,6 +37,12 @@ export function PrivacyCopy() {
         may be able to open your workspace.
       </p>
       <p>
+        Views, searches and unfinished task edits are saved in the encrypted
+        part of the address, which your browser does not send to the server.
+        They restore after unlocking the same vault. Browser history and saved
+        links may retain encrypted copies.
+      </p>
+      <p>
         <strong>Lock</strong> removes decrypted content and remembered keys from
         this browser's Taskpath tabs, while keeping encrypted offline data and
         pending changes. Browser storage can be evicted. Downloaded files and
@@ -99,7 +105,8 @@ export function GuideCopy() {
         At midnight, unfinished Today tasks return to This Week. On Monday,
         unfinished weekly tasks return to Later. Done stays done.
       </p>
-      <p>Search titles, notes, and tags across active and archived tasks. Use filters or quoted phrases to narrow results. Searches stay in memory until you lock or reload.</p>
+      <p>Search titles, notes, and tags across active and archived tasks. Use filters or quoted phrases to narrow results.</p>
+      <p>Your current view, filters, searches, calendar position and unfinished task edits are saved in the encrypted address. Reloading restores them after you unlock the same vault.</p>
       <p>
         Keyboard: <kbd>N</kbd> creates a task, <kbd>/</kbd> opens task search,
         arrow keys select search results, and <kbd>Enter</kbd> opens a task. <kbd>Escape</kbd> closes

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   addFile,
   listFiles,
@@ -12,16 +12,17 @@ import { isUnlocked } from "../offline.js";
 import { Icon } from "./icons";
 import { ActionMenu } from "./action-menu";
 import { Dialog } from "./dialog";
-import { message } from "./store";
+import { message, subscribe, getSnapshot, navigate } from "./store";
 const size = (bytes: number) =>
   bytes >= 1e6
     ? `${(bytes / 1e6).toLocaleString("en", { maximumFractionDigits: 2 })} MB`
     : `${bytes.toLocaleString("en")} bytes`;
 export function Files() {
+  const query = useSyncExternalStore(subscribe, getSnapshot).route.fileQuery || '';
+  const setQuery = (value: string) => navigate({ fileQuery: value }, true);
   const [data, setData] = useState<Awaited<
       ReturnType<typeof listFiles>
     > | null>(null),
-    [query, setQuery] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [drag, setDrag] = useState(false),

@@ -3,7 +3,7 @@ import type { Board, Route, Task } from "../types.js";
 import { monthDays, shiftDate, shiftMonth } from "../picker-model.js";
 import { isOverdue, tasksByDay, weekDays, type CalendarEntry } from "../calendar-model.js";
 import { Icon } from "./icons";
-import { columns } from "./store";
+import { columns, navigate } from "./store";
 type Mode = "month" | "week";
 const MODE_KEY = "taskpath-calendar-mode";
 // Calendar dates are plain YYYY-MM-DD values; formatting at noon UTC avoids DST shifts.
@@ -62,23 +62,23 @@ export function CalendarView({ board, route, edit, create }: {
   board: Board; route: Route; edit: (t: Task) => void; create: (due: string) => void;
 }) {
   const today = board.day;
-  const [mode, setMode] = useState<Mode>(() => {
+  const [preferredMode] = useState<Mode>(() => {
     try { return localStorage.getItem(MODE_KEY) === "week" ? "week" : "month"; } catch { return "month"; }
   });
-  const [anchor, setAnchor] = useState(today), [selected, setSelected] = useState(today);
+  const mode = route.calendar?.mode ?? preferredMode;
+  const anchor = route.calendar?.anchor ?? today, selected = route.calendar?.selected ?? today;
+  const change = (mode: Mode, anchor: string, selected: string) => navigate({ calendar: { mode, anchor, selected } }, true);
   const byDay = useMemo(() => tasksByDay(board.tasks.filter((t) =>
     (route.category === "all" || t.category === route.category) && (!route.tag || t.tags.includes(route.tag)),
   ), board.timezone), [board.tasks, board.timezone, route.category, route.tag]);
   const entries = (day: string) => byDay.get(day) || [];
   const choose = (next: Mode) => {
-    setMode(next);
-    setAnchor(selected);
+    change(next, selected, selected);
     try { localStorage.setItem(MODE_KEY, next); } catch {}
   };
   const step = (amount: number) => {
     const next = mode === "month" ? shiftMonth(anchor, amount) : shiftDate(anchor, 7 * amount);
-    setAnchor(next);
-    setSelected(mode === "month" ? (next.slice(0, 7) === today.slice(0, 7) ? today : next.slice(0, 8) + "01") : next);
+    change(mode, next, mode === "month" ? (next.slice(0, 7) === today.slice(0, 7) ? today : next.slice(0, 8) + "01") : next);
   };
   const unit = mode === "month" ? "month" : "week";
   const addButton = (day: string, compact = false) => (
@@ -106,7 +106,7 @@ export function CalendarView({ board, route, edit, create }: {
           </div>
           <div className="calendar-step">
             <button type="button" className="icon-button" aria-label={`Previous ${unit}`} onClick={() => step(-1)}>‹</button>
-            <button type="button" className="secondary-button" onClick={() => { setAnchor(today); setSelected(today); }}>Today</button>
+            <button type="button" className="secondary-button" onClick={() => change(mode, today, today)}>Today</button>
             <button type="button" className="icon-button" aria-label={`Next ${unit}`} onClick={() => step(1)}>›</button>
           </div>
         </div>
@@ -135,7 +135,7 @@ export function CalendarView({ board, route, edit, create }: {
                     aria-label={`${fullDate(day)}: ${list.length ? `${list.length} task${list.length === 1 ? "" : "s"}${overdue ? ", some overdue" : ""}` : "no tasks"}`}
                     aria-current={day === today ? "date" : undefined}
                     aria-pressed={day === selected}
-                    onClick={() => setSelected(day)}
+                    onClick={() => change(mode, anchor, day)}
                   >
                     <span className="month-day-number">{Number(day.slice(8))}</span>
                     {list.length > 0 && (

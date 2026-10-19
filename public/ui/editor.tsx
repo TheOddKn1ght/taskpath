@@ -6,6 +6,7 @@ import { columns, message, mutate } from "./store";
 import { normalizeTags } from "../tags.js";
 import { localReminderValue, reminderFromInput } from "../dates.js";
 import { reminderIsToday } from "../offline-model.js";
+import type { EditorValues } from "../editor-state.js";
 export function Editor({
   task,
   draft,
@@ -19,6 +20,9 @@ export function Editor({
   archive,
   notify,
   notifications,
+  restored,
+  onDraftChange,
+  draftSaved = false,
 }: {
   task: Task | null;
   draft?: TaskDraft;
@@ -32,31 +36,51 @@ export function Editor({
   archive: (t: Task) => Promise<void>;
   notify: (s: string) => void;
   notifications: () => Promise<void>;
+  restored?: EditorValues;
+  onDraftChange?: (values: EditorValues) => void;
+  draftSaved?: boolean;
 }) {
-  const [title, setTitle] = useState(task?.title ?? draft?.title ?? ""),
-    [notes, setNotes] = useState(task?.notes ?? draft?.notes ?? ""),
-    [tags, setTags] = useState(task?.tags ?? draft?.tags ?? (initialTag ? [initialTag] : [])),
-    [tag, setTag] = useState(""),
-    [column, setColumn] = useState(task?.status || status),
-    [category, setCategory] = useState<Category>(
-      task?.category ?? draft?.category ?? initialCategory,
-    ),
-    [due, setDue] = useState(task?.dueDate || initialDue || ""),
-    [reminder, setReminder] = useState(
-      localReminderValue(task?.reminderAt || null),
-    ),
+  const original = useRef<EditorValues>({
+    title: task?.title ?? draft?.title ?? "",
+    notes: task?.notes ?? draft?.notes ?? "",
+    tags: task?.tags ?? draft?.tags ?? (initialTag ? [initialTag] : []),
+    tag: "",
+    column: task?.status || status,
+    category: task?.category ?? draft?.category ?? initialCategory,
+    due: task?.dueDate || initialDue || "",
+    reminder: localReminderValue(task?.reminderAt || null),
+  });
+  const [title, setTitle] = useState(restored?.title ?? original.current.title),
+    [notes, setNotes] = useState(restored?.notes ?? original.current.notes),
+    [tags, setTags] = useState(restored?.tags ?? original.current.tags),
+    [tag, setTag] = useState(restored?.tag ?? original.current.tag),
+    [column, setColumn] = useState(restored?.column ?? original.current.column),
+    [category, setCategory] = useState<Category>(restored?.category ?? original.current.category),
+    [due, setDue] = useState(restored?.due ?? original.current.due),
+    [reminder, setReminder] = useState(restored?.reminderAt !== undefined ? localReminderValue(restored.reminderAt) : restored?.reminder ?? original.current.reminder),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const initial = useRef(JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }));
+  const reminderAt = () =>
+    restored?.reminderAt !== undefined && reminder === localReminderValue(restored.reminderAt)
+      ? restored.reminderAt
+      : reminder === localReminderValue(task?.reminderAt || null)
+      ? task?.reminderAt || null
+      : reminderFromInput(reminder);
+  const initial = useRef(JSON.stringify(original.current));
   const dirty = JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }) !== initial.current;
+  useEffect(() => {
+    let instant: string | null | undefined;
+    try { instant = reminderAt(); } catch { /* Keep incomplete input as entered. */ }
+    onDraftChange?.({ title, notes, tags, tag, column, category, due, reminder, reminderAt: instant });
+  }, [title, notes, tags, tag, column, category, due, reminder, onDraftChange]);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const requestClose = () => { if (dirty) setConfirmDiscard(true); else close(); };
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || draftSaved) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, draftSaved]);
   const alive = useRef(true);
   useEffect(
     () => () => {
@@ -64,10 +88,6 @@ export function Editor({
     },
     [],
   );
-  const reminderAt = () =>
-    reminder === localReminderValue(task?.reminderAt || null)
-      ? task?.reminderAt || null
-      : reminderFromInput(reminder);
   const today = (() => {
     try {
       return reminderIsToday(

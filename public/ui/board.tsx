@@ -6,7 +6,7 @@ import {
   type PointerEvent,
 } from "react";
 import type { Board as BoardData, Task, Status, Route } from "../types.js";
-import { columns, boardOrder, move, mutate, message, navigate } from "./store";
+import { columns, boardOrder, move, mutate, message, navigate, getSnapshot } from "./store";
 import { Icon } from "./icons";
 import { Select } from "./pickers";
 import { TaskMenu } from "./task-menu";
@@ -603,8 +603,14 @@ function QuickAdd({ status, route, notify }: {
   route: Route;
   notify: (s: string) => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [open, setOpen] = useState(false);
+  const title = route.quickAdd?.[status] ?? "";
+  const open = Object.prototype.hasOwnProperty.call(route.quickAdd ?? {}, status);
+  const setDraft = (title: string) => navigate({ quickAdd: { ...getSnapshot().route.quickAdd, [status]: title } }, true);
+  const closeDraft = () => {
+    const quickAdd = { ...getSnapshot().route.quickAdd };
+    delete quickAdd[status];
+    navigate({ quickAdd: Object.keys(quickAdd).length ? quickAdd : undefined }, true);
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);
@@ -621,7 +627,7 @@ function QuickAdd({ status, route, notify }: {
   return (
     <div className="quick-add-container">
       <button ref={trigger} type="button" className="quick-add-trigger" hidden={open}
-        aria-expanded={open} onClick={() => setOpen(true)}>
+        aria-expanded={open} onClick={() => setDraft("")}>
         <Icon name="plus" /> Add task
       </button>
       {open && <form className="quick-add" data-status={status}
@@ -631,7 +637,7 @@ function QuickAdd({ status, route, notify }: {
             e.preventDefault();
             e.stopPropagation();
             if (saving.current) return;
-            setTitle(""); setError(""); setOpen(false);
+            closeDraft(); setError("");
             requestAnimationFrame(() => trigger.current?.focus());
           }
         }}
@@ -639,6 +645,7 @@ function QuickAdd({ status, route, notify }: {
           e.preventDefault();
           if (saving.current) return;
           saving.current = true;
+          const submitted = title, { epoch, routeEpoch } = getSnapshot();
           setBusy(true); setError("");
           try {
             const result = await mutate("/api/tasks", "POST", {
@@ -646,8 +653,10 @@ function QuickAdd({ status, route, notify }: {
               category: route.category === "work" ? "work" : "personal",
               tags: route.tag ? [route.tag] : [],
             });
+            const current = getSnapshot();
+            if (current.epoch === epoch && current.routeEpoch === routeEpoch && current.route.quickAdd?.[status] === submitted)
+              setDraft("");
             if (alive.current) {
-              setTitle("");
               notify(`Task added to ${columns[result.task.status]}.`);
             }
           } catch (e) {
@@ -661,7 +670,7 @@ function QuickAdd({ status, route, notify }: {
         <input ref={input} aria-label={"Quick add task to " + columns[status]}
           aria-describedby={error ? `quick-add-error-${status}` : undefined}
           placeholder="What needs doing?" required maxLength={240} autoComplete="off"
-          value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+          value={title} onChange={(e) => setDraft(e.target.value)} disabled={busy} />
         <button aria-label={"Save task to " + columns[status]} disabled={busy}>
           <Icon name="arrow-right" />
         </button>

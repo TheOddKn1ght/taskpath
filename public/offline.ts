@@ -59,8 +59,8 @@ function assertUnlocked(record: EncryptedRecord, token = generation): asserts re
     throw new RequestError('Unlock your workspace to continue.', 423);
   }
 }
-// File operations receive a scoped key only in an unlocked page. Never persist it.
-export async function withFileKey<T>(work:(key:CryptoKey, userId:string, vaultId:string, lockEpoch:number)=>Promise<T>):Promise<T> {
+// Operations receive a scoped key only in an unlocked page. Never persist it.
+export async function withVaultKey<T>(work:(key:CryptoKey, userId:string, vaultId:string, lockEpoch:number)=>Promise<T>):Promise<T> {
   const started = generation, record = await localState();
   if (!page) throw new Error('Unlock the workspace in a page.');
   assertUnlocked(record,started);
@@ -68,9 +68,10 @@ export async function withFileKey<T>(work:(key:CryptoKey, userId:string, vaultId
   assertUnlocked(await localState(),started);
   return result;
 }
+export const withFileKey = withVaultKey;
 export async function switchAccount(userId: string | null) {
   clearMemory();
-  if (page && selectedAccount() && selectedAccount() !== userId) {
+  if (page && typeof Notification !== 'undefined' && Notification.permission === 'granted' && selectedAccount() && selectedAccount() !== userId) {
     const previous = selectedAccount(), started = generation; let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([(async () => {

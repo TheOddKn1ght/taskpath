@@ -19,7 +19,8 @@ test("Legacy search can be read but is never serialized", async () => {
     "https://test.example",
   );
   expect(url.search).toBe("?source=saved");
-  expect(readRoute(url.hash)).toEqual({ ...route, query: "" });
+  expect(readRoute(url.hash)).toEqual({ ...emptyRoute, view: 'archive' });
+  expect(url.hash).not.toContain('home');
   expect(readRoute("#archive?q=" + encodeURIComponent(route.query)).query).toBe(route.query);
   expect(new URLSearchParams(url.hash.slice(1)).has("setup")).toBe(false);
 });
@@ -29,10 +30,10 @@ test("invalid links fall back and tags normalize", () => {
   expect(readRoute("#board?q=%ZZ").query).toBe("%ZZ");
   expect(readRoute("#main")).toEqual(emptyRoute);
 });
-test("view changes preserve filters while clearing filters restores the bare anchor", () => {
+test("legacy anchors serialize only public view and focus", () => {
   const route = readRoute("#archive?q=first&category=work");
   expect(routeHash({ ...route, view: "board" })).toBe(
-    "#board?category=work",
+    "",
   );
   expect(routeHash({ ...emptyRoute, view: "archive" })).toBe("#archive");
   expect(routeHash(emptyRoute)).toBe("");
@@ -72,7 +73,7 @@ test("fragment search is absent from actual HTTP requests", async () => {
 
 test("Today focus round-trips with filters and is restricted to Board", () => {
   const route = { ...emptyRoute, focus: "today" as const, query: "coffee", category: "work" as const, tag: "home" };
-  expect(readRoute(routeHash(route))).toEqual({ ...route, query: "" });
+  expect(readRoute(routeHash(route))).toEqual({ ...emptyRoute, focus: 'today' });
   expect(readRoute("#board?focus=unknown")).toEqual(emptyRoute);
   expect(readRoute("#archive?focus=today")).toEqual({ ...emptyRoute, view: "archive" });
   expect(readRoute("#files?focus=today")).toEqual({ ...emptyRoute, view: "files" });

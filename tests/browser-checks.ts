@@ -231,4 +231,4 @@ try {
   assert((await localState()).syncComplete && (await offlineRequest('/api/export')).tasks.length>=55,'expired cursors rescan safely without clearing cached tasks');
   await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
-} catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }
+} catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ''}` : String(error)}`; }

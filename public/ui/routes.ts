@@ -1,11 +1,7 @@
 import type { Route } from "../types.js";
 import { normalizeTags } from "../tags.js";
-export const emptyRoute: Route = {
-  view: "board",
-  query: "",
-  category: "all",
-  tag: "",
-};
+import { emptyRoute } from '../url-state.js';
+export { emptyRoute } from '../url-state.js';
 export function readRoute(hash: string): Route {
   const match = hash.match(/^#(board|calendar|stats|archive|files)(?:\?(.*))?$/);
   if (!match) return { ...emptyRoute };
@@ -31,8 +27,6 @@ export function routeHash(route: Route) {
   if (route.view === "files") return "#files";
   const p = new URLSearchParams();
   if (route.view === "board" && route.focus === "today") p.set("focus", "today");
-  if (route.category !== "all") p.set("category", route.category);
-  if (route.tag) p.set("tag", route.tag);
   return p.size
     ? `#${route.view}?${p}`
     : route.view === "board"

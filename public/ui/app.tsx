@@ -16,6 +16,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { Task, Status, ArchiveReceipt } from "../types.js";
+import type { EditorValues } from '../editor-state.js';
 import {
   subscribe,
   getSnapshot,
@@ -47,6 +48,12 @@ import { PushDialog } from "./push";
 import { ImportDialog } from "./import";
 import { PickerProvider } from "./pickers";
 import { GREETINGS } from "./greetings";
+const defaultSearch = emptySearch();
+function saveEditorDraft(values: EditorValues) {
+  const editor = getSnapshot().route.editor;
+  if (editor && JSON.stringify(editor.values) !== JSON.stringify(values))
+    navigate({ editor: { ...editor, values } }, true);
+}
 export function App() {
   const state = useSyncExternalStore(subscribe, getSnapshot),
     [publicDialog, setPublicDialog] = useState<"theme" | "privacy" | null>(
@@ -105,14 +112,17 @@ function Workspace({
 }) {
   const state = useSyncExternalStore(subscribe, getSnapshot),
     { board, route } = state;
-  const [editor, setEditor] = useState<{
+  const editorTask = route.editor?.taskId ? board?.tasks.find(t => t.id === route.editor?.taskId && !t.deletedAt && !t.archivedAt) : null;
+  const editor = route.editor && (!route.editor.taskId || editorTask) ? { ...route.editor, task: editorTask || null } : null;
+  const setEditor = (next: {
       task: Task | null;
       draft?: Pick<Task, "title" | "notes" | "tags" | "category">;
       due?: string;
       status: Status;
-    } | null>(null),
-    [details, setDetails] = useState<string | null>(null),
-    [modal, setModal] = useState<
+    } | null) => navigate({ editor: next ? { taskId: next.task?.id, draft: next.draft, due: next.due, status: next.status } : undefined }, !next);
+  const details = route.details;
+  const setDetails = (id: string | null) => navigate({ details: id || undefined }, !id);
+  const [modal, setModal] = useState<
       "password" | "nickname" | "push" | "import" | "guide" | "history" | "auto-lock" | "rollover" | null
     >(null),
     [toast, setToast] = useState<{
@@ -138,13 +148,11 @@ function Workspace({
   const [rolloverDismissed, setRolloverDismissed] = useState('');
   const rollover = board?.rollover || [];
   const rolloverKey = (board?.day || '') + ':' + rollover.map(item => item.id).sort().join(',');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [search, setSearch] = useState(emptySearch);
+  const searchOpen = !!route.searchOpen, search = route.searchState || defaultSearch;
+  const setSearchOpen = (open: boolean) => navigate({ searchOpen: open }, !open);
   useEffect(() => {
     if (!route.query) return;
-    setSearch({ ...emptySearch(), query: route.query, scope: route.view === "archive" ? "archived" : "active", category: route.category, tags: route.tag ? [route.tag] : [] });
-    setSearchOpen(true);
-    navigate({ query: "" }, true);
+    navigate({ query: "", searchOpen: true, searchState: { ...emptySearch(), query: route.query, scope: route.view === "archive" ? "archived" : "active", category: route.category, tags: route.tag ? [route.tag] : [] } }, true);
   }, [route.query, route.view, route.category, route.tag]);
   const install = useSyncExternalStore(subscribeInstall, getInstallPrompt);
   const alive = useRef(true),
@@ -581,13 +589,14 @@ function Workspace({
         }} />
         <div className="workspace-content">
           <WorkspaceHeader openSearch={() => setSearchOpen(true)} route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:route.focus === "today" ? "today" : "later"})} options={options} />
-          {state.error && (
+          {(state.urlError || state.error) && (
             <div id="error-banner" className="error-banner" role="alert">
-              <span>{state.error}</span>
+              <span>{state.urlError || state.error}</span>
               <button
                 className="subtle-button"
                 onClick={() =>
                   run(async () => {
+                    if (state.urlError) { navigate({}, true); return; }
                     await syncAfterCurrent();
                     await refresh();
                   })
@@ -668,13 +677,16 @@ function Workspace({
           </footer>
         </div>
       </main>
-      {board && <TaskSearch board={board} initialState={search}
+      {board && <TaskSearch board={board} initialState={search} onStateChange={value => navigate({ searchState: value }, true)}
         close={() => setSearchOpen(false)} openTask={edit} suspended={!searchOpen || !!editor || !!archived}
         syncComplete={state.syncComplete} />}
       {editor && board && (
         <Editor
-          key={editor.task?.id || "new"}
+          key={`${editor.task?.id || "new"}:${state.routeEpoch}`}
           {...editor}
+          restored={editor.values}
+          onDraftChange={saveEditorDraft}
+          draftSaved={state.urlSaved}
           board={board}
           initialTag={route.tag}
           initialCategory={route.category === "work" ? "work" : "personal"}

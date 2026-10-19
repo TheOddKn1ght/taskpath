@@ -14,8 +14,9 @@ function Highlight({ text, ranges }: { text: string; ranges: MatchRange[] }) {
   });
   return <>{chunks}{text.slice(end)}</>;
 }
-export function TaskSearch({ board, initialState, close, openTask, suspended, syncComplete }: {
+export function TaskSearch({ board, initialState, onStateChange, close, openTask, suspended, syncComplete }: {
   board: Board; initialState: SearchState; close: () => void;
+  onStateChange?: (state: SearchState) => void;
   openTask: (t: Task) => void; suspended: boolean; syncComplete: boolean;
 }) {
   const [state, change] = useState(initialState);
@@ -32,7 +33,7 @@ export function TaskSearch({ board, initialState, close, openTask, suspended, sy
   const active = visible.findIndex(r => r.task.id === selected);
   const index = active >= 0 ? active : 0;
   const tags = [...new Set([...state.tags, ...board.tasks.filter(t => !t.deletedAt).flatMap(t => t.tags)])].sort();
-  const patch = (s: Partial<SearchState>) => { scroll.current = 0; if (list.current) list.current.scrollTop = 0; setLimit(50); setSelected(null); change({ ...state, ...s }); };
+  const patch = (s: Partial<SearchState>) => { scroll.current = 0; if (list.current) list.current.scrollTop = 0; setLimit(50); setSelected(null); const next = { ...state, ...s }; change(next); onStateChange?.(next); };
   useLayoutEffect(() => { if (!suspended && list.current) list.current.scrollTop = scroll.current; }, [suspended]);
   const chips: { key: string; text: string; clear: () => void }[] = [];
   const optionLabels = {

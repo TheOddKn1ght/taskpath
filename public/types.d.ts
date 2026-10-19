@@ -35,5 +35,14 @@ export interface ArchiveResult { archived:number; restored:number; skipped:numbe
 export interface ImportPreview { tasks:Task[]; skipped:number }
 export type TaskInput = Partial<Task> & { beforeId?:string | null; action?:string };
 export type TaskDraft = Pick<Task, 'title' | 'notes' | 'tags' | 'category'>;
-export interface Route { focus?: 'today'; view:'board'|'calendar'|'stats'|'archive'|'files'; query:string; category:'all'|Category; tag:string }
+export interface Route {
+  focus?: 'today'; view:'board'|'calendar'|'stats'|'archive'|'files'; query:string; category:'all'|Category; tag:string;
+  calendar?: { mode:'month'|'week'; anchor:string; selected:string };
+  searchState?: import('./search.js').SearchState;
+  searchOpen?: boolean;
+  fileQuery?: string;
+  details?: string;
+  editor?: { taskId?:string; status:Status; due?:string; draft?:TaskDraft; values?:import('./editor-state.js').EditorValues };
+  quickAdd?: Partial<Record<Status,string>>;
+}
 export interface PushStatus { available:boolean; publicKey:string | null; subscriptionIds:string[]; enabled?:boolean }

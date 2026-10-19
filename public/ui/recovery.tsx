@@ -36,7 +36,7 @@ export function AutoLockDialog({close}: {close: () => void}) {
   const [minutes, setMinutes] = useState(lockMinutes);
   const [error, setError] = useState('');
   return <Dialog id="auto-lock-dialog" title="Automatic locking" onClose={close}>
-    <p>Lock this browser after inactivity, including time spent in the background. Activity in another unlocked Taskpath tab keeps it open. Locking clears remembered keys across tabs and keeps encrypted saved changes. Unsaved editor drafts are discarded when the workspace locks.</p>
+    <p>Lock this browser after inactivity, including time spent in the background. Activity in another unlocked Taskpath tab keeps it open. Locking clears remembered keys across tabs and keeps encrypted saved changes. Drafts saved in the encrypted address return after you unlock the same vault.</p>
     <label className="field">Lock after
       <select id="auto-lock-interval" value={minutes} onChange={e => setMinutes(Number(e.target.value))}>
         {lockChoices.map(n => <option key={n} value={n}>{n === 0 ? 'Never' : `${n} minute${n === 1 ? '' : 's'}`}</option>)}
