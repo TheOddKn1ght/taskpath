@@ -712,7 +712,7 @@ try {
   assert(true, "permanent deletion removes file from React list");
   const pixels = Uint8Array.from(
       atob(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lWQAAAAASUVORK5CYII=",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=",
       ),
       (c) => c.charCodeAt(0),
     ),
