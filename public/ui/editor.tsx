@@ -273,15 +273,28 @@ export function Editor({
           <summary>
             Date &amp; reminder <span>optional</span>
           </summary>
-          <div className="field-row">
-            <label className="field">
-              Due date
-              <DatePicker value={due} onChange={setDue} />
-            </label>
-            <label className="field">
+          <div className="field-row schedule-date-row">
+            <div className="field">
+              <label className="schedule-date-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!due}
+                  onChange={(e) => {
+                    setDue(e.target.checked ? board.day : "");
+                    if (!e.target.checked) setReminder("");
+                  }}
+                />{" "}
+                Due date
+              </label>
+              {!!due && <DatePicker value={due} onChange={(value) => {
+                setDue(value);
+                if (!value) setReminder("");
+              }} />}
+            </div>
+            {(due || reminder) && <label className="field">
               Remind me
-              <DatePicker timed value={reminder} onChange={setReminder} />
-            </label>
+              <DatePicker timed value={reminder} defaultDate={due} onChange={setReminder} />
+            </label>}
           </div>
           <p className="schedule-hint">
             Reminder times use your device timezone:{" "}

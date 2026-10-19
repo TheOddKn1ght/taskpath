@@ -200,6 +200,26 @@
   margin-top: 10px;
 }
 
+.schedule-date-row {
+  align-items: flex-end;
+}
+
+.schedule-date-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.schedule-date-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .schedule-actions {
   display: flex;
   gap: 10px;

@@ -498,10 +498,12 @@ export function DatePicker({
   value,
   onChange,
   timed = false,
+  defaultDate = "",
 }: {
   value: string;
   onChange: (value: string) => void;
   timed?: boolean;
+  defaultDate?: string;
 }) {
   const picker = useContext(PickerContext),
     label = timed ? "Remind me" : "Due date";
@@ -519,7 +521,7 @@ export function DatePicker({
           date: true,
           content: (
             <Calendar
-              initial={value}
+              initial={value || defaultDate}
               timed={timed}
               commit={(v) => {
                 onChange(v);
