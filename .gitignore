@@ -7,3 +7,4 @@ dist/
 reports/
 playwright-report/
 test-results/
+desktop/out/

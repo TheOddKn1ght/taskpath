@@ -1,0 +1,121 @@
+name: Desktop builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: windows-2025
+            platform: win
+            arch: x64
+          - os: macos-15
+            platform: mac
+            arch: x64
+          - os: macos-15
+            platform: mac
+            arch: arm64
+    env:
+      # CI artifacts are unsigned; release publishing is a separate operation.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
+
+      - name: Check desktop code and server policy
+        run: |
+          node --check desktop/main.cjs
+          node --check desktop/policy.cjs
+          bun test tests/desktop-policy.test.ts
+
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: desktop
+        run: node -e "const version = require('./package.json').version; if (process.env.GITHUB_REF_NAME !== 'v' + version) throw new Error('Release tag must match desktop/package.json version (v' + version + ')');"
+
+      - name: Install locked desktop dependencies
+        working-directory: desktop
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install Electron runtime
+        working-directory: desktop
+        run: node node_modules/electron/install.js
+
+      - name: Build installer
+        working-directory: desktop
+        run: bun run dist --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: taskpath-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            desktop/out/*.AppImage
+            desktop/out/*.dmg
+            desktop/out/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish desktop release
+    needs: desktop
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: taskpath-*
+          merge-multiple: true
+          path: installers
+
+      - name: Create release and upload installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            release_options=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              release_options+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes \
+              --title "Taskpath $RELEASE_TAG" "${release_options[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" installers/* --clobber
