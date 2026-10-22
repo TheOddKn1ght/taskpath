@@ -6,8 +6,8 @@
 }
 
 .toast-close {
-  font-size: 20px!important;
-  opacity: .65;
+  font-size: 20px !important;
+  opacity: 0.65;
 }
 
 .error-banner {
@@ -37,10 +37,19 @@
   border-radius: 12px;
   background: var(--surface);
 }
-.rollover-notice p { margin: 0 0 10px; }
-#history-dialog details, #rollover-dialog section {
+.rollover-notice p {
+  margin: 0 0 10px;
+}
+#history-dialog details,
+#rollover-dialog section {
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
-#history-dialog summary { cursor: pointer; overflow-wrap: anywhere; }
-#history-dialog p, #rollover-dialog h3 { overflow-wrap: anywhere; }
+#history-dialog summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+#history-dialog p,
+#rollover-dialog h3 {
+  overflow-wrap: anywhere;
+}

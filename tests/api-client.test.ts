@@ -15,10 +15,17 @@ test('JSON requests retain account binding, cookies, cache policy and immutable 
   const payload = { changes: [{ changeId: 'immutable-operation', ciphertext: 'opaque' }] };
   const before = structuredClone(payload);
   fetchMock.mockResolvedValue(Response.json({ accepted: true }));
-  expect(await apiRequest<{ accepted: boolean }>('/api/sync', 'POST', payload, 'account-a')).toEqual({ accepted: true });
+  expect(
+    await apiRequest<{ accepted: boolean }>('/api/sync', 'POST', payload, 'account-a'),
+  ).toEqual({ accepted: true });
   const [path, init] = fetchMock.mock.calls[0]!;
   expect(path).toBe('/api/sync');
-  expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', cache: 'no-store', body: JSON.stringify(payload) });
+  expect(init).toMatchObject({
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    body: JSON.stringify(payload),
+  });
   expect(new Headers(init?.headers).get('X-Taskpath-User')).toBe('account-a');
   expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
   expect(init?.signal).toBeInstanceOf(AbortSignal);
@@ -36,12 +43,23 @@ test('public JSON reads omit account, body and content type', async () => {
 
 test('JSON errors preserve status and server messages with safe proxy fallbacks', async () => {
   for (const [response, message] of [
-    [Response.json({ error: 'Credential revision changed.' }, { status: 409 }), 'Credential revision changed.'],
-    [new Response('<html>Proxy error</html>', { status: 401 }), 'Sign in to sync. Encrypted changes are saved on this device.'],
-    [Response.json({ error: { unexpected: true } }, { status: 502 }), 'Could not complete the request. Your encrypted changes are safe on this device.'],
+    [
+      Response.json({ error: 'Credential revision changed.' }, { status: 409 }),
+      'Credential revision changed.',
+    ],
+    [
+      new Response('<html>Proxy error</html>', { status: 401 }),
+      'Sign in to sync. Encrypted changes are saved on this device.',
+    ],
+    [
+      Response.json({ error: { unexpected: true } }, { status: 502 }),
+      'Could not complete the request. Your encrypted changes are safe on this device.',
+    ],
   ] as const) {
     fetchMock.mockResolvedValueOnce(response);
-    const error = await apiRequest('/api/auth/login', 'POST', {}, null).catch(error => error as unknown);
+    const error = await apiRequest('/api/auth/login', 'POST', {}, null).catch(
+      (error) => error as unknown,
+    );
     expect(error).toBeInstanceOf(RequestError);
     expect(errorStatus(error)).toBe(response.status);
     expect((error as Error).message).toBe(message);
@@ -62,7 +80,9 @@ test('file requests preserve binary uploads, JSON metadata and unread download s
   fetchMock.mockResolvedValueOnce(Response.json({}));
   await fileRequest('/file-id', 'PATCH', metadata, 'account-b');
   expect(fetchMock.mock.calls[1]![1]?.body).toBe(metadata);
-  expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).get('Content-Type')).toBe('application/json');
+  expect(new Headers(fetchMock.mock.calls[1]![1]?.headers).get('Content-Type')).toBe(
+    'application/json',
+  );
   const download = new Response(bytes);
   fetchMock.mockResolvedValueOnce(download);
   expect(await fileRequest('/file-id', 'GET', undefined, 'account-b')).toBe(download);
@@ -71,10 +91,25 @@ test('file requests preserve binary uploads, JSON metadata and unread download s
 });
 
 test('file failures cancel responses and preserve quota, deletion and session statuses', async () => {
-  for (const [status, message] of [[401, 'Sign in to sync files.'], [507, 'Waiting for space'], [410, 'File transfer failed (410). Retry when online.']] as const) {
+  for (const [status, message] of [
+    [401, 'Sign in to sync files.'],
+    [507, 'Waiting for space'],
+    [410, 'File transfer failed (410). Retry when online.'],
+  ] as const) {
     let cancelled = false;
-    fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({ cancel() { cancelled = true; } }), { status }));
-    const error = await fileRequest('/file-id', 'GET', undefined, 'account-b').catch(error => error as unknown);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status },
+      ),
+    );
+    const error = await fileRequest('/file-id', 'GET', undefined, 'account-b').catch(
+      (error) => error as unknown,
+    );
     expect(errorStatus(error)).toBe(status);
     expect((error as Error).message).toBe(message);
     expect(cancelled).toBe(true);
@@ -96,26 +131,52 @@ test('auth adapter accepts domain inputs and validates vault configuration', asy
   expect(await authApi.configuration(userId)).toEqual(config);
   await authApi.setup({ userId, token: 'invitation', config, credential });
   await authApi.login({ userId, credential, revision: 1 });
-  await authApi.changePassword(userId, { currentCredential: credential, credential, config, revision: 1 });
+  await authApi.changePassword(userId, {
+    currentCredential: credential,
+    credential,
+    config,
+    revision: 1,
+  });
   await authApi.logout(userId);
   expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
-    '/api/auth/config?userId=' + userId, '/api/auth/setup', '/api/auth/login', '/api/auth/password', '/api/auth/logout',
+    '/api/auth/config?userId=' + userId,
+    '/api/auth/setup',
+    '/api/auth/login',
+    '/api/auth/password',
+    '/api/auth/logout',
   ]);
-  expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'POST', 'POST', 'POST']);
-  for (const [, init] of fetchMock.mock.calls) expect(new Headers(init?.headers).get('X-Taskpath-User')).toBe(userId);
-  expect(JSON.parse(String(fetchMock.mock.calls[2]![1]?.body))).toEqual({ userId, credential, revision: 1 });
+  expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual([
+    'GET',
+    'POST',
+    'POST',
+    'POST',
+    'POST',
+  ]);
+  for (const [, init] of fetchMock.mock.calls)
+    expect(new Headers(init?.headers).get('X-Taskpath-User')).toBe(userId);
+  expect(JSON.parse(String(fetchMock.mock.calls[2]![1]?.body))).toEqual({
+    userId,
+    credential,
+    revision: 1,
+  });
   fetchMock.mockResolvedValueOnce(Response.json({ config: { invalid: true } }));
   await expect(authApi.configuration(userId)).rejects.toThrow();
 });
 
 test('account adapter chooses sync transport and binds each instance to its account', async () => {
-  const a = accountApi('account-a'), b = accountApi('account-b');
-  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({protocol:2}));
+  const a = accountApi('account-a'),
+    b = accountApi('account-b');
+  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({ protocol: 2 }));
   const empty = { workspaceKey: 'vault', changes: [] };
   await a.sync(empty);
-  await b.sync({ ...empty, reminders: [{ taskId: 'task', changeId: 'op', token: 'opaque', dueAt: null }] });
+  await b.sync({
+    ...empty,
+    reminders: [{ taskId: 'task', changeId: 'op', token: 'opaque', dueAt: null }],
+  });
   await a.sync(empty);
-  expect(fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get('X-Taskpath-User'))).toEqual(['account-a', 'account-b', 'account-a']);
+  expect(
+    fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers).get('X-Taskpath-User')),
+  ).toEqual(['account-a', 'account-b', 'account-a']);
   expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['GET', 'POST', 'GET']);
   expect(fetchMock.mock.calls[0]![1]?.body).toBeUndefined();
   expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body)).reminders[0].token).toBe('opaque');
@@ -126,7 +187,9 @@ test('reminder and push adapters expose decoded results and domain arguments', a
   const api = accountApi('account-a');
   fetchMock.mockResolvedValueOnce(Response.json({ tokens: ['claimed'] }));
   expect(await api.claimReminders(['claimed', 'other'])).toEqual(['claimed']);
-  fetchMock.mockResolvedValueOnce(Response.json({ available: true, publicKey: 'key', subscriptionIds: ['subscription'] }));
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ available: true, publicKey: 'key', subscriptionIds: ['subscription'] }),
+  );
   expect((await api.push.status()).available).toBe(true);
   fetchMock.mockResolvedValueOnce(Response.json({}));
   const subscription = { endpoint: 'https://push.example/subscription', keys: { auth: 'opaque' } };
@@ -144,9 +207,14 @@ test('reminder and push adapters expose decoded results and domain arguments', a
 
 test('file adapter frames ciphertext, preserves retries and validates manifests', async () => {
   const { key, config } = await createVault('file adapter test password 2026');
-  const userId = 'u_' + 'b'.repeat(32), files = accountApi(userId).files;
-  const encrypted = await encryptFile(key, userId, config.vaultId, new Uint8Array([1, 2]), { name: 'PRIVATE_NAME.txt', type: 'text/plain', lastModified: 0 });
-  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({protocol:2}));
+  const userId = 'u_' + 'b'.repeat(32),
+    files = accountApi(userId).files;
+  const encrypted = await encryptFile(key, userId, config.vaultId, new Uint8Array([1, 2]), {
+    name: 'PRIVATE_NAME.txt',
+    type: 'text/plain',
+    lastModified: 0,
+  });
+  for (let i = 0; i < 4; i++) fetchMock.mockResolvedValueOnce(Response.json({ protocol: 2 }));
   await files.upload(encrypted.envelope, encrypted.ciphertext);
   await files.upload(encrypted.envelope, encrypted.ciphertext);
   const body = fetchMock.mock.calls[0]![1]?.body as Uint8Array<ArrayBuffer>;
@@ -158,7 +226,14 @@ test('file adapter frames ciphertext, preserves retries and validates manifests'
   await files.delete('id/with space');
   expect(fetchMock.mock.calls[3]![0]).toBe('/api/files/id%2Fwith%20space');
   expect(fetchMock.mock.calls[3]![1]?.method).toBe('DELETE');
-  const manifest = { vaultId: config.vaultId, quotaBytes: 10_000_000, usedBytes: 2, maxFileBytes: 10_000_000, files: [{ envelope: encrypted.envelope, bytes: 2 }], deleted: [] };
+  const manifest = {
+    vaultId: config.vaultId,
+    quotaBytes: 10_000_000,
+    usedBytes: 2,
+    maxFileBytes: 10_000_000,
+    files: [{ envelope: encrypted.envelope, bytes: 2 }],
+    deleted: [],
+  };
   fetchMock.mockResolvedValueOnce(Response.json(manifest));
   expect(await files.manifest(config.vaultId)).toEqual(manifest);
   fetchMock.mockResolvedValueOnce(Response.json(manifest));
@@ -166,28 +241,48 @@ test('file adapter frames ciphertext, preserves retries and validates manifests'
 });
 
 test('file adapter returns bounded ciphertext and rejects oversized or incomplete downloads', async () => {
-  const files = accountApi('account-a').files, bytes = new Uint8Array(18);
+  const files = accountApi('account-a').files,
+    bytes = new Uint8Array(18);
   fetchMock.mockResolvedValueOnce(new Response(bytes));
   expect(await files.download('file', 2)).toEqual(bytes);
   fetchMock.mockResolvedValueOnce(new Response(bytes));
   await expect(files.download('file', 3)).rejects.toThrow('Incomplete file download.');
   let cancelled = false;
-  fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({ start(controller) { controller.enqueue(bytes); }, cancel() { cancelled = true; } })));
+  fetchMock.mockResolvedValueOnce(
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+    ),
+  );
   await expect(files.download('file', 1)).rejects.toThrow('Invalid encrypted file length.');
   expect(cancelled).toBe(true);
-  await expect(files.download('file', 10_000_001)).rejects.toThrow('Invalid encrypted file length.');
+  await expect(files.download('file', 10_000_001)).rejects.toThrow(
+    'Invalid encrypted file length.',
+  );
   expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
 test('sync adapter selects upload or cursor download and rejects an old server before acknowledgement', async () => {
   const api = accountApi('account-a');
-  fetchMock.mockResolvedValueOnce(Response.json({protocol:2,rows:[]}));
-  await api.sync({workspaceKey:'vault',changes:[],cursor:'opaque/cursor'});
+  fetchMock.mockResolvedValueOnce(Response.json({ protocol: 2, rows: [] }));
+  await api.sync({ workspaceKey: 'vault', changes: [], cursor: 'opaque/cursor' });
   expect(fetchMock.mock.calls[0]![0]).toBe('/api/sync?cursor=opaque%2Fcursor');
   expect(new Headers(fetchMock.mock.calls[0]![1]?.headers).get('x-taskpath-sync')).toBe('2');
-  fetchMock.mockResolvedValueOnce(Response.json({protocol:2,rows:[]}));
-  await api.sync({workspaceKey:'vault',changes:[],reminders:[{taskId:'task',changeId:'change',token:null,dueAt:null}]});
+  fetchMock.mockResolvedValueOnce(Response.json({ protocol: 2, rows: [] }));
+  await api.sync({
+    workspaceKey: 'vault',
+    changes: [],
+    reminders: [{ taskId: 'task', changeId: 'change', token: null, dueAt: null }],
+  });
   expect(fetchMock.mock.calls[1]![1]?.method).toBe('POST');
-  fetchMock.mockResolvedValueOnce(Response.json({format:1,rows:[],acknowledged:['change']}));
-  await expect(api.sync({workspaceKey:'vault',changes:[]})).rejects.toMatchObject({status:426});
+  fetchMock.mockResolvedValueOnce(Response.json({ format: 1, rows: [], acknowledged: ['change'] }));
+  await expect(api.sync({ workspaceKey: 'vault', changes: [] })).rejects.toMatchObject({
+    status: 426,
+  });
 });

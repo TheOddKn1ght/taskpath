@@ -8,11 +8,11 @@
   overscroll-behavior: contain;
 }
 
-.task-actions:has(.task-menu-trigger[aria-expanded="true"]) {
+.task-actions:has(.task-menu-trigger[aria-expanded='true']) {
   opacity: 1;
 }
 
-@media (max-width:760px) {
+@media (max-width: 760px) {
   .action-menu-popover button {
     min-height: 44px;
   }

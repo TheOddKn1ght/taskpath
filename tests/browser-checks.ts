@@ -3,124 +3,366 @@ import { apiRequest } from '/assets/__TASKPATH_RELEASE__/api-client.js';
 import { fileChecks } from './browser-files-checks.js';
 import { pickerChecks } from './browser-picker-checks.js';
 import type { VaultConfig } from '../public/types.js';
-import { localState, activate, lock, clearMemory, isUnlocked, readBoard, offlineRequest, sync, syncAfterCurrent, restoreRemembered, switchAccount } from '/assets/__TASKPATH_RELEASE__/offline.js';
+import {
+  localState,
+  activate,
+  lock,
+  clearMemory,
+  isUnlocked,
+  readBoard,
+  offlineRequest,
+  sync,
+  syncAfterCurrent,
+  restoreRemembered,
+  switchAccount,
+} from '/assets/__TASKPATH_RELEASE__/offline.js';
 import { openDatabase, commit, rememberedKey } from '/assets/__TASKPATH_RELEASE__/persistence.js';
 import { unlockVault } from '/assets/__TASKPATH_RELEASE__/crypto.js';
 import { selectAccount } from '/assets/__TASKPATH_RELEASE__/persistence.js';
-const report = document.getElementById('result')!, results: string[] = [], password = 'browser harness password 2026';
-function assert(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); results.push('PASS ' + message); report.textContent = results.join('\n'); };
-const originalFetch = window.fetch.bind(window); const requests: string[] = [];
+const report = document.getElementById('result')!,
+  results: string[] = [],
+  password = 'browser harness password 2026';
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+  results.push('PASS ' + message);
+  report.textContent = results.join('\n');
+}
+const originalFetch = window.fetch.bind(window);
+const requests: string[] = [];
 let disconnected = false;
 window.fetch = async (url, options) => {
   if (options?.body) requests.push(String(options.body));
-  if (disconnected && String(url).startsWith('/api/')) throw new TypeError('Simulated disconnection');
+  if (disconnected && String(url).startsWith('/api/'))
+    throw new TypeError('Simulated disconnection');
   return originalFetch(url, options);
 };
 try {
   // Seed the prior account database before the additive Files upgrade. Only the
   // isolated harness origin is used; production storage is never reset.
-  const upgradeMarker = { pending: [{ changeId: 'upgrade-identity', editedAt: '2020-01-01T00:00:00.000Z', ciphertext: 'opaque-upgrade-fixture' }] };
-  const prior = await new Promise<IDBDatabase>((resolve,reject) => { const r=indexedDB.open('taskpath-accounts-v1'); r.onupgradeneeded=()=>{r.result.createObjectStore('state');r.result.createObjectStore('keys');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error); });
-  await new Promise<void>((resolve,reject)=>{const tx=prior.transaction('state','readwrite');tx.objectStore('state').put(upgradeMarker,'upgrade-fixture');tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});prior.close();
-  const upgraded=await openDatabase();
-  const preserved=await new Promise(resolve=>{const r=upgraded.transaction('state').objectStore('state').get('upgrade-fixture');r.onsuccess=()=>resolve(r.result);});
-  assert(upgraded.version===2 && upgraded.objectStoreNames.contains('fileBlobs'),'file stores upgrade the account database additively');
-  assert(JSON.stringify(preserved)===JSON.stringify(upgradeMarker),'file storage upgrade preserves pending ciphertext, IDs and timestamps');
+  const upgradeMarker = {
+    pending: [
+      {
+        changeId: 'upgrade-identity',
+        editedAt: '2020-01-01T00:00:00.000Z',
+        ciphertext: 'opaque-upgrade-fixture',
+      },
+    ],
+  };
+  const prior = await new Promise<IDBDatabase>((resolve, reject) => {
+    const r = indexedDB.open('taskpath-accounts-v1');
+    r.onupgradeneeded = () => {
+      r.result.createObjectStore('state');
+      r.result.createObjectStore('keys');
+    };
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = prior.transaction('state', 'readwrite');
+    tx.objectStore('state').put(upgradeMarker, 'upgrade-fixture');
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error);
+  });
+  prior.close();
+  const upgraded = await openDatabase();
+  const preserved = await new Promise((resolve) => {
+    const r = upgraded.transaction('state').objectStore('state').get('upgrade-fixture');
+    r.onsuccess = () => resolve(r.result);
+  });
+  assert(
+    upgraded.version === 2 && upgraded.objectStoreNames.contains('fileBlobs'),
+    'file stores upgrade the account database additively',
+  );
+  assert(
+    JSON.stringify(preserved) === JSON.stringify(upgradeMarker),
+    'file storage upgrade preserves pending ciphertext, IDs and timestamps',
+  );
   // A legacy queue is deliberately left untouched, including operation identity and time.
-  const legacy = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('taskpath-offline-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('state'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
-  const legacyValue = { pending: [{ changeId: 'legacy-id', editedAt: '2020-01-01T00:00:00.000Z', task: { title: 'LEGACY_PRIVATE_DATA' } }] };
-  await new Promise(resolve => { const tx = legacy.transaction('state', 'readwrite'); tx.objectStore('state').put(legacyValue, 'workspace'); tx.oncomplete = resolve; });
-  const { userId, secondUserId } = await apiRequest<{userId: string; secondUserId: string}>('/test-account');
+  const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+    const r = indexedDB.open('taskpath-offline-v1', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('state');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+  const legacyValue = {
+    pending: [
+      {
+        changeId: 'legacy-id',
+        editedAt: '2020-01-01T00:00:00.000Z',
+        task: { title: 'LEGACY_PRIVATE_DATA' },
+      },
+    ],
+  };
+  await new Promise((resolve) => {
+    const tx = legacy.transaction('state', 'readwrite');
+    tx.objectStore('state').put(legacyValue, 'workspace');
+    tx.oncomplete = resolve;
+  });
+  const { userId, secondUserId } = await apiRequest<{ userId: string; secondUserId: string }>(
+    '/test-account',
+  );
   await selectAccount(userId);
-  const { config } = await apiRequest<{config: VaultConfig}>('/api/auth/config?userId=' + userId), unlocked = await unlockVault(password, config);
-  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
-  await activate(config, unlocked.key, false, (await localState()).lockEpoch); await sync();
+  const { config } = await apiRequest<{ config: VaultConfig }>('/api/auth/config?userId=' + userId),
+    unlocked = await unlockVault(password, config);
+  await apiRequest('/api/auth/login', 'POST', {
+    userId,
+    credential: unlocked.credential,
+    revision: config.revision,
+  });
+  await activate(config, unlocked.key, false, (await localState()).lockEpoch);
+  await sync();
   disconnected = true;
   const marker = 'BROWSER_HARNESS_PRIVATE_7261';
-  await offlineRequest('/api/tasks', 'POST', { title: marker, notes: 'HIDDEN_NOTES_7261', tags: ['secret'] });
+  await offlineRequest('/api/tasks', 'POST', {
+    title: marker,
+    notes: 'HIDDEN_NOTES_7261',
+    tags: ['secret'],
+  });
   const saved = await localState();
-  assert(saved.pending.length === 1 && !JSON.stringify(saved).includes(marker), 'offline edits persist only as ciphertext');
-  assert(!await rememberedKey(), 'Remember this device defaults off');
+  assert(
+    saved.pending.length === 1 && !JSON.stringify(saved).includes(marker),
+    'offline edits persist only as ciphertext',
+  );
+  assert(!(await rememberedKey()), 'Remember this device defaults off');
   const immutable = JSON.stringify(saved.pending);
-  clearMemory(); assert(!isUnlocked(), 'memory lock clears the active key');
-  await readBoard().then(() => { throw new Error('Locked read succeeded'); }, () => {});
+  clearMemory();
+  assert(!isUnlocked(), 'memory lock clears the active key');
+  await readBoard().then(
+    () => {
+      throw new Error('Locked read succeeded');
+    },
+    () => {},
+  );
   const offlineKey = await unlockVault(password, (await localState()).config!);
   await activate(config, offlineKey.key, false, (await localState()).lockEpoch);
-  assert((await readBoard()).tasks.some(t => t.title === marker), 'password unlocks offline edits after a lock');
+  assert(
+    (await readBoard()).tasks.some((t) => t.title === marker),
+    'password unlocks offline edits after a lock',
+  );
   await sync().catch(() => {});
-  assert(JSON.stringify((await localState()).pending) === immutable, 'failed retries preserve ciphertext, operation IDs and timestamps');
-  const preview = await offlineRequest('/api/import/preview', 'POST', { markdown: '## Today\n- [ ] Offline imported\n  - Tags: ["home"]' });
+  assert(
+    JSON.stringify((await localState()).pending) === immutable,
+    'failed retries preserve ciphertext, operation IDs and timestamps',
+  );
+  const preview = await offlineRequest('/api/import/preview', 'POST', {
+    markdown: '## Today\n- [ ] Offline imported\n  - Tags: ["home"]',
+  });
   assert(preview.tasks[0].tags[0] === 'home', 'Markdown preview works offline');
   await offlineRequest('/api/import/markdown', 'POST', { tasks: preview.tasks });
   const output = await offlineRequest('/api/export');
-  assert(output.tasks.some(t => t.title === marker), 'readable export includes unsynced edits while unlocked');
+  assert(
+    output.tasks.some((t) => t.title === marker),
+    'readable export includes unsynced edits while unlocked',
+  );
   // Revision CAS prevents an asynchronous encryption result replacing a newer state.
-  const old = await localState(); await localState(r => { r.lastEdit += 1; });
-  assert(!await commit(old.revision, { ...old, pending: [] }), 'stale IndexedDB commits are rejected');
+  const old = await localState();
+  await localState((r) => {
+    r.lastEdit += 1;
+  });
+  assert(
+    !(await commit(old.revision, { ...old, pending: [] })),
+    'stale IndexedDB commits are rejected',
+  );
   assert((await localState()).pending.length === 2, 'stale commit preserves pending changes');
-  disconnected = false; await sync();
-  assert((await localState()).pending.length === 0, 'reconnection acknowledges the encrypted queue');
-  await apiRequest('/test-push', 'POST', {}); await syncAfterCurrent();
+  disconnected = false;
+  await sync();
+  assert(
+    (await localState()).pending.length === 0,
+    'reconnection acknowledges the encrypted queue',
+  );
+  await apiRequest('/test-push', 'POST', {});
+  await syncAfterCurrent();
   assert((await localState()).pushEnabled, 'push opt-in is learned through encrypted sync');
   disconnected = true;
-  const pushTask = (await offlineRequest('/api/tasks', 'POST', { title: 'PUSH_PRIVATE_BROWSER', notes: 'PUSH_PRIVATE_NOTE', reminderAt: new Date(Date.now() + 3600000).toISOString() })).task;
-  const pushSaved = await localState(), pushQueue = JSON.stringify(pushSaved.pending);
-  assert(pushSaved.reminderOutbox![pushTask.id].token === pushTask.reminderToken && !JSON.stringify(pushSaved.reminderOutbox).includes('PUSH_PRIVATE'), 'offline push sidecar contains only IDs and time');
+  const pushTask = (
+    await offlineRequest('/api/tasks', 'POST', {
+      title: 'PUSH_PRIVATE_BROWSER',
+      notes: 'PUSH_PRIVATE_NOTE',
+      reminderAt: new Date(Date.now() + 3600000).toISOString(),
+    })
+  ).task;
+  const pushSaved = await localState(),
+    pushQueue = JSON.stringify(pushSaved.pending);
+  assert(
+    pushSaved.reminderOutbox![pushTask.id].token === pushTask.reminderToken &&
+      !JSON.stringify(pushSaved.reminderOutbox).includes('PUSH_PRIVATE'),
+    'offline push sidecar contains only IDs and time',
+  );
   await sync().catch(() => {});
-  assert(JSON.stringify((await localState()).pending) === pushQueue, 'push retries never rewrite ciphertext');
-  disconnected = false; await syncAfterCurrent();
-  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'reconnect publishes the reminder schedule');
-  await offlineRequest(`/api/tasks/${pushTask.id}/archive`, 'POST'); await syncAfterCurrent();
-  assert(!(await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'archiving cancels the server reminder');
-  await offlineRequest(`/api/tasks/${pushTask.id}/unarchive`, 'POST'); await syncAfterCurrent();
-  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === pushTask.reminderToken), 'restoring republishes the paused reminder');
+  assert(
+    JSON.stringify((await localState()).pending) === pushQueue,
+    'push retries never rewrite ciphertext',
+  );
+  disconnected = false;
+  await syncAfterCurrent();
+  assert(
+    (await apiRequest<{ reminders: { token: string }[] }>('/test-push')).reminders.some(
+      (r) => r.token === pushTask.reminderToken,
+    ),
+    'reconnect publishes the reminder schedule',
+  );
+  await offlineRequest(`/api/tasks/${pushTask.id}/archive`, 'POST');
+  await syncAfterCurrent();
+  assert(
+    !(await apiRequest<{ reminders: { token: string }[] }>('/test-push')).reminders.some(
+      (r) => r.token === pushTask.reminderToken,
+    ),
+    'archiving cancels the server reminder',
+  );
+  await offlineRequest(`/api/tasks/${pushTask.id}/unarchive`, 'POST');
+  await syncAfterCurrent();
+  assert(
+    (await apiRequest<{ reminders: { token: string }[] }>('/test-push')).reminders.some(
+      (r) => r.token === pushTask.reminderToken,
+    ),
+    'restoring republishes the paused reminder',
+  );
   await activate(config, unlocked.key, true, (await localState()).lockEpoch);
   const remembered = await rememberedKey();
   assert(remembered?.key.extractable === false, 'remembered CryptoKey is non-extractable');
-  clearMemory(); assert(await restoreRemembered(), 'remembered device unlocks after memory is cleared');
-  const frame = document.createElement('iframe'); frame.src = '/frame';
-  const waitMessage = (value: string) => new Promise<void>((resolve, reject) => { const timer = setTimeout(() => { window.removeEventListener('message', handler); reject(new Error('Frame timed out: ' + value)); }, 10000); function handler(event: MessageEvent) { if (event.origin !== location.origin || event.source !== frame.contentWindow) return; if (event.data === value || event.data?.error) { clearTimeout(timer); window.removeEventListener('message', handler); event.data?.error ? reject(new Error(event.data.error)) : resolve(); } } window.addEventListener('message', handler); });
-  const ready = waitMessage('ready'); document.body.append(frame); await ready;
-  const edited = waitMessage('edited'); frame.contentWindow!.postMessage('edit', location.origin);
-  await Promise.all(Array.from({ length: 4 }, (_, i) => offlineRequest('/api/tasks', 'POST', { title: `PARENT_PRIVATE_${i}` })));
-  await edited; await sync();
-  assert((await readBoard()).tasks.filter(t => /^(FRAME|PARENT)_PRIVATE_/.test(t.title)).length === 8, 'concurrent browser contexts preserve all edits');
+  clearMemory();
+  assert(await restoreRemembered(), 'remembered device unlocks after memory is cleared');
+  const frame = document.createElement('iframe');
+  frame.src = '/frame';
+  const waitMessage = (value: string) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        reject(new Error('Frame timed out: ' + value));
+      }, 10000);
+      function handler(event: MessageEvent) {
+        if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+        if (event.data === value || event.data?.error) {
+          clearTimeout(timer);
+          window.removeEventListener('message', handler);
+          event.data?.error ? reject(new Error(event.data.error)) : resolve();
+        }
+      }
+      window.addEventListener('message', handler);
+    });
+  const ready = waitMessage('ready');
+  document.body.append(frame);
+  await ready;
+  const edited = waitMessage('edited');
+  frame.contentWindow!.postMessage('edit', location.origin);
+  await Promise.all(
+    Array.from({ length: 4 }, (_, i) =>
+      offlineRequest('/api/tasks', 'POST', { title: `PARENT_PRIVATE_${i}` }),
+    ),
+  );
+  await edited;
+  await sync();
+  assert(
+    (await readBoard()).tasks.filter((t) => /^(FRAME|PARENT)_PRIVATE_/.test(t.title)).length === 8,
+    'concurrent browser contexts preserve all edits',
+  );
   disconnected = true;
-  const archiveTarget = (await readBoard()).tasks.find(t => t.title === marker)!;
+  const archiveTarget = (await readBoard()).tasks.find((t) => t.title === marker)!;
   const archiveResult = await offlineRequest(`/api/tasks/${archiveTarget.id}/archive`, 'POST');
   const archivePending = JSON.stringify((await localState()).pending);
-  assert(!archivePending.includes(marker) && (await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'offline archive stays encrypted and visible in archive data');
+  assert(
+    !archivePending.includes(marker) &&
+      (await readBoard()).tasks.find((t) => t.id === archiveTarget.id)!.archivedAt,
+    'offline archive stays encrypted and visible in archive data',
+  );
   await sync().catch(() => {});
-  assert(JSON.stringify((await localState()).pending) === archivePending, 'archive retries retain exact ciphertext and operation IDs');
+  assert(
+    JSON.stringify((await localState()).pending) === archivePending,
+    'archive retries retain exact ciphertext and operation IDs',
+  );
   clearMemory();
-  await activate(config, (await unlockVault(password, config)).key, false, (await localState()).lockEpoch);
-  assert((await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'archived tasks survive offline unlock and reopen');
-  assert((await offlineRequest('/api/export?format=markdown')).includes('Archived:'), 'readable Markdown export includes archived tasks offline');
-  const unarchived = waitMessage('unarchived'); frame.contentWindow!.postMessage({ type: 'unarchive', id: archiveTarget.id }, location.origin); await unarchived;
-  assert(!(await readBoard()).tasks.find(t => t.id === archiveTarget.id)!.archivedAt, 'restoring in another context propagates through shared encrypted storage');
-  const archiveUndo = await offlineRequest('/api/tasks/archive-undo', 'POST', { undo: archiveResult.undo });
-  assert(archiveUndo.restored === 0 && archiveUndo.skipped === 1, 'archive Undo preserves a later edit from another browser context');
-  disconnected = false; await syncAfterCurrent();
-  assert((await localState()).pending.length === 0, 'archive and restore changes reconnect and acknowledge normally');
-  const pendingRequest = requests.filter(body => body.includes('ciphertext'));
-  assert(!pendingRequest.some(body => /BROWSER_HARNESS_PRIVATE|PARENT_PRIVATE|FRAME_PRIVATE|HIDDEN_NOTES/.test(body)), 'normal sync requests contain no test plaintext');
-  assert(!requests.some(body => body.includes(password)), 'password never appears in network requests');
+  await activate(
+    config,
+    (await unlockVault(password, config)).key,
+    false,
+    (await localState()).lockEpoch,
+  );
+  assert(
+    (await readBoard()).tasks.find((t) => t.id === archiveTarget.id)!.archivedAt,
+    'archived tasks survive offline unlock and reopen',
+  );
+  assert(
+    (await offlineRequest('/api/export?format=markdown')).includes('Archived:'),
+    'readable Markdown export includes archived tasks offline',
+  );
+  const unarchived = waitMessage('unarchived');
+  frame.contentWindow!.postMessage({ type: 'unarchive', id: archiveTarget.id }, location.origin);
+  await unarchived;
+  assert(
+    !(await readBoard()).tasks.find((t) => t.id === archiveTarget.id)!.archivedAt,
+    'restoring in another context propagates through shared encrypted storage',
+  );
+  const archiveUndo = await offlineRequest('/api/tasks/archive-undo', 'POST', {
+    undo: archiveResult.undo,
+  });
+  assert(
+    archiveUndo.restored === 0 && archiveUndo.skipped === 1,
+    'archive Undo preserves a later edit from another browser context',
+  );
+  disconnected = false;
+  await syncAfterCurrent();
+  assert(
+    (await localState()).pending.length === 0,
+    'archive and restore changes reconnect and acknowledge normally',
+  );
+  const pendingRequest = requests.filter((body) => body.includes('ciphertext'));
+  assert(
+    !pendingRequest.some((body) =>
+      /BROWSER_HARNESS_PRIVATE|PARENT_PRIVATE|FRAME_PRIVATE|HIDDEN_NOTES/.test(body),
+    ),
+    'normal sync requests contain no test plaintext',
+  );
+  assert(
+    !requests.some((body) => body.includes(password)),
+    'password never appears in network requests',
+  );
   const disk = JSON.stringify(await localState());
-  assert(!/BROWSER_HARNESS_PRIVATE|PARENT_PRIVATE|FRAME_PRIVATE|HIDDEN_NOTES/.test(disk), 'IndexedDB workspace contains no decrypted tasks');
+  assert(
+    !/BROWSER_HARNESS_PRIVATE|PARENT_PRIVATE|FRAME_PRIVATE|HIDDEN_NOTES/.test(disk),
+    'IndexedDB workspace contains no decrypted tasks',
+  );
   assert(!disk.includes(unlocked.credential), 'authentication credential is not persisted');
   disconnected = true;
-  const workerTask = (await offlineRequest('/api/tasks', 'POST', { title: 'LOCKED_WORKER_PRIVATE', reminderAt: new Date(Date.now() + 7200000).toISOString() })).task;
+  const workerTask = (
+    await offlineRequest('/api/tasks', 'POST', {
+      title: 'LOCKED_WORKER_PRIVATE',
+      reminderAt: new Date(Date.now() + 7200000).toISOString(),
+    })
+  ).task;
   const lockedPending = JSON.stringify((await localState()).pending);
-  await lock(); const locked = waitMessage('locked'); frame.contentWindow!.postMessage('check-lock', location.origin); await locked;
-  assert(!await rememberedKey(), 'Lock clears remembered keys and locks other contexts');
-  assert(JSON.stringify((await localState()).pending) === lockedPending, 'locking keeps the encrypted pending queue intact');
+  await lock();
+  const locked = waitMessage('locked');
+  frame.contentWindow!.postMessage('check-lock', location.origin);
+  await locked;
+  assert(!(await rememberedKey()), 'Lock clears remembered keys and locks other contexts');
+  assert(
+    JSON.stringify((await localState()).pending) === lockedPending,
+    'locking keeps the encrypted pending queue intact',
+  );
   disconnected = false;
   const worker = new Worker('/worker.js', { type: 'module' });
-  const workerResult = await new Promise<{unlocked: boolean; remembered: null}>((resolve, reject) => { worker.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data); worker.onerror = reject; });
+  const workerResult = await new Promise<{ unlocked: boolean; remembered: null }>(
+    (resolve, reject) => {
+      worker.onmessage = (event) =>
+        event.data.error ? reject(new Error(event.data.error)) : resolve(event.data);
+      worker.onerror = reject;
+    },
+  );
   worker.terminate();
-  assert(!workerResult.unlocked && workerResult.remembered === null, 'background worker never loads decryption keys');
-  assert((await localState()).pending.length === 0, 'background worker transfers pending ciphertext while the page is locked');
-  assert((await apiRequest<{reminders: {token: string}[]}>('/test-push')).reminders.some(r => r.token === workerTask.reminderToken), 'locked worker transfers the persisted schedule without a vault key');
+  assert(
+    !workerResult.unlocked && workerResult.remembered === null,
+    'background worker never loads decryption keys',
+  );
+  assert(
+    (await localState()).pending.length === 0,
+    'background worker transfers pending ciphertext while the page is locked',
+  );
+  assert(
+    (await apiRequest<{ reminders: { token: string }[] }>('/test-push')).reminders.some(
+      (r) => r.token === workerTask.reminderToken,
+    ),
+    'locked worker transfers the persisted schedule without a vault key',
+  );
   const legacyCache = await caches.open('taskpath-shell-legacy-check');
   await legacyCache.put('/legacy-shell', new Response('legacy static shell'));
   const previousReleaseCache = await caches.open('taskpath-shell-accounts-v18');
@@ -129,106 +371,277 @@ try {
   await navigator.serviceWorker.ready;
   // ready can resolve while activation's waitUntil cleanup is still running.
   const activeWorker = registration.active;
-  if (activeWorker && activeWorker.state !== 'activated') await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => { activeWorker.removeEventListener('statechange', changed); reject(new Error('Worker activation timed out')); }, 10000);
-    function changed() { if (activeWorker!.state === 'activated') { clearTimeout(timer); activeWorker!.removeEventListener('statechange', changed); resolve(); } }
-    activeWorker.addEventListener('statechange', changed); changed();
-  });
-  const cacheNames = await caches.keys(); let cacheText = '';
-  for (const name of cacheNames) { const cache = await caches.open(name); for (const url of await cache.keys()) { if (url.url.includes('/api/')) throw new Error('API response was cached'); const response = await cache.match(url); if (/text|javascript|json/.test(response?.headers.get('content-type') || '')) cacheText += await response!.text(); } }
-  assert(cacheNames.includes('taskpath-shell-__TASKPATH_RELEASE__'), 'PWA installs the generated fingerprint cache: ' + cacheNames.join(', '));
-  assert(!cacheNames.includes('taskpath-shell-accounts-v18'), 'PWA activation retires numbered caches without resetting browser storage');
-  assert(Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')), 'legacy shell cache remains untouched');
-  assert(!/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText), 'PWA caches contain only static assets, not task plaintext');
+  if (activeWorker && activeWorker.state !== 'activated')
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        activeWorker.removeEventListener('statechange', changed);
+        reject(new Error('Worker activation timed out'));
+      }, 10000);
+      function changed() {
+        if (activeWorker!.state === 'activated') {
+          clearTimeout(timer);
+          activeWorker!.removeEventListener('statechange', changed);
+          resolve();
+        }
+      }
+      activeWorker.addEventListener('statechange', changed);
+      changed();
+    });
+  const cacheNames = await caches.keys();
+  let cacheText = '';
+  for (const name of cacheNames) {
+    const cache = await caches.open(name);
+    for (const url of await cache.keys()) {
+      if (url.url.includes('/api/')) throw new Error('API response was cached');
+      const response = await cache.match(url);
+      if (/text|javascript|json/.test(response?.headers.get('content-type') || ''))
+        cacheText += await response!.text();
+    }
+  }
+  assert(
+    cacheNames.includes('taskpath-shell-__TASKPATH_RELEASE__'),
+    'PWA installs the generated fingerprint cache: ' + cacheNames.join(', '),
+  );
+  assert(
+    !cacheNames.includes('taskpath-shell-accounts-v18'),
+    'PWA activation retires numbered caches without resetting browser storage',
+  );
+  assert(
+    Boolean(await (await caches.open('taskpath-shell-legacy-check')).match('/legacy-shell')),
+    'legacy shell cache remains untouched',
+  );
+  assert(
+    !/BROWSER_HARNESS_PRIVATE_7261|HIDDEN_NOTES_7261|LOCKED_WORKER_PRIVATE/.test(cacheText),
+    'PWA caches contain only static assets, not task plaintext',
+  );
   await registration.unregister();
   await apiRequest('/api/auth/logout', 'POST', {});
   await sync().catch(() => {});
-  assert((await localState()).authRequired === true, 'expired session pauses ciphertext sync without deleting the workspace');
-  const oldValue = await new Promise(resolve => { const r = legacy.transaction('state').objectStore('state').get('workspace'); r.onsuccess = () => resolve(r.result); });
-  assert(JSON.stringify(oldValue) === JSON.stringify(legacyValue), 'legacy plaintext queue is unchanged');
+  assert(
+    (await localState()).authRequired === true,
+    'expired session pauses ciphertext sync without deleting the workspace',
+  );
+  const oldValue = await new Promise((resolve) => {
+    const r = legacy.transaction('state').objectStore('state').get('workspace');
+    r.onsuccess = () => resolve(r.result);
+  });
+  assert(
+    JSON.stringify(oldValue) === JSON.stringify(legacyValue),
+    'legacy plaintext queue is unchanged',
+  );
   // Switch accounts with unsynced task/profile operations and remembered keys.
-  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision });
+  await apiRequest('/api/auth/login', 'POST', {
+    userId,
+    credential: unlocked.credential,
+    revision: config.revision,
+  });
   await activate(config, unlocked.key, true, (await localState()).lockEpoch);
   disconnected = true;
   await offlineRequest('/api/profile', 'POST', { nickname: 'PRIVATE_NICK_A' });
   await offlineRequest('/api/tasks', 'POST', { title: 'UNSYNCED_ACCOUNT_A' });
-  assert((await readBoard()).nickname === 'PRIVATE_NICK_A', 'nickname persists offline and is separate from task cards');
-  const accountA = await localState(), pendingA = JSON.stringify(accountA.pending);
-  assert(!JSON.stringify(accountA).includes('PRIVATE_NICK_A'), 'nickname is encrypted in IndexedDB');
+  assert(
+    (await readBoard()).nickname === 'PRIVATE_NICK_A',
+    'nickname persists offline and is separate from task cards',
+  );
+  const accountA = await localState(),
+    pendingA = JSON.stringify(accountA.pending);
+  assert(
+    !JSON.stringify(accountA).includes('PRIVATE_NICK_A'),
+    'nickname is encrypted in IndexedDB',
+  );
   const oldRevision = accountA.revision;
   await switchAccount(secondUserId);
-  assert(!isUnlocked() && !await rememberedKey(), 'switching account clears memory and remembered keys');
-  await commit(oldRevision, accountA).then(() => { throw new Error('Cross-account commit succeeded'); }, () => {});
-  assert((await localState()).config === null, 'new account never inherits the previous account cache');
-  disconnected = false; await syncAfterCurrent().catch(() => {});
-  const configB = (await apiRequest<{config: VaultConfig}>('/api/auth/config?userId=' + secondUserId)).config;
-  const keyB = await unlockVault('browser second password 2026', configB);
-  await apiRequest('/api/auth/login', 'POST', { userId: secondUserId, credential: keyB.credential, revision: 1 });
-  await activate(configB, keyB.key, false, (await localState()).lockEpoch); await syncAfterCurrent();
-  assert((await readBoard()).tasks.length === 0 && (await readBoard()).nickname === '', 'second account sees only its own empty vault');
-  await offlineRequest('/api/profile', 'POST', { nickname: 'PRIVATE_NICK_B' });
-  await offlineRequest('/api/tasks', 'POST', { title: 'ACCOUNT_B_ONLY' }); await syncAfterCurrent();
-  assert((await readBoard()).nickname === 'PRIVATE_NICK_B', 'second account nickname syncs independently');
-  disconnected = true; await switchAccount(userId);
-  await activate(config, unlocked.key, false, (await localState()).lockEpoch);
-  assert(JSON.stringify((await localState()).pending) === pendingA, 'returning offline preserves original ciphertext and operation IDs');
-  const boardA = await readBoard();
-  assert(boardA.nickname === 'PRIVATE_NICK_A' && boardA.tasks.some(t => t.title === 'UNSYNCED_ACCOUNT_A') && !boardA.tasks.some(t => t.title === 'ACCOUNT_B_ONLY'), 'offline account switch preserves private tasks and nickname');
+  assert(
+    !isUnlocked() && !(await rememberedKey()),
+    'switching account clears memory and remembered keys',
+  );
+  await commit(oldRevision, accountA).then(
+    () => {
+      throw new Error('Cross-account commit succeeded');
+    },
+    () => {},
+  );
+  assert(
+    (await localState()).config === null,
+    'new account never inherits the previous account cache',
+  );
   disconnected = false;
   await syncAfterCurrent().catch(() => {});
-  assert((await localState()).authRequired && JSON.stringify((await localState()).pending) === pendingA, 'other-account session cannot acknowledge or consume this account queue');
-  await apiRequest('/api/auth/login', 'POST', { userId, credential: unlocked.credential, revision: config.revision }); await syncAfterCurrent();
-  assert((await localState()).pending.length === 0 && (await readBoard()).nickname === 'PRIVATE_NICK_A', 'correct account reconnects and syncs its original pending edits');
-  const switched = waitMessage('locked'); await switchAccount(secondUserId); await switched;
+  const configB = (
+    await apiRequest<{ config: VaultConfig }>('/api/auth/config?userId=' + secondUserId)
+  ).config;
+  const keyB = await unlockVault('browser second password 2026', configB);
+  await apiRequest('/api/auth/login', 'POST', {
+    userId: secondUserId,
+    credential: keyB.credential,
+    revision: 1,
+  });
+  await activate(configB, keyB.key, false, (await localState()).lockEpoch);
+  await syncAfterCurrent();
+  assert(
+    (await readBoard()).tasks.length === 0 && (await readBoard()).nickname === '',
+    'second account sees only its own empty vault',
+  );
+  await offlineRequest('/api/profile', 'POST', { nickname: 'PRIVATE_NICK_B' });
+  await offlineRequest('/api/tasks', 'POST', { title: 'ACCOUNT_B_ONLY' });
+  await syncAfterCurrent();
+  assert(
+    (await readBoard()).nickname === 'PRIVATE_NICK_B',
+    'second account nickname syncs independently',
+  );
+  disconnected = true;
+  await switchAccount(userId);
+  await activate(config, unlocked.key, false, (await localState()).lockEpoch);
+  assert(
+    JSON.stringify((await localState()).pending) === pendingA,
+    'returning offline preserves original ciphertext and operation IDs',
+  );
+  const boardA = await readBoard();
+  assert(
+    boardA.nickname === 'PRIVATE_NICK_A' &&
+      boardA.tasks.some((t) => t.title === 'UNSYNCED_ACCOUNT_A') &&
+      !boardA.tasks.some((t) => t.title === 'ACCOUNT_B_ONLY'),
+    'offline account switch preserves private tasks and nickname',
+  );
+  disconnected = false;
+  await syncAfterCurrent().catch(() => {});
+  assert(
+    (await localState()).authRequired && JSON.stringify((await localState()).pending) === pendingA,
+    'other-account session cannot acknowledge or consume this account queue',
+  );
+  await apiRequest('/api/auth/login', 'POST', {
+    userId,
+    credential: unlocked.credential,
+    revision: config.revision,
+  });
+  await syncAfterCurrent();
+  assert(
+    (await localState()).pending.length === 0 && (await readBoard()).nickname === 'PRIVATE_NICK_A',
+    'correct account reconnects and syncs its original pending edits',
+  );
+  const switched = waitMessage('locked');
+  await switchAccount(secondUserId);
+  await switched;
   assert(!isUnlocked(), 'account switch locks other browser contexts');
-  frame.remove(); legacy.close();
+  frame.remove();
+  legacy.close();
   await fileChecks(assert);
   disconnected = true;
-  const todayReminder = (await offlineRequest('/api/tasks', 'POST', { title: 'Today reminder browser check', status: 'later', reminderAt: new Date().toISOString() })).task;
-  assert(todayReminder.status === 'today', 'today reminder creates directly in Today while offline');
+  const todayReminder = (
+    await offlineRequest('/api/tasks', 'POST', {
+      title: 'Today reminder browser check',
+      status: 'later',
+      reminderAt: new Date().toISOString(),
+    })
+  ).task;
+  assert(
+    todayReminder.status === 'today',
+    'today reminder creates directly in Today while offline',
+  );
   const reminderQueue = JSON.stringify((await localState()).pending);
   await syncAfterCurrent().catch(() => {});
-  assert(JSON.stringify((await localState()).pending) === reminderQueue, 'today placement preserves immutable encrypted retries');
+  assert(
+    JSON.stringify((await localState()).pending) === reminderQueue,
+    'today placement preserves immutable encrypted retries',
+  );
   let blocked = false;
-  try { await offlineRequest(`/api/tasks/${todayReminder.id}`, 'PATCH', { status: 'later' }); }
-  catch (error) { blocked = error instanceof Error && error.message === 'This task has a reminder today. Change or clear the reminder to move it.'; }
-  assert(blocked && JSON.stringify((await localState()).pending) === reminderQueue, 'rejected reminder movement leaves the encrypted queue unchanged');
+  try {
+    await offlineRequest(`/api/tasks/${todayReminder.id}`, 'PATCH', { status: 'later' });
+  } catch (error) {
+    blocked =
+      error instanceof Error &&
+      error.message === 'This task has a reminder today. Change or clear the reminder to move it.';
+  }
+  assert(
+    blocked && JSON.stringify((await localState()).pending) === reminderQueue,
+    'rejected reminder movement leaves the encrypted queue unchanged',
+  );
   await lock();
-  const reminderRecord = await localState(), reminderKey = await unlockVault('browser second password 2026', reminderRecord.config!);
+  const reminderRecord = await localState(),
+    reminderKey = await unlockVault('browser second password 2026', reminderRecord.config!);
   await activate(reminderRecord.config!, reminderKey.key, false, reminderRecord.lockEpoch);
-  assert((await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'offline unlock preserves Today placement');
-  disconnected = false; await syncAfterCurrent();
-  assert(!(await localState()).pending.length && (await readBoard()).tasks.find(t => t.id === todayReminder.id)?.status === 'today', 'reconnection acknowledges and retains Today reminder placement');
+  assert(
+    (await readBoard()).tasks.find((t) => t.id === todayReminder.id)?.status === 'today',
+    'offline unlock preserves Today placement',
+  );
+  disconnected = false;
+  await syncAfterCurrent();
+  assert(
+    !(await localState()).pending.length &&
+      (await readBoard()).tasks.find((t) => t.id === todayReminder.id)?.status === 'today',
+    'reconnection acknowledges and retains Today reminder placement',
+  );
   disconnected = true;
   await syncAfterCurrent().catch(() => {});
-  for (let i=0;i<55;i++) await offlineRequest('/api/tasks','POST',{title:'INCREMENTAL_PRIVATE_'+i});
-  const immutableQueue=JSON.stringify((await localState()).pending);
+  for (let i = 0; i < 55; i++)
+    await offlineRequest('/api/tasks', 'POST', { title: 'INCREMENTAL_PRIVATE_' + i });
+  const immutableQueue = JSON.stringify((await localState()).pending);
   await syncAfterCurrent().catch(() => {});
-  assert(JSON.stringify((await localState()).pending)===immutableQueue,'incremental upload retries preserve queued ciphertext');
-  disconnected=false; await syncAfterCurrent();
-  let syncRecord=await localState();
-  const api=accountApi(syncRecord.userId!);
-  const idle=await api.sync({workspaceKey:syncRecord.config!.vaultId,changes:[],cursor:syncRecord.syncCursor}) as {rows:unknown[];hasMore:boolean};
-  assert(idle.rows.length===0 && !idle.hasMore,'idle incremental sync downloads no envelopes');
-  await localState(record=>{record.syncCursor=null;record.syncComplete=false;});
-  let exportBlocked=false;
-  try {await offlineRequest('/api/export');} catch {exportBlocked=true;}
-  assert(exportBlocked,'incomplete initial download blocks full-workspace export');
+  assert(
+    JSON.stringify((await localState()).pending) === immutableQueue,
+    'incremental upload retries preserve queued ciphertext',
+  );
+  disconnected = false;
+  await syncAfterCurrent();
+  let syncRecord = await localState();
+  const api = accountApi(syncRecord.userId!);
+  const idle = (await api.sync({
+    workspaceKey: syncRecord.config!.vaultId,
+    changes: [],
+    cursor: syncRecord.syncCursor,
+  })) as { rows: unknown[]; hasMore: boolean };
+  assert(idle.rows.length === 0 && !idle.hasMore, 'idle incremental sync downloads no envelopes');
+  await localState((record) => {
+    record.syncCursor = null;
+    record.syncComplete = false;
+  });
+  let exportBlocked = false;
+  try {
+    await offlineRequest('/api/export');
+  } catch {
+    exportBlocked = true;
+  }
+  assert(exportBlocked, 'incomplete initial download blocks full-workspace export');
   // Interrupt after one persisted page; the next sync resumes its cursor.
-  let pulls=0; const beforeInterrupt=window.fetch;
-  window.fetch=async(url,options)=>{
-    if(String(url).startsWith('/api/sync') && (!options?.method || options.method==='GET') && ++pulls===2) throw new TypeError('Interrupted page');
-    return beforeInterrupt(url,options);
+  let pulls = 0;
+  const beforeInterrupt = window.fetch;
+  window.fetch = async (url, options) => {
+    if (
+      String(url).startsWith('/api/sync') &&
+      (!options?.method || options.method === 'GET') &&
+      ++pulls === 2
+    )
+      throw new TypeError('Interrupted page');
+    return beforeInterrupt(url, options);
   };
-  try {await syncAfterCurrent();} catch {}
-  finally {window.fetch=beforeInterrupt;}
-  syncRecord=await localState();
-  assert(!!syncRecord.syncCursor && !syncRecord.syncComplete,'interrupted download saves progress without claiming completion');
+  try {
+    await syncAfterCurrent();
+  } catch {
+  } finally {
+    window.fetch = beforeInterrupt;
+  }
+  syncRecord = await localState();
+  assert(
+    !!syncRecord.syncCursor && !syncRecord.syncComplete,
+    'interrupted download saves progress without claiming completion',
+  );
   await syncAfterCurrent();
-  assert((await localState()).syncComplete && (await readBoard()).tasks.filter(t=>t.title.startsWith('INCREMENTAL_PRIVATE_')).length===55,'resumed pages retain all encrypted tasks');
-  await localState(record=>{record.syncCursor='expired-cursor';});
+  assert(
+    (await localState()).syncComplete &&
+      (await readBoard()).tasks.filter((t) => t.title.startsWith('INCREMENTAL_PRIVATE_')).length ===
+        55,
+    'resumed pages retain all encrypted tasks',
+  );
+  await localState((record) => {
+    record.syncCursor = 'expired-cursor';
+  });
   await syncAfterCurrent();
-  assert((await localState()).syncComplete && (await offlineRequest('/api/export')).tasks.length>=55,'expired cursors rescan safely without clearing cached tasks');
+  assert(
+    (await localState()).syncComplete && (await offlineRequest('/api/export')).tasks.length >= 55,
+    'expired cursors rescan safely without clearing cached tasks',
+  );
   await pickerChecks(assert);
   report.textContent = `${results.join('\n')}\nALL ${results.length} CHECKS PASSED`;
-} catch (error) { report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`; }
+} catch (error) {
+  report.textContent = `${results.join('\n')}\nFAIL ${error instanceof Error ? error.stack || error.message : String(error)}`;
+}

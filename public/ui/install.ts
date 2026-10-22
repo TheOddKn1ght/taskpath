@@ -10,7 +10,7 @@ export const subscribeInstall = (listener: () => void) => {
 export function startInstallEvents() {
   const controller = new AbortController();
   window.addEventListener(
-    "beforeinstallprompt",
+    'beforeinstallprompt',
     (event) => {
       event.preventDefault();
       prompt = event;
@@ -19,7 +19,7 @@ export function startInstallEvents() {
     { signal: controller.signal },
   );
   window.addEventListener(
-    "appinstalled",
+    'appinstalled',
     () => {
       prompt = null;
       listeners.forEach((fn) => fn());

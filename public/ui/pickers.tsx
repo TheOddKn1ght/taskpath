@@ -7,17 +7,17 @@ import {
   useState,
   type ReactNode,
   type KeyboardEvent,
-} from "react";
-import { createPortal } from "react-dom";
+} from 'react';
+import { createPortal } from 'react-dom';
 import {
   matchingOptions,
   monthDays,
   shiftDate,
   shiftMonth,
   validCalendarDate,
-} from "../picker-model.js";
-import { localReminderValue, reminderFromInput } from "../dates.js";
-import { normalizeTags } from "../tags.js";
+} from '../picker-model.js';
+import { localReminderValue, reminderFromInput } from '../dates.js';
+import { normalizeTags } from '../tags.js';
 export interface Option {
   value: string;
   label: string;
@@ -40,17 +40,11 @@ export function PickerProvider({ children }: { children: ReactNode }) {
   const [, revision] = useState(0);
   const invalidate = useCallback(() => revision((n) => n + 1), []);
   return (
-    <PickerContext.Provider
-      value={{ open: setPanel, close: () => setPanel(null), invalidate }}
-    >
+    <PickerContext.Provider value={{ open: setPanel, close: () => setPanel(null), invalidate }}>
       {children}
       {panel &&
         createPortal(
-          <Surface
-            key={panel.title}
-            panel={panel}
-            close={() => setPanel(null)}
-          />,
+          <Surface key={panel.title} panel={panel} close={() => setPanel(null)} />,
           document.body,
         )}
     </PickerContext.Provider>
@@ -64,14 +58,14 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
   useLayoutEffect(() => {
     const d = ref.current!,
       anchor = panel.anchor,
-      owner = anchor.closest("dialog");
+      owner = anchor.closest('dialog');
     const abort = new AbortController(),
       options = { signal: abort.signal };
     function place() {
       if (
         !anchor.isConnected ||
         (owner && !owner.open) ||
-        document.body.classList.contains("vault-locked")
+        document.body.classList.contains('vault-locked')
       ) {
         finish.current();
         return;
@@ -81,30 +75,24 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
         top = vp?.offsetTop || 0,
         width = vp?.width || innerWidth,
         height = vp?.height || innerHeight,
-        mobile = matchMedia("(max-width:760px)").matches;
-      d.classList.toggle("picker-sheet", mobile);
+        mobile = matchMedia('(max-width:760px)').matches;
+      d.classList.toggle('picker-sheet', mobile);
       d.style.width = `${mobile ? width : Math.min(panel.timed ? 600 : 360, width - 16)}px`;
       d.style.maxHeight = `${Math.max(100, height - (mobile ? 8 : 16))}px`;
       if (mobile) {
-        d.style.left = left + "px";
-        d.style.top = top + height - d.getBoundingClientRect().height + "px";
+        d.style.left = left + 'px';
+        d.style.top = top + height - d.getBoundingClientRect().height + 'px';
       } else if (panel.timed) {
-        d.style.removeProperty("left");
-        d.style.removeProperty("top");
+        d.style.removeProperty('left');
+        d.style.removeProperty('top');
       } else {
         const r = anchor.getBoundingClientRect(),
           b = d.getBoundingClientRect();
-        d.style.left =
-          Math.max(left + 8, Math.min(r.left, left + width - b.width - 8)) +
-          "px";
-        d.style.top =
-          Math.max(
-            top + 8,
-            Math.min(r.bottom + 6, top + height - b.height - 8),
-          ) + "px";
+        d.style.left = Math.max(left + 8, Math.min(r.left, left + width - b.width - 8)) + 'px';
+        d.style.top = Math.max(top + 8, Math.min(r.bottom + 6, top + height - b.height - 8)) + 'px';
       }
     }
-    anchor.setAttribute("aria-expanded", "true");
+    anchor.setAttribute('aria-expanded', 'true');
     d.showModal();
     place();
     const observer = new MutationObserver(() => {
@@ -114,23 +102,22 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["open"],
+      attributeFilter: ['open'],
     });
     const resize = new ResizeObserver(place);
     resize.observe(content.current!);
-    for (const ev of ["resize", "scroll"]) {
+    for (const ev of ['resize', 'scroll']) {
       window.addEventListener(ev, place, { ...options, capture: true });
       window.visualViewport?.addEventListener(ev, place, options);
     }
-    owner?.addEventListener("close", close, options);
-    window.addEventListener("taskpath-locked", close, options);
+    owner?.addEventListener('close', close, options);
+    window.addEventListener('taskpath-locked', close, options);
     const frame = requestAnimationFrame(() => {
       const first =
-        matchMedia("(max-width:760px)").matches &&
-        d.querySelector('input[type="search"]')
-          ? d.querySelector<HTMLElement>("h2")
+        matchMedia('(max-width:760px)').matches && d.querySelector('input[type="search"]')
+          ? d.querySelector<HTMLElement>('h2')
           : d.querySelector<HTMLElement>('[autofocus], [tabindex="0"]') ||
-            d.querySelector<HTMLElement>("input, .picker-body button");
+            d.querySelector<HTMLElement>('input, .picker-body button');
       first?.focus({ preventScroll: true });
     });
     return () => {
@@ -139,7 +126,7 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
       resize.disconnect();
       cancelAnimationFrame(frame);
       d.close();
-      anchor.setAttribute("aria-expanded", "false");
+      anchor.setAttribute('aria-expanded', 'false');
       if (anchor.isConnected) anchor.focus({ preventScroll: true });
     };
   }, [panel.anchor, panel.timed]);
@@ -147,9 +134,9 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
     <dialog
       ref={ref}
       className={
-        "picker-surface" +
-        (panel.date ? " picker-date" : "") +
-        (panel.timed ? " picker-datetime" : "")
+        'picker-surface' +
+        (panel.date ? ' picker-date' : '') +
+        (panel.timed ? ' picker-datetime' : '')
       }
       aria-label={panel.title}
       onCancel={(e) => {
@@ -159,11 +146,11 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
       }}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") {
+        if (e.key === 'Escape') {
           e.preventDefault();
           close();
         }
-        if (e.key === "Tab") {
+        if (e.key === 'Tab') {
           const items = [
             ...e.currentTarget.querySelectorAll<HTMLElement>(
               'button:not(:disabled),input:not(:disabled),[tabindex="0"]',
@@ -182,10 +169,7 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
         const r = e.currentTarget.getBoundingClientRect();
         if (
           e.target === e.currentTarget &&
-          (e.clientX < r.left ||
-            e.clientX > r.right ||
-            e.clientY < r.top ||
-            e.clientY > r.bottom)
+          (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
         )
           close();
       }}
@@ -195,7 +179,7 @@ function Surface({ panel, close }: { panel: Panel; close: () => void }) {
         <button
           type="button"
           className="icon-button"
-          aria-label={"Close " + panel.title}
+          aria-label={'Close ' + panel.title}
           onClick={close}
         >
           ×
@@ -233,10 +217,10 @@ export function Select({
       type="button"
       id={id}
       data-picker-for={id}
-      className={"picker-trigger" + (move ? " picker-move" : "")}
+      className={'picker-trigger' + (move ? ' picker-move' : '')}
       aria-haspopup="dialog"
       aria-expanded="false"
-      aria-label={`${label}: ${options.find((o) => o.value === value)?.label || "Choose"}`}
+      aria-label={`${label}: ${options.find((o) => o.value === value)?.label || 'Choose'}`}
       onClick={(e) =>
         picker.open({
           anchor: e.currentTarget,
@@ -256,7 +240,7 @@ export function Select({
         })
       }
     >
-      {options.find((o) => o.value === value)?.label || "Choose"}
+      {options.find((o) => o.value === value)?.label || 'Choose'}
     </button>
   );
 }
@@ -277,30 +261,26 @@ export function List({
   multiple?: boolean;
   create?: (v: string) => void;
 }) {
-  const [query, setQuery] = useState(""),
-    [error, setError] = useState(""),
+  const [query, setQuery] = useState(''),
+    [error, setError] = useState(''),
     [, update] = useState(0),
     ref = useRef<HTMLDivElement>(null),
-    prefix = useRef({ text: "", at: 0 });
+    prefix = useRef({ text: '', at: 0 });
   const picker = useContext(PickerContext),
     options = matchingOptions(source(), query),
     [current, setCurrent] = useState(
-      selected()[0] || options.find((o) => !o.disabled)?.value || "",
+      selected()[0] || options.find((o) => !o.disabled)?.value || '',
     );
   const enabled = options.filter((o) => !o.disabled),
-    active = enabled.some((o) => o.value === current)
-      ? current
-      : enabled[0]?.value;
+    active = enabled.some((o) => o.value === current) ? current : enabled[0]?.value;
   const add =
     !!create &&
     !!query.trim() &&
-    !source().some(
-      (o) => o.value === query.trim().normalize("NFC").toLowerCase(),
-    );
+    !source().some((o) => o.value === query.trim().normalize('NFC').toLowerCase());
   function pick(v: string) {
     try {
       choose(v);
-      setError("");
+      setError('');
       update((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -309,61 +289,54 @@ export function List({
   function focus(v: string | undefined) {
     if (v !== undefined) {
       setCurrent(v);
-      ref.current
-        ?.querySelectorAll<HTMLButtonElement>("[data-value]")
-        .forEach((el) => {
-          if (el.dataset.value === v) el.focus();
-        });
+      ref.current?.querySelectorAll<HTMLButtonElement>('[data-value]').forEach((el) => {
+        if (el.dataset.value === v) el.focus();
+      });
     }
   }
   function keys(e: KeyboardEvent) {
     const i = enabled.findIndex((o) => o.value === active);
-    if (["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+    if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
       e.preventDefault();
       focus(
         enabled[
-          e.key === "Home"
+          e.key === 'Home'
             ? 0
-            : e.key === "End"
+            : e.key === 'End'
               ? enabled.length - 1
-              : (i + (e.key === "ArrowDown" ? 1 : -1) + enabled.length) %
-                enabled.length
+              : (i + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length
         ]?.value,
       );
     } else if (
-      (e.target as HTMLElement).tagName === "INPUT" &&
-      e.key === "Enter" &&
+      (e.target as HTMLElement).tagName === 'INPUT' &&
+      e.key === 'Enter' &&
       !e.nativeEvent.isComposing
     ) {
       e.preventDefault();
       if (add) addTag();
       else if (active) pick(active);
     } else if (
-      (e.target as HTMLElement).tagName !== "INPUT" &&
+      (e.target as HTMLElement).tagName !== 'INPUT' &&
       e.key.length === 1 &&
-      e.key !== " " &&
+      e.key !== ' ' &&
       !e.ctrlKey &&
       !e.metaKey
     ) {
       prefix.current = {
-        text:
-          Date.now() - prefix.current.at > 700
-            ? e.key
-            : prefix.current.text + e.key,
+        text: Date.now() - prefix.current.at > 700 ? e.key : prefix.current.text + e.key,
         at: Date.now(),
       };
       focus(
-        enabled.find((o) =>
-          o.label.toLowerCase().startsWith(prefix.current.text.toLowerCase()),
-        )?.value,
+        enabled.find((o) => o.label.toLowerCase().startsWith(prefix.current.text.toLowerCase()))
+          ?.value,
       );
     }
   }
   function addTag() {
     try {
       create?.(query);
-      setQuery("");
-      setError("");
+      setQuery('');
+      setError('');
       update((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -375,7 +348,7 @@ export function List({
         <input
           type="search"
           placeholder="Search"
-          aria-label={"Search " + label.toLowerCase()}
+          aria-label={'Search ' + label.toLowerCase()}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={keys}
@@ -404,9 +377,7 @@ export function List({
             onClick={() => pick(o.value)}
           >
             {o.label}
-            <span aria-hidden="true">
-              {selected().includes(o.value) ? "✓" : ""}
-            </span>
+            <span aria-hidden="true">{selected().includes(o.value) ? '✓' : ''}</span>
           </button>
         ))}
         {!options.length && <p className="picker-empty">No matching options</p>}
@@ -422,11 +393,7 @@ export function List({
         </p>
       )}
       {multiple && (
-        <button
-          type="button"
-          className="primary-button picker-done"
-          onClick={picker.close}
-        >
+        <button type="button" className="primary-button picker-done" onClick={picker.close}>
           Done
         </button>
       )}
@@ -460,19 +427,14 @@ export function TagButton({
       onClick={(e) =>
         picker.open({
           anchor: e.currentTarget,
-          title: "Tags",
+          title: 'Tags',
           content: (
             <List
               label="Tags"
               multiple
               search
               source={() =>
-                [
-                  ...new Set([
-                    ...latest.current.available,
-                    ...latest.current.tags,
-                  ]),
-                ]
+                [...new Set([...latest.current.available, ...latest.current.tags])]
                   .sort()
                   .map((value) => ({ value, label: value }))
               }
@@ -498,7 +460,7 @@ export function DatePicker({
   value,
   onChange,
   timed = false,
-  defaultDate = "",
+  defaultDate = '',
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -506,13 +468,13 @@ export function DatePicker({
   defaultDate?: string;
 }) {
   const picker = useContext(PickerContext),
-    label = timed ? "Remind me" : "Due date";
+    label = timed ? 'Remind me' : 'Due date';
   return (
     <button
       type="button"
       className="picker-trigger"
       aria-haspopup="dialog"
-      aria-label={`${label}: ${value.replace("T", " · ") || "Choose date"}`}
+      aria-label={`${label}: ${value.replace('T', ' · ') || 'Choose date'}`}
       onClick={(e) =>
         picker.open({
           anchor: e.currentTarget,
@@ -532,7 +494,7 @@ export function DatePicker({
         })
       }
     >
-      {value.replace("T", " · ") || "Choose date"}
+      {value.replace('T', ' · ') || 'Choose date'}
     </button>
   );
 }
@@ -549,7 +511,7 @@ export function Calendar({
     [date, setDate] = useState(initial.slice(0, 10)),
     [time, setTime] = useState(initial.slice(11, 16)),
     [cursor, setCursor] = useState(validCalendarDate(date) ? date : today),
-    [error, setError] = useState("");
+    [error, setError] = useState('');
   const picker = useContext(PickerContext),
     calendar = useRef<HTMLDivElement>(null),
     focus = useRef(false);
@@ -560,10 +522,10 @@ export function Calendar({
     }
   }, [cursor]);
   const days = monthDays(cursor),
-    month = new Date(cursor + "T12:00:00Z").toLocaleDateString("en-US", {
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
+    month = new Date(cursor + 'T12:00:00Z').toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
     });
   const changeCursor = (v: string) => {
     focus.current = true;
@@ -578,11 +540,11 @@ export function Calendar({
     };
     let next = value;
     if (e.key in offsets) next = shiftDate(value, offsets[e.key]);
-    else if (e.key === "PageUp" || e.key === "PageDown")
-      next = shiftMonth(value, e.key === "PageUp" ? -1 : 1);
-    else if (e.key === "Home" || e.key === "End") {
-      const day = (new Date(value + "T12:00:00Z").getUTCDay() + 6) % 7;
-      next = shiftDate(value, e.key === "Home" ? -day : 6 - day);
+    else if (e.key === 'PageUp' || e.key === 'PageDown')
+      next = shiftMonth(value, e.key === 'PageUp' ? -1 : 1);
+    else if (e.key === 'Home' || e.key === 'End') {
+      const day = (new Date(value + 'T12:00:00Z').getUTCDay() + 6) % 7;
+      next = shiftDate(value, e.key === 'Home' ? -day : 6 - day);
     } else return;
     e.preventDefault();
     changeCursor(next);
@@ -596,7 +558,7 @@ export function Calendar({
               <button
                 type="button"
                 aria-label="Previous month"
-                disabled={cursor.startsWith("0001-01")}
+                disabled={cursor.startsWith('0001-01')}
                 onClick={() => changeCursor(shiftMonth(cursor, -1))}
               >
                 ‹
@@ -605,7 +567,7 @@ export function Calendar({
               <button
                 type="button"
                 aria-label="Next month"
-                disabled={cursor.startsWith("9999-12")}
+                disabled={cursor.startsWith('9999-12')}
                 onClick={() => changeCursor(shiftMonth(cursor, 1))}
               >
                 ›
@@ -613,7 +575,7 @@ export function Calendar({
             </div>
             <div className="picker-days" role="grid" aria-label={month}>
               <div className="picker-week" role="row">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
                   <span key={d} role="columnheader">
                     {d}
                   </span>
@@ -622,16 +584,12 @@ export function Calendar({
               {Array.from({ length: days.length / 7 }, (_, row) => (
                 <div key={row} className="picker-week" role="row">
                   {days.slice(row * 7, row * 7 + 7).map((d, i) => (
-                    <div
-                      key={d || i}
-                      role="gridcell"
-                      aria-selected={d ? d === date : undefined}
-                    >
+                    <div key={d || i} role="gridcell" aria-selected={d ? d === date : undefined}>
                       {d && (
                         <button
                           type="button"
                           aria-label={d}
-                          aria-current={d === today ? "date" : undefined}
+                          aria-current={d === today ? 'date' : undefined}
                           tabIndex={d === cursor ? 0 : -1}
                           onKeyDown={(e) => key(e, d)}
                           onClick={() => {
@@ -689,9 +647,7 @@ export function Calendar({
         )}
       </div>
       {timed && (
-        <p className="picker-hint">
-          Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
-        </p>
+        <p className="picker-hint">Timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
       )}
       {error && (
         <p className="form-error" role="alert">
@@ -699,18 +655,10 @@ export function Calendar({
         </p>
       )}
       <div className="picker-actions">
-        <button
-          type="button"
-          className="subtle-button"
-          onClick={() => commit("")}
-        >
+        <button type="button" className="subtle-button" onClick={() => commit('')}>
           Clear
         </button>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={picker.close}
-        >
+        <button type="button" className="secondary-button" onClick={picker.close}>
           Cancel
         </button>
         <button
@@ -718,9 +666,8 @@ export function Calendar({
           className="primary-button"
           onClick={() => {
             try {
-              if (!validCalendarDate(date))
-                throw new Error("Enter a valid date as YYYY-MM-DD.");
-              const v = date + (timed ? "T" + time : "");
+              if (!validCalendarDate(date)) throw new Error('Enter a valid date as YYYY-MM-DD.');
+              const v = date + (timed ? 'T' + time : '');
               if (timed) reminderFromInput(v);
               commit(v);
             } catch (e) {
@@ -734,34 +681,24 @@ export function Calendar({
     </>
   );
 }
-function TimeChooser({
-  value,
-  change,
-}: {
-  value: string;
-  change: (v: string) => void;
-}) {
+function TimeChooser({ value, change }: { value: string; change: (v: string) => void }) {
   const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(value),
     [parts, setParts] = useState<(number | null)[]>(
-      valid ? value.split(":").map(Number) : [null, null],
+      valid ? value.split(':').map(Number) : [null, null],
     );
   const previous = useRef(value),
     ref = useRef<HTMLDivElement>(null),
-    typed = useRef({ text: "", at: 0 });
+    typed = useRef({ text: '', at: 0 });
   useLayoutEffect(() => {
     if (previous.current !== value) {
       previous.current = value;
-      setParts(valid ? value.split(":").map(Number) : [null, null]);
+      setParts(valid ? value.split(':').map(Number) : [null, null]);
     }
   }, [value, valid]);
   useLayoutEffect(() => {
-    for (const list of ref.current!.querySelectorAll<HTMLElement>(
-      '[role="listbox"]',
-    )) {
+    for (const list of ref.current!.querySelectorAll<HTMLElement>('[role="listbox"]')) {
       const item = list.querySelector<HTMLElement>('[tabindex="0"]');
-      if (item)
-        list.scrollTop =
-          item.offsetTop - (list.clientHeight - item.offsetHeight) / 2;
+      if (item) list.scrollTop = item.offsetTop - (list.clientHeight - item.offsetHeight) / 2;
     }
   }, []);
   return (
@@ -769,43 +706,34 @@ function TimeChooser({
       <div className="picker-time-header">
         <strong>Time</strong>
         <span className="picker-time-value" aria-live="polite">
-          {parts
-            .map((p) => (p === null ? "––" : String(p).padStart(2, "0")))
-            .join(":")}
+          {parts.map((p) => (p === null ? '––' : String(p).padStart(2, '0'))).join(':')}
         </span>
       </div>
       <div className="picker-time-columns">
         {[24, 60].map((count, col) => (
           <div key={col}>
-            <p>{col ? "Minute" : "Hour"}</p>
-            <div
-              className="picker-time-list"
-              role="listbox"
-              aria-label={col ? "Minute" : "Hour"}
-            >
+            <p>{col ? 'Minute' : 'Hour'}</p>
+            <div className="picker-time-list" role="listbox" aria-label={col ? 'Minute' : 'Hour'}>
               {Array.from({ length: count }, (_, n) => (
                 <button
                   key={n}
                   type="button"
                   className="picker-option"
                   role="option"
-                  aria-label={`${col ? "Minute" : "Hour"} ${String(n).padStart(2, "0")}`}
+                  aria-label={`${col ? 'Minute' : 'Hour'} ${String(n).padStart(2, '0')}`}
                   aria-selected={parts[col] === n}
                   tabIndex={n === (parts[col] ?? 0) ? 0 : -1}
                   data-value={n}
                   onFocus={(e) => {
-                    for (const b of e.currentTarget.parentElement!.querySelectorAll(
-                      "button",
-                    ))
+                    for (const b of e.currentTarget.parentElement!.querySelectorAll('button'))
                       b.tabIndex = b === e.currentTarget ? 0 : -1;
                   }}
                   onKeyDown={(e) => {
                     let next = n;
-                    if (e.key === "ArrowUp" || e.key === "ArrowDown")
-                      next =
-                        (n + (e.key === "ArrowUp" ? -1 : 1) + count) % count;
-                    else if (e.key === "Home" || e.key === "End")
-                      next = e.key === "Home" ? 0 : count - 1;
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+                      next = (n + (e.key === 'ArrowUp' ? -1 : 1) + count) % count;
+                    else if (e.key === 'Home' || e.key === 'End')
+                      next = e.key === 'Home' ? 0 : count - 1;
                     else if (/^\d$/.test(e.key)) {
                       typed.current = {
                         text:
@@ -815,10 +743,7 @@ function TimeChooser({
                         at: Date.now(),
                       };
                       next = Number(typed.current.text);
-                    } else if (
-                      e.key === "ArrowLeft" ||
-                      e.key === "ArrowRight"
-                    ) {
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                       e.preventDefault();
                       ref.current
                         ?.querySelectorAll('[role="listbox"]')
@@ -836,15 +761,13 @@ function TimeChooser({
                     next[col] = n;
                     setParts(next);
                     if (next.every((p) => p !== null)) {
-                      const v = next
-                        .map((p) => String(p).padStart(2, "0"))
-                        .join(":");
+                      const v = next.map((p) => String(p).padStart(2, '0')).join(':');
                       previous.current = v;
                       change(v);
                     }
                   }}
                 >
-                  {String(n).padStart(2, "0")}
+                  {String(n).padStart(2, '0')}
                 </button>
               ))}
             </div>

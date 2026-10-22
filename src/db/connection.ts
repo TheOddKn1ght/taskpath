@@ -12,11 +12,26 @@ export function openDatabase(path: string, timezone: string) {
   if (path !== ':memory:' && existsSync(path) && statSync(path).size) {
     const old = new Database(path, { readonly: true });
     try {
-      const tables = old.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(t => t.name);
-      if (tables.length && (!tables.includes('encrypted_format') || old.query<{ version: number }, []>('SELECT version FROM encrypted_format').get()?.version !== 2 || tables.includes('tasks'))) {
-        throw new Error('Legacy or unsupported database. Nothing was changed. Use a fresh multi-user database or Docker volume. Existing data was left untouched.');
+      const tables = old
+        .query<{ name: string }, []>(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .all()
+        .map((t) => t.name);
+      if (
+        tables.length &&
+        (!tables.includes('encrypted_format') ||
+          old.query<{ version: number }, []>('SELECT version FROM encrypted_format').get()
+            ?.version !== 2 ||
+          tables.includes('tasks'))
+      ) {
+        throw new Error(
+          'Legacy or unsupported database. Nothing was changed. Use a fresh multi-user database or Docker volume. Existing data was left untouched.',
+        );
       }
-    } finally { old.close(); }
+    } finally {
+      old.close();
+    }
   }
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
@@ -33,15 +48,23 @@ export function openDatabase(path: string, timezone: string) {
     CREATE TABLE IF NOT EXISTS push_deliveries (userId TEXT NOT NULL, taskId TEXT NOT NULL, token TEXT NOT NULL, subscriptionId TEXT NOT NULL, nextAt INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(userId, token, subscriptionId));
     CREATE INDEX IF NOT EXISTS push_due ON push_reminders(dueAt);
   `);
-  db.exec('CREATE TABLE IF NOT EXISTS auth_sessions (tokenHash TEXT PRIMARY KEY, userId TEXT NOT NULL, revision INTEGER NOT NULL, expiresAt INTEGER NOT NULL)');
-  db.transaction(() => db.exec('CREATE TABLE IF NOT EXISTS encrypted_files (userId TEXT NOT NULL, fileId TEXT NOT NULL, bytes INTEGER NOT NULL CHECK(bytes >= 0), envelope TEXT, ciphertext BLOB, deleted INTEGER NOT NULL CHECK(deleted IN (0,1)), PRIMARY KEY(userId,fileId))'))();
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS auth_sessions (tokenHash TEXT PRIMARY KEY, userId TEXT NOT NULL, revision INTEGER NOT NULL, expiresAt INTEGER NOT NULL)',
+  );
+  db.transaction(() =>
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS encrypted_files (userId TEXT NOT NULL, fileId TEXT NOT NULL, bytes INTEGER NOT NULL CHECK(bytes >= 0), envelope TEXT, ciphertext BLOB, deleted INTEGER NOT NULL CHECK(deleted IN (0,1)), PRIMARY KEY(userId,fileId))',
+    ),
+  )();
   db.transaction(() => {
-    const columns = db.query<{name:string}, []>('PRAGMA table_info(encrypted_tasks)').all();
-    if (!columns.some(column => column.name === 'sequence')) {
-      db.exec("ALTER TABLE encrypted_tasks ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0");
-      db.exec("WITH ranked AS (SELECT userId, taskId, row_number() OVER (PARTITION BY userId ORDER BY taskId) AS seq FROM encrypted_tasks) UPDATE encrypted_tasks SET sequence=(SELECT seq FROM ranked WHERE ranked.userId=encrypted_tasks.userId AND ranked.taskId=encrypted_tasks.taskId)");
+    const columns = db.query<{ name: string }, []>('PRAGMA table_info(encrypted_tasks)').all();
+    if (!columns.some((column) => column.name === 'sequence')) {
+      db.exec('ALTER TABLE encrypted_tasks ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0');
+      db.exec(
+        'WITH ranked AS (SELECT userId, taskId, row_number() OVER (PARTITION BY userId ORDER BY taskId) AS seq FROM encrypted_tasks) UPDATE encrypted_tasks SET sequence=(SELECT seq FROM ranked WHERE ranked.userId=encrypted_tasks.userId AND ranked.taskId=encrypted_tasks.taskId)',
+      );
     }
-    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS task_sequence ON encrypted_tasks(userId, sequence)");
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS task_sequence ON encrypted_tasks(userId, sequence)');
   })();
   return db;
 }

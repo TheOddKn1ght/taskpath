@@ -1,16 +1,58 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
-  eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
-  sync: <><path d="M20 7a9 9 0 0 0-15-2L2 8m0-5v5h5M4 17a9 9 0 0 0 15 2l3-3m0 5v-5h-5" /></>,
-  copy: <><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></>,
+  eye: (
+    <>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  sync: (
+    <>
+      <path d="M20 7a9 9 0 0 0-15-2L2 8m0-5v5h5M4 17a9 9 0 0 0 15 2l3-3m0 5v-5h-5" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="12" height="13" rx="2" />
+      <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+    </>
+  ),
   upload: <path d="M12 16V3m-4 4 4-4 4 4M4 16v4h16v-4" />,
-  lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></>,
-  key: <><circle cx="8" cy="8" r="5" /><path d="m12 12 9 9m-5-5 3-3m-6 0 3-3" /></>,
-  user: <><circle cx="12" cy="7" r="4" /><path d="M4 21v-2a8 8 0 0 1 16 0v2" /></>,
+  lock: (
+    <>
+      <rect x="5" y="10" width="14" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="8" r="5" />
+      <path d="m12 12 9 9m-5-5 3-3m-6 0 3-3" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="7" r="4" />
+      <path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+    </>
+  ),
   switch: <path d="M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4" />,
-  restore: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8" /></>,
-  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6m0-10h.01" /></>,
-  "bell-off": <><path d="m3 3 18 18M9 5a6 6 0 0 1 9 5c0 2 .3 4 1 5M6 8v2c0 7-3 7-3 9h14M10 21h4" /></>,
+  restore: (
+    <>
+      <path d="M3 4v6h6M3 10a9 9 0 1 1 1 8" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6m0-10h.01" />
+    </>
+  ),
+  'bell-off': (
+    <>
+      <path d="m3 3 18 18M9 5a6 6 0 0 1 9 5c0 2 .3 4 1 5M6 8v2c0 7-3 7-3 9h14M10 21h4" />
+    </>
+  ),
   focus: (
     <>
       <path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3" />
@@ -52,7 +94,7 @@ const paths: Record<string, ReactNode> = {
       <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" />
     </>
   ),
-  "check-circle": (
+  'check-circle': (
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m8 12 3 3 5-6" />
@@ -107,12 +149,12 @@ const paths: Record<string, ReactNode> = {
       <path d="M3 12h18M7 8l-4 4 4 4m10-8 4 4-4 4" />
     </>
   ),
-  "arrow-up-right": (
+  'arrow-up-right': (
     <>
       <path d="M6 18 18 6M6 6h12v12" />
     </>
   ),
-  "arrow-right": (
+  'arrow-right': (
     <>
       <path d="M4 12h16m-6-6 6 6-6 6" />
     </>
@@ -139,10 +181,7 @@ const paths: Record<string, ReactNode> = {
   ),
   grip: (
     <>
-      <path
-        d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
-        strokeWidth="3"
-      />
+      <path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" strokeWidth="3" />
     </>
   ),
   more: (

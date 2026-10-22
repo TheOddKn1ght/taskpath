@@ -1,11 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx"
   },
   "include": [
@@ -20,7 +16,5 @@
     "types/browser.d.ts",
     "public/**/*.tsx"
   ],
-  "exclude": [
-    "public/sw.ts"
-  ]
+  "exclude": ["public/sw.ts"]
 }

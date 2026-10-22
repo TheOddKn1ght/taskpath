@@ -26,7 +26,7 @@
 }
 
 .picker-trigger:disabled {
-  opacity: .5;
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -116,7 +116,8 @@ dialog.picker-surface {
   margin-top: 8px;
 }
 
-.picker-option,.picker-create {
+.picker-option,
+.picker-create {
   width: 100%;
   min-height: 44px;
   text-align: left;
@@ -138,17 +139,18 @@ dialog.picker-surface {
   flex-shrink: 0;
 }
 
-.picker-option[aria-selected="true"] {
+.picker-option[aria-selected='true'] {
   background: var(--selection);
 }
 
 .picker-option:disabled {
-  opacity: .5;
+  opacity: 0.5;
 }
 
-@media (hover:hover) {
-  .picker-option:not(:disabled):not([aria-selected="true"]):hover,.picker-create:hover {
-    background: color-mix(in srgb,var(--hover) 45%,transparent);
+@media (hover: hover) {
+  .picker-option:not(:disabled):not([aria-selected='true']):hover,
+  .picker-create:hover {
+    background: color-mix(in srgb, var(--hover) 45%, transparent);
   }
 }
 
@@ -156,7 +158,8 @@ dialog.picker-surface {
   color: var(--accent);
 }
 
-.picker-empty,.picker-hint {
+.picker-empty,
+.picker-hint {
   color: var(--muted);
   font-size: 12px;
   padding: 12px 4px;
@@ -187,7 +190,7 @@ dialog.picker-surface {
 
 .picker-week {
   display: grid;
-  grid-template-columns: repeat(7,minmax(0,1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .picker-week > span {
@@ -197,7 +200,7 @@ dialog.picker-surface {
   padding: 8px 0;
 }
 
-.picker-week [role="gridcell"] button {
+.picker-week [role='gridcell'] button {
   width: 100%;
   border: 0;
   background: transparent;
@@ -210,12 +213,12 @@ dialog.picker-surface {
   background: var(--hover);
 }
 
-.picker-week [aria-selected="true"] button {
+.picker-week [aria-selected='true'] button {
   background: var(--accent);
   color: var(--paper);
 }
 
-.picker-week button[aria-current="date"] {
+.picker-week button[aria-current='date'] {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
@@ -305,7 +308,7 @@ dialog.picker-surface {
 
 .picker-datetime .picker-datetime-layout {
   display: grid;
-  grid-template-columns: minmax(308px,1.5fr) minmax(0,1fr);
+  grid-template-columns: minmax(308px, 1.5fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -323,18 +326,18 @@ dialog.picker-surface {
   border-top: 1px solid var(--line);
 }
 
-@media (min-width:761px) {
+@media (min-width: 761px) {
   dialog.picker-datetime {
     inset: 0;
     margin: auto;
   }
 }
 
-@media (max-width:760px) {
+@media (max-width: 760px) {
   dialog.picker-sheet {
     max-width: 100%;
     border-radius: 16px 16px 0 0;
-    padding: 8px 16px max(16px,env(safe-area-inset-bottom));
+    padding: 8px 16px max(16px, env(safe-area-inset-bottom));
   }
   .picker-sheet::backdrop {
     background: var(--backdrop);
@@ -360,10 +363,10 @@ dialog.picker-surface {
   .picker-sheet .picker-content input:focus-visible {
     outline-offset: -2px;
   }
-  .picker-sheet .picker-option[aria-selected="true"] {
-    background: color-mix(in srgb,var(--selection) 45%,transparent);
+  .picker-sheet .picker-option[aria-selected='true'] {
+    background: color-mix(in srgb, var(--selection) 45%, transparent);
   }
-  .picker-sheet .picker-option[aria-selected="true"] span {
+  .picker-sheet .picker-option[aria-selected='true'] span {
     color: var(--accent);
   }
   .toolbar > .picker-trigger {
@@ -378,7 +381,7 @@ dialog.picker-surface {
     min-width: 120px;
   }
   .picker-datetime .picker-datetime-layout {
-    grid-template-columns: minmax(0,1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
   .picker-datetime .picker-time {
@@ -393,7 +396,7 @@ dialog.picker-surface {
   }
 }
 
-@media (prefers-reduced-motion:no-preference) {
+@media (prefers-reduced-motion: no-preference) {
   .picker-sheet[open] {
     animation: picker-rise 180ms var(--motion-ease);
   }
@@ -409,11 +412,14 @@ dialog.picker-surface {
   }
 }
 
-@media (max-width:360px) {
+@media (max-width: 360px) {
   dialog.picker-sheet.picker-date {
     padding-inline: 4px;
   }
-  .picker-sheet.picker-date .picker-header,.picker-sheet.picker-date .picker-date-fields,.picker-sheet.picker-date .picker-actions,.picker-sheet.picker-date .picker-time {
+  .picker-sheet.picker-date .picker-header,
+  .picker-sheet.picker-date .picker-date-fields,
+  .picker-sheet.picker-date .picker-actions,
+  .picker-sheet.picker-date .picker-time {
     margin-inline: 12px;
   }
 }

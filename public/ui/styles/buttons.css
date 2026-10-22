@@ -1,4 +1,5 @@
-.primary-button,.secondary-button {
+.primary-button,
+.secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;

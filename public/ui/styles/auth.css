@@ -30,16 +30,17 @@
 .auth-card h2 {
   font-size: 20px;
   font-weight: 600;
-  letter-spacing: -.3px;
+  letter-spacing: -0.3px;
 }
 
-.auth-card>p,.auth-note {
+.auth-card > p,
+.auth-note {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }
 
-.auth-card>p {
+.auth-card > p {
   margin-top: 7px;
 }
 

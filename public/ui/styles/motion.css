@@ -1,20 +1,46 @@
 /* Short, quiet motion. Dismissed dialogs fade out live; locking and programmatic closes remain immediate, with no old content snapshots. */
-@media (prefers-reduced-motion:no-preference) {
+@media (prefers-reduced-motion: no-preference) {
   :root {
     --motion-ease: cubic-bezier(.2,.8,.2,1);
-    transition: background-color 180ms ease,color 180ms ease;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
   }
-  :where(button,summary,input,textarea,select,.task-card,.column,.quick-add,.tag-chip,.menu-content,.context-menu,dialog,.reminder-panel,#sidebar) {
-    transition: background-color 160ms ease,color 160ms ease,border-color 160ms ease,box-shadow 160ms ease;
+  :where(
+    button,
+    summary,
+    input,
+    textarea,
+    select,
+    .task-card,
+    .column,
+    .quick-add,
+    .tag-chip,
+    .menu-content,
+    .context-menu,
+    dialog,
+    .reminder-panel,
+    #sidebar
+  ) {
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease;
   }
   #main {
     transition: grid-template-columns 220ms var(--motion-ease);
   }
   #sidebar .nav-label {
-    transition: max-width 220ms var(--motion-ease),opacity 140ms ease;
+    transition:
+      max-width 220ms var(--motion-ease),
+      opacity 140ms ease;
   }
   #sidebar nav button {
-    transition: gap 220ms var(--motion-ease),background-color 160ms ease,color 160ms ease;
+    transition:
+      gap 220ms var(--motion-ease),
+      background-color 160ms ease,
+      color 160ms ease;
   }
   dialog[open] {
     animation: surface-enter 180ms var(--motion-ease);
@@ -29,22 +55,27 @@
   dialog.closing::backdrop {
     animation: backdrop-exit 140ms ease forwards;
   }
-  details[open]>.menu-content,.context-menu:not([hidden]),.toast:not([hidden]) {
+  details[open] > .menu-content,
+  .context-menu:not([hidden]),
+  .toast:not([hidden]) {
     animation: surface-enter 140ms var(--motion-ease);
   }
   .task-schedule[open] .schedule-fields {
     animation: surface-enter 160ms var(--motion-ease);
   }
-  .loading-spinner,#unlock-submit[aria-busy="true"]::before {
+  .loading-spinner,
+  #unlock-submit[aria-busy='true']::before {
     animation: loading-spin 900ms linear infinite;
   }
-  #vault-loading,.loading-message.loading-status {
+  #vault-loading,
+  .loading-message.loading-status {
     animation: loading-reveal 180ms ease 120ms both;
   }
-  #unlock-screen:not([hidden]),body:not(.vault-locked) #main {
+  #unlock-screen:not([hidden]),
+  body:not(.vault-locked) #main {
     animation: surface-enter 180ms var(--motion-ease);
   }
-  @media (hover:hover) {
+  @media (hover: hover) {
     .task-card:hover {
       box-shadow: 0 3px 10px var(--shadow);
     }
@@ -64,8 +95,8 @@
 
 @keyframes surface-exit {
   from {
-    opacity: var(--exit-opacity,1);
-    translate: var(--exit-translate,0 0);
+    opacity: var(--exit-opacity, 1);
+    translate: var(--exit-translate, 0 0);
   }
   to {
     opacity: 0;
@@ -95,7 +126,7 @@
 
 @keyframes backdrop-exit {
   from {
-    opacity: var(--exit-backdrop,1);
+    opacity: var(--exit-backdrop, 1);
   }
   to {
     opacity: 0;

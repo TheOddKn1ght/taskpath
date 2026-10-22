@@ -4,9 +4,26 @@ import { ThemeIcon } from './theme';
 import { Select } from './pickers';
 import { navigate } from './store';
 import { WorkspaceMenu, type WorkspaceOption } from './workspace-menu';
-export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,options,openSearch}:{
-  openSearch:()=>void;route:Route;tags:string[];greeting:string;week:string;theme:()=>void;createTask:()=>void;options:WorkspaceOption[];
-}) { return (
+export function WorkspaceHeader({
+  route,
+  tags,
+  greeting,
+  week,
+  theme,
+  createTask,
+  options,
+  openSearch,
+}: {
+  openSearch: () => void;
+  route: Route;
+  tags: string[];
+  greeting: string;
+  week: string;
+  theme: () => void;
+  createTask: () => void;
+  options: WorkspaceOption[];
+}) {
+  return (
     <header className="app-header">
       <div className="app-heading">
         <h1>
@@ -20,53 +37,60 @@ export function WorkspaceHeader({route,tags,greeting,week,theme,createTask,optio
         </span>
       </div>
       <div className="toolbar">
-        <button id="open-search" type="button" className="search" aria-label="Search all tasks" onClick={openSearch} hidden={route.view === "files"}>
-          <Icon name="search" /><span>Search tasks…</span><kbd>/</kbd>
+        <button
+          id="open-search"
+          type="button"
+          className="search"
+          aria-label="Search all tasks"
+          onClick={openSearch}
+          hidden={route.view === 'files'}
+        >
+          <Icon name="search" />
+          <span>Search tasks…</span>
+          <kbd>/</kbd>
         </button>
         <div className="task-filters">
-        <Select
-          id="category-filter"
-          label="Filter tasks by category"
-          value={route.category}
-          options={[
-            { value: "all", label: "All tasks" },
-            { value: "work", label: "Work" },
-            { value: "personal", label: "Personal" },
-          ]}
-          onChange={(v) =>
-            navigate({ category: v as typeof route.category }, true)
-          }
-        />
-        <Select
-          id="tag-filter"
-          label="Filter tasks by tag"
-          value={route.tag}
-          search
-          options={[
-            { value: "", label: "All tags" },
-            ...tags.map((value) => ({ value, label: value })),
-          ]}
-          onChange={(tag) => navigate({ tag }, true)}
-        />
-        {route.view === "board" && (
-          <button
-            id="focus-today"
-            className="secondary-button"
-            aria-label="Focus Today"
-            title="Focus Today"
-            aria-pressed={route.focus === "today"}
-            onClick={() => navigate({ focus: route.focus === "today" ? undefined : "today" })}
-          >
-            <Icon name="focus" />
-            <span>Focus Today</span>
-          </button>
-        )}
+          <Select
+            id="category-filter"
+            label="Filter tasks by category"
+            value={route.category}
+            options={[
+              { value: 'all', label: 'All tasks' },
+              { value: 'work', label: 'Work' },
+              { value: 'personal', label: 'Personal' },
+            ]}
+            onChange={(v) => navigate({ category: v as typeof route.category }, true)}
+          />
+          <Select
+            id="tag-filter"
+            label="Filter tasks by tag"
+            value={route.tag}
+            search
+            options={[
+              { value: '', label: 'All tags' },
+              ...tags.map((value) => ({ value, label: value })),
+            ]}
+            onChange={(tag) => navigate({ tag }, true)}
+          />
+          {route.view === 'board' && (
+            <button
+              id="focus-today"
+              className="secondary-button"
+              aria-label="Focus Today"
+              title="Focus Today"
+              aria-pressed={route.focus === 'today'}
+              onClick={() => navigate({ focus: route.focus === 'today' ? undefined : 'today' })}
+            >
+              <Icon name="focus" />
+              <span>Focus Today</span>
+            </button>
+          )}
         </div>
         <button
           id="new-task"
           className="primary-button"
           aria-label="New task"
-          hidden={route.view === "archive"}
+          hidden={route.view === 'archive'}
           onClick={createTask}
         >
           <Icon name="plus" />

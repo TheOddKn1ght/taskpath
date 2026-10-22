@@ -2,7 +2,7 @@
 
 An invite-only task board with a separate encrypted vault for each account. Plan tasks in **Today**, **This Week**, and **Later**; completed tasks stay in **Done**.
 
-Built with Bun 1.4.2+, TypeScript, React, and SQLite. Supports offline edits, search, tags, reminders, archiving, Markdown import, Markdown/JSON export, and encrypted files.
+Built with Bun 1.4.4+, TypeScript, React, and SQLite. Supports offline edits, search, tags, reminders, archiving, Markdown import, Markdown/JSON export, and encrypted files.
 
 ## Run locally
 

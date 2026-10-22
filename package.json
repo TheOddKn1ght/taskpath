@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A little space to plan your week and focus your day.",
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.4"
   },
   "scripts": {
     "start": "NODE_ENV=production bun run src/server.ts",
@@ -17,6 +17,8 @@
     "test:ci": "bun test --parallel",
     "build": "bun run scripts/build.ts",
     "admin": "bun run src/admin.ts",
+    "format": "bun fmt",
+    "format:check": "bun fmt --check",
     "typecheck": "bun check -p tsconfig.json && bun check -p tsconfig.browser.json && bun check -p tsconfig.worker.json",
     "test:browser": "playwright test"
   },

@@ -1,64 +1,41 @@
 import { HistoryDialog, AutoLockDialog } from './recovery';
-import { TaskSearch } from "./search";
-import { emptySearch } from "../search.js";
-import { WorkspaceNav } from "./workspace-nav";
-import { WorkspaceHeader } from "./workspace-header";
-import { ReminderPanel } from "./reminders";
-import { ArchiveDetails } from "./archive-details";
-import { Toast } from "./toast";
-import { Nickname } from "./nickname";
-import { getInstallPrompt, subscribeInstall, installApp } from "./install";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import type { Task, Status, ArchiveReceipt } from "../types.js";
-import {
-  subscribe,
-  getSnapshot,
-  navigate,
-  mutate,
-  move,
-  refresh,
-  message,
-  columns,
-} from "./store";
-import {
-  isUnlocked,
-  lock,
-  offlineRequest,
-  syncAfterCurrent,
-  selectedAccount,
-} from "../offline.js";
-import { Auth, PasswordDialog, changeAccount } from "./auth";
-import { Board } from "./board";
-import { Files } from "./files";
-import { Editor } from "./editor";
-import { Dialog } from "./dialog";
-import { CalendarView } from "./calendar";
-import { StatsView } from "./stats";
-import { weekStart } from "../calendar-model.js";
-import { ThemeDialog } from "./theme";
-import { PrivacyCopy, GuideCopy } from "./copy";
-import { PushDialog } from "./push";
-import { ImportDialog } from "./import";
-import { PickerProvider } from "./pickers";
-import { GREETINGS } from "./greetings";
+import { TaskSearch } from './search';
+import { emptySearch } from '../search.js';
+import { WorkspaceNav } from './workspace-nav';
+import { WorkspaceHeader } from './workspace-header';
+import { ReminderPanel } from './reminders';
+import { ArchiveDetails } from './archive-details';
+import { Toast } from './toast';
+import { Nickname } from './nickname';
+import { getInstallPrompt, subscribeInstall, installApp } from './install';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { Task, Status, ArchiveReceipt } from '../types.js';
+import { subscribe, getSnapshot, navigate, mutate, move, refresh, message, columns } from './store';
+import { isUnlocked, lock, offlineRequest, syncAfterCurrent, selectedAccount } from '../offline.js';
+import { Auth, PasswordDialog, changeAccount } from './auth';
+import { Board } from './board';
+import { Files } from './files';
+import { Editor } from './editor';
+import { Dialog } from './dialog';
+import { CalendarView } from './calendar';
+import { StatsView } from './stats';
+import { weekStart } from '../calendar-model.js';
+import { ThemeDialog } from './theme';
+import { PrivacyCopy, GuideCopy } from './copy';
+import { PushDialog } from './push';
+import { ImportDialog } from './import';
+import { PickerProvider } from './pickers';
+import { GREETINGS } from './greetings';
 export function App() {
   const state = useSyncExternalStore(subscribe, getSnapshot),
-    [publicDialog, setPublicDialog] = useState<"theme" | "privacy" | null>(
-      null,
-    );
+    [publicDialog, setPublicDialog] = useState<'theme' | 'privacy' | null>(null);
   useLayoutEffect(() => {
-    document.body.classList.toggle("vault-locked", state.phase !== "unlocked");
-    if (state.phase !== "unlocked") setPublicDialog(null);
+    document.body.classList.toggle('vault-locked', state.phase !== 'unlocked');
+    if (state.phase !== 'unlocked') setPublicDialog(null);
   }, [state.phase, state.epoch]);
   return (
     <>
-      {state.phase === "loading" ? (
+      {state.phase === 'loading' ? (
         <section id="vault-loading" role="status">
           <h1>
             taskpath<span>.</span>
@@ -68,52 +45,45 @@ export function App() {
             Opening your workspace…
           </p>
         </section>
-      ) : state.phase === "locked" ? (
-        <Auth
-          theme={() => setPublicDialog("theme")}
-          privacy={() => setPublicDialog("privacy")}
-        />
+      ) : state.phase === 'locked' ? (
+        <Auth theme={() => setPublicDialog('theme')} privacy={() => setPublicDialog('privacy')} />
       ) : (
         <PickerProvider key={state.epoch}>
           <Workspace
-            theme={() => setPublicDialog("theme")}
-            privacy={() => setPublicDialog("privacy")}
+            theme={() => setPublicDialog('theme')}
+            privacy={() => setPublicDialog('privacy')}
           />
         </PickerProvider>
       )}
-      {publicDialog === "theme" && (
-        <ThemeDialog close={() => setPublicDialog(null)} />
-      )}{" "}
-      {publicDialog === "privacy" && (
-        <Dialog
-          id="privacy-dialog"
-          title="Privacy notice"
-          onClose={() => setPublicDialog(null)}
-        >
+      {publicDialog === 'theme' && <ThemeDialog close={() => setPublicDialog(null)} />}{' '}
+      {publicDialog === 'privacy' && (
+        <Dialog id="privacy-dialog" title="Privacy notice" onClose={() => setPublicDialog(null)}>
           <PrivacyCopy />
         </Dialog>
       )}
     </>
   );
 }
-function Workspace({
-  theme,
-  privacy,
-}: {
-  theme: () => void;
-  privacy: () => void;
-}) {
+function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void }) {
   const state = useSyncExternalStore(subscribe, getSnapshot),
     { board, route } = state;
   const [editor, setEditor] = useState<{
       task: Task | null;
-      draft?: Pick<Task, "title" | "notes" | "tags" | "category">;
+      draft?: Pick<Task, 'title' | 'notes' | 'tags' | 'category'>;
       due?: string;
       status: Status;
     } | null>(null),
     [details, setDetails] = useState<string | null>(null),
     [modal, setModal] = useState<
-      "password" | "nickname" | "push" | "import" | "guide" | "history" | "auto-lock" | "rollover" | null
+      | 'password'
+      | 'nickname'
+      | 'push'
+      | 'import'
+      | 'guide'
+      | 'history'
+      | 'auto-lock'
+      | 'rollover'
+      | null
     >(null),
     [toast, setToast] = useState<{
       text: string;
@@ -121,7 +91,7 @@ function Workspace({
     } | null>(null),
     [collapsed, setCollapsed] = useState(() => {
       try {
-        return localStorage.getItem("taskpath-sidebar-collapsed") === "true";
+        return localStorage.getItem('taskpath-sidebar-collapsed') === 'true';
       } catch {
         return false;
       }
@@ -129,7 +99,7 @@ function Workspace({
     [keyboard, setKeyboard] = useState(false),
     [notifications, setNotifications] = useState(() => {
       try {
-        return localStorage.getItem("taskpath-notifications") !== "off";
+        return localStorage.getItem('taskpath-notifications') !== 'off';
       } catch {
         return true;
       }
@@ -137,14 +107,26 @@ function Workspace({
     [, render] = useState(0);
   const [rolloverDismissed, setRolloverDismissed] = useState('');
   const rollover = board?.rollover || [];
-  const rolloverKey = (board?.day || '') + ':' + rollover.map(item => item.id).sort().join(',');
+  const rolloverKey =
+    (board?.day || '') +
+    ':' +
+    rollover
+      .map((item) => item.id)
+      .sort()
+      .join(',');
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState(emptySearch);
   useEffect(() => {
     if (!route.query) return;
-    setSearch({ ...emptySearch(), query: route.query, scope: route.view === "archive" ? "archived" : "active", category: route.category, tags: route.tag ? [route.tag] : [] });
+    setSearch({
+      ...emptySearch(),
+      query: route.query,
+      scope: route.view === 'archive' ? 'archived' : 'active',
+      category: route.category,
+      tags: route.tag ? [route.tag] : [],
+    });
     setSearchOpen(true);
-    navigate({ query: "" }, true);
+    navigate({ query: '' }, true);
   }, [route.query, route.view, route.category, route.tag]);
   const install = useSyncExternalStore(subscribeInstall, getInstallPrompt);
   const alive = useRef(true),
@@ -164,8 +146,7 @@ function Workspace({
       undo ? 15000 : 5000,
     );
   };
-  const run = (fn: () => Promise<unknown>) =>
-    void fn().catch((e) => notify(message(e)));
+  const run = (fn: () => Promise<unknown>) => void fn().catch((e) => notify(message(e)));
   const edit = (task: Task) => {
     if (task.archivedAt) setDetails(task.id);
     else setEditor({ task, status: task.status });
@@ -174,33 +155,43 @@ function Workspace({
     const shortcuts = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !isUnlocked()) return;
       if (document.querySelector('dialog[open], #task-context-menu, .action-menu-popover')) return;
-      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat ||
-        (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]'))) return;
-      if (event.key.toLowerCase() === "n") {
+      if (
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.repeat ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]',
+          ))
+      )
+        return;
+      if (event.key.toLowerCase() === 'n') {
         event.preventDefault();
-        if (getSnapshot().route.view !== "board") navigate({ view: "board" });
-        setEditor({ task: null, status: getSnapshot().route.focus === "today" ? "today" : "later" });
-      } else if (event.key === "/") {
+        if (getSnapshot().route.view !== 'board') navigate({ view: 'board' });
+        setEditor({
+          task: null,
+          status: getSnapshot().route.focus === 'today' ? 'today' : 'later',
+        });
+      } else if (event.key === '/') {
         event.preventDefault();
-        if (getSnapshot().route.view !== "files") setSearchOpen(true);
+        if (getSnapshot().route.view !== 'files') setSearchOpen(true);
         else document.querySelector<HTMLInputElement>('[aria-label="Search files"]')?.focus();
       }
     };
-    window.addEventListener("keydown", shortcuts);
-    return () => window.removeEventListener("keydown", shortcuts);
+    window.addEventListener('keydown', shortcuts);
+    return () => window.removeEventListener('keydown', shortcuts);
   }, []);
   useEffect(() => {
     alive.current = true;
     const pref = (e: StorageEvent) => {
-      if (e.key === "taskpath-sidebar-collapsed" || e.key === null) {
+      if (e.key === 'taskpath-sidebar-collapsed' || e.key === null) {
         try {
-          setCollapsed(
-            localStorage.getItem("taskpath-sidebar-collapsed") === "true",
-          );
+          setCollapsed(localStorage.getItem('taskpath-sidebar-collapsed') === 'true');
         } catch {}
       }
     };
-    window.addEventListener("storage", pref);
+    window.addEventListener('storage', pref);
     return () => {
       alive.current = false;
       for (const notification of desktopNotifications.current) {
@@ -211,7 +202,7 @@ function Workspace({
       clearTimeout(timer.current);
       for (const url of exports.current) URL.revokeObjectURL(url);
       exports.current.clear();
-      window.removeEventListener("storage", pref);
+      window.removeEventListener('storage', pref);
     };
   }, []);
   useEffect(() => {
@@ -219,28 +210,26 @@ function Workspace({
     const update = () => {
       const vp = visualViewport;
       if (!vp) return;
-      const editing = document.activeElement?.matches(
-        'input,textarea,[contenteditable="true"]',
-      );
+      const editing = document.activeElement?.matches('input,textarea,[contenteditable="true"]');
       if (!editing) full = innerHeight;
       setKeyboard(
-        matchMedia("(max-width:760px)").matches &&
+        matchMedia('(max-width:760px)').matches &&
           !!editing &&
           vp.scale === 1 &&
           full - vp.height > 120,
       );
     };
     const abort = new AbortController();
-    for (const name of ["resize", "focusin", "focusout"])
+    for (const name of ['resize', 'focusin', 'focusout'])
       window.addEventListener(name, update, { signal: abort.signal });
-    visualViewport?.addEventListener("resize", update, {
+    visualViewport?.addEventListener('resize', update, {
       signal: abort.signal,
     });
     return () => abort.abort();
   }, []);
   useEffect(() => {
-    document.body.classList.toggle("files-view", route.view === "files");
-    return () => document.body.classList.remove("files-view");
+    document.body.classList.toggle('files-view', route.view === 'files');
+    return () => document.body.classList.remove('files-view');
   }, [route.view]);
   useEffect(() => {
     const context = document.modelContext;
@@ -248,65 +237,62 @@ function Workspace({
     const lifecycle = new AbortController();
     const register = (tool: WebMCPTool) => {
       try {
-        Promise.resolve(
-          context.registerTool(tool, { signal: lifecycle.signal }),
-        ).catch(() => {});
+        Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {});
       } catch {}
     };
     register({
-      name: "list_tasks",
-      description: "Read the tasks in this Taskpath workspace.",
+      name: 'list_tasks',
+      description: 'Read the tasks in this Taskpath workspace.',
       inputSchema: {
-        type: "object",
+        type: 'object',
         properties: {},
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       execute: async () => {
-        const b = await offlineRequest("/api/board");
+        const b = await offlineRequest('/api/board');
         return { tasks: b.tasks.filter((t) => !t.archivedAt) };
       },
     });
     register({
-      name: "create_task",
-      description: "Create a task and save it to the selected Taskpath column.",
+      name: 'create_task',
+      description: 'Create a task and save it to the selected Taskpath column.',
       inputSchema: {
-        type: "object",
+        type: 'object',
         properties: {
-          title: { type: "string", maxLength: 240 },
-          status: { type: "string", enum: Object.keys(columns) },
+          title: { type: 'string', maxLength: 240 },
+          status: { type: 'string', enum: Object.keys(columns) },
         },
-        required: ["title", "status"],
+        required: ['title', 'status'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: true },
       execute: async (input) => ({
-        task: (await mutate("/api/tasks", "POST", input)).task,
+        task: (await mutate('/api/tasks', 'POST', input)).task,
       }),
     });
     register({
-      name: "move_task",
-      description:
-        "Move a saved Taskpath task into Later, This Week, Today, or Done.",
+      name: 'move_task',
+      description: 'Move a saved Taskpath task into Later, This Week, Today, or Done.',
       inputSchema: {
-        type: "object",
+        type: 'object',
         properties: {
-          id: { type: "string" },
-          status: { type: "string", enum: Object.keys(columns) },
+          id: { type: 'string' },
+          status: { type: 'string', enum: Object.keys(columns) },
         },
-        required: ["id", "status"],
+        required: ['id', 'status'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: true },
       execute: async (input) => {
         if (
           !input ||
-          typeof input.id !== "string" ||
-          typeof input.status !== "string" ||
+          typeof input.id !== 'string' ||
+          typeof input.status !== 'string' ||
           !Object.hasOwn(columns, input.status)
         )
-          throw new Error("Invalid task or column.");
-        await mutate(`/api/tasks/${input.id}`, "PATCH", {
+          throw new Error('Invalid task or column.');
+        await mutate(`/api/tasks/${input.id}`, 'PATCH', {
           status: input.status,
         });
         return { id: input.id, status: input.status };
@@ -314,32 +300,30 @@ function Workspace({
     });
     return () => {
       lifecycle.abort();
-      for (const name of ["list_tasks", "create_task", "move_task"])
+      for (const name of ['list_tasks', 'create_task', 'move_task'])
         try {
           context.unregisterTool?.(name);
         } catch {}
     };
   }, []);
   useLayoutEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const view = document.getElementById(
-      route.view === "files" || route.view === "calendar" || route.view === "stats"
+      route.view === 'files' || route.view === 'calendar' || route.view === 'stats'
         ? `${route.view}-view`
-        : "board",
+        : 'board',
     );
     const animation = view?.animate(
       [
-        { opacity: 0, transform: "translateY(4px)" },
-        { opacity: 1, transform: "translateY(0)" },
+        { opacity: 0, transform: 'translateY(4px)' },
+        { opacity: 1, transform: 'translateY(0)' },
       ],
-      { duration: 160, easing: "ease-out" },
+      { duration: 160, easing: 'ease-out' },
     );
     return () => animation?.cancel();
   }, [route.view]);
   const enabled =
-    notifications &&
-    "Notification" in window &&
-    Notification.permission === "granted";
+    notifications && 'Notification' in window && Notification.permission === 'granted';
   useEffect(() => {
     if (!board) return;
     const upcoming = board.tasks.filter(
@@ -347,7 +331,7 @@ function Workspace({
         !t.archivedAt &&
         t.reminderAt &&
         !t.reminderDismissedAt &&
-        t.status !== "done" &&
+        t.status !== 'done' &&
         t.reminderAt > board.serverTime,
     );
     const timer = upcoming.length
@@ -368,21 +352,13 @@ function Workspace({
       notificationBusy.current = true;
       void (async () => {
         try {
-          const { tasks } = await offlineRequest(
-            "/api/reminders/claim",
-            "POST",
-            {},
-          );
+          const { tasks } = await offlineRequest('/api/reminders/claim', 'POST', {});
           if (!alive.current || !isUnlocked() || !tasks.length) return;
           const task = tasks.length === 1 ? tasks[0] : null;
-          const n = new Notification("Taskpath reminder", {
-            body: "You have a reminder in Taskpath.",
-            tag: task
-              ? "taskpath-reminder-" + task.reminderToken
-              : "taskpath-reminders",
-            icon: document.querySelector<HTMLLinkElement>(
-              'link[rel="apple-touch-icon"]',
-            )?.href,
+          const n = new Notification('Taskpath reminder', {
+            body: 'You have a reminder in Taskpath.',
+            tag: task ? 'taskpath-reminder-' + task.reminderToken : 'taskpath-reminders',
+            icon: document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.href,
           });
           desktopNotifications.current.add(n);
           n.onclose = () => desktopNotifications.current.delete(n);
@@ -390,9 +366,7 @@ function Workspace({
           n.onclick = () => {
             window.focus();
             n.close();
-            const current = getSnapshot().board?.tasks.find(
-              (t) => t.id === taskId,
-            );
+            const current = getSnapshot().board?.tasks.find((t) => t.id === taskId);
             if (alive.current && isUnlocked() && current) edit(current);
           };
         } catch {
@@ -404,71 +378,63 @@ function Workspace({
     return () => clearTimeout(timer);
   }, [board, enabled]);
   async function toggleNotifications() {
-    if (!("Notification" in window) || !isSecureContext) {
-      notify(
-        "Desktop notifications are unavailable. In-app reminders still work.",
-      );
+    if (!('Notification' in window) || !isSecureContext) {
+      notify('Desktop notifications are unavailable. In-app reminders still work.');
       return;
     }
     let next = false;
     if (!enabled) {
       const permission =
-        Notification.permission === "default"
+        Notification.permission === 'default'
           ? await Notification.requestPermission()
           : Notification.permission;
-      next = permission === "granted";
+      next = permission === 'granted';
     }
     if (!alive.current) return;
     setNotifications(next);
     try {
-      localStorage.setItem("taskpath-notifications", next ? "on" : "off");
+      localStorage.setItem('taskpath-notifications', next ? 'on' : 'off');
     } catch {}
-    notify(next ? "Desktop notifications enabled." : "Using in-app reminders.");
+    notify(next ? 'Desktop notifications enabled.' : 'Using in-app reminders.');
   }
   async function remove(task: Task) {
-    await mutate(`/api/tasks/${task.id}`, "DELETE");
-    notify("Task deleted.", async () => {
-      await mutate(`/api/tasks/${task.id}/restore`, "POST");
-      notify("Task restored.");
+    await mutate(`/api/tasks/${task.id}`, 'DELETE');
+    notify('Task deleted.', async () => {
+      await mutate(`/api/tasks/${task.id}/restore`, 'POST');
+      notify('Task restored.');
     });
   }
   function archiveNotice(undo: ArchiveReceipt[]) {
     if (!undo.length) {
-      notify("No completed tasks to archive.");
+      notify('No completed tasks to archive.');
       return;
     }
-    notify(
-      undo.length === 1 ? "Task archived." : `${undo.length} tasks archived.`,
-      async () => {
-        const result = await mutate("/api/tasks/archive-undo", "POST", {
-          undo,
-        });
-        notify(
-          `${result.restored} tasks restored.${result.skipped ? ` ${result.skipped} changed since archiving and were skipped.` : ""}`,
-        );
-      },
-    );
+    notify(undo.length === 1 ? 'Task archived.' : `${undo.length} tasks archived.`, async () => {
+      const result = await mutate('/api/tasks/archive-undo', 'POST', {
+        undo,
+      });
+      notify(
+        `${result.restored} tasks restored.${result.skipped ? ` ${result.skipped} changed since archiving and were skipped.` : ''}`,
+      );
+    });
   }
   async function archive(task: Task) {
-    archiveNotice(
-      (await mutate(`/api/tasks/${task.id}/archive`, "POST")).undo || [],
-    );
+    archiveNotice((await mutate(`/api/tasks/${task.id}/archive`, 'POST')).undo || []);
   }
   async function download(markdown: boolean) {
     const result = markdown
-      ? await offlineRequest("/api/export?format=markdown")
-      : await offlineRequest("/api/export");
+      ? await offlineRequest('/api/export?format=markdown')
+      : await offlineRequest('/api/export');
     if (!alive.current || !isUnlocked()) return;
     const url = URL.createObjectURL(
-      new Blob(
-        [typeof result === "string" ? result : JSON.stringify(result, null, 2)],
-        { type: markdown ? "text/markdown;charset=utf-8" : "application/json" },
-      ),
+      new Blob([typeof result === 'string' ? result : JSON.stringify(result, null, 2)], {
+        type: markdown ? 'text/markdown;charset=utf-8' : 'application/json',
+      }),
     );
     exports.current.add(url);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
-    a.download = `taskpath-${board?.day || "export"}.${markdown ? "md" : "json"}`;
+    a.download = `taskpath-${board?.day || 'export'}.${markdown ? 'md' : 'json'}`;
     a.click();
     setTimeout(() => {
       URL.revokeObjectURL(url);
@@ -477,13 +443,7 @@ function Workspace({
   }
   const period = (() => {
     const hour = new Date().getHours();
-    return hour < 6
-      ? "night"
-      : hour < 12
-        ? "morning"
-        : hour < 18
-          ? "afternoon"
-          : "evening";
+    return hour < 6 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   })();
   if (!greeting.current || greeting.current.period !== period) {
     const list = [...GREETINGS.general, ...GREETINGS[period]];
@@ -493,45 +453,39 @@ function Workspace({
     };
   }
   const tags = [
-    ...new Set([
-      ...(board?.tasks.flatMap((t) => t.tags) || []),
-      ...(route.tag ? [route.tag] : []),
-    ]),
+    ...new Set([...(board?.tasks.flatMap((t) => t.tags) || []), ...(route.tag ? [route.tag] : [])]),
   ].sort();
   const archived = board?.tasks.find((t) => t.id === details && t.archivedAt);
-  const completed =
-    board?.tasks.filter((t) => !t.archivedAt && t.status === "done").length ||
-    0;
+  const completed = board?.tasks.filter((t) => !t.archivedAt && t.status === 'done').length || 0;
   const week = board
     ? (() => {
-        const start = new Date(board.week + "T12:00:00Z"),
+        const start = new Date(board.week + 'T12:00:00Z'),
           end = new Date(start);
         end.setUTCDate(end.getUTCDate() + 6);
         const format = (d: Date) =>
-          d.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
+          d.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'UTC',
           });
         return `${format(start)} – ${format(end)}`;
       })()
-    : "This week";
+    : 'This week';
   const options = [
     {
-      icon: enabled ? "bell-off" : "bell",
-      label: enabled
-        ? "Turn off desktop notifications"
-        : "Enable desktop notifications",
+      icon: enabled ? 'bell-off' : 'bell',
+      label: enabled ? 'Turn off desktop notifications' : 'Enable desktop notifications',
       fn: () => run(toggleNotifications),
     },
-    { icon: "bell", label: "Background reminders…", fn: () => setModal("push") },
-    { icon: "upload", label: "Import Markdown…", fn: () => setModal("import") },
-    { icon: "download", label: "Export Markdown", fn: () => run(() => download(true)) },
-    { icon: "download", label: "Export JSON", fn: () => run(() => download(false)) },
+    { icon: 'bell', label: 'Background reminders…', fn: () => setModal('push') },
+    { icon: 'upload', label: 'Import Markdown…', fn: () => setModal('import') },
+    { icon: 'download', label: 'Export Markdown', fn: () => run(() => download(true)) },
+    { icon: 'download', label: 'Export JSON', fn: () => run(() => download(false)) },
     ...(install
       ? [
           {
-            icon: "download", label: "Install Taskpath",
+            icon: 'download',
+            label: 'Install Taskpath',
             fn: () =>
               run(async () => {
                 await installApp();
@@ -539,24 +493,22 @@ function Workspace({
           },
         ]
       : []),
-    { icon: "restore", label: "Previous task versions…", fn: () => setModal("history") },
-    { icon: "lock", label: "Automatic locking…", fn: () => setModal("auto-lock") },
-    { icon: "help", label: "How it works", fn: () => setModal("guide") },
+    { icon: 'restore', label: 'Previous task versions…', fn: () => setModal('history') },
+    { icon: 'lock', label: 'Automatic locking…', fn: () => setModal('auto-lock') },
+    { icon: 'help', label: 'How it works', fn: () => setModal('guide') },
     {
-      icon: "archive",
+      icon: 'archive',
       label: `Archive all completed (${completed})`,
       disabled: !completed,
       fn: () =>
         run(async () =>
-          archiveNotice(
-            (await mutate("/api/tasks/archive-completed", "POST")).undo || [],
-          ),
+          archiveNotice((await mutate('/api/tasks/archive-completed', 'POST')).undo || []),
         ),
     },
-    { icon: "user", label: "Nickname…", fn: () => setModal("nickname") },
-    { icon: "switch", label: "Switch account", fn: () => run(changeAccount) },
-    { icon: "key", label: "Change password…", fn: () => setModal("password") },
-    { icon: "lock", label: "Lock", fn: () => run(lock) },
+    { icon: 'user', label: 'Nickname…', fn: () => setModal('nickname') },
+    { icon: 'switch', label: 'Switch account', fn: () => run(changeAccount) },
+    { icon: 'key', label: 'Change password…', fn: () => setModal('password') },
+    { icon: 'lock', label: 'Lock', fn: () => run(lock) },
   ];
   return (
     <>
@@ -565,22 +517,39 @@ function Workspace({
         href="#main"
         onClick={(e) => {
           e.preventDefault();
-          document.getElementById("board")?.focus();
-          document.getElementById("board")?.scrollIntoView({ block: "start" });
+          document.getElementById('board')?.focus();
+          document.getElementById('board')?.scrollIntoView({ block: 'start' });
         }}
       >
         Skip to your tasks
       </a>
       <main
         id="main"
-        className={`${collapsed ? "sidebar-collapsed " : ""}${keyboard ? "mobile-keyboard" : ""}`}
+        className={`${collapsed ? 'sidebar-collapsed ' : ''}${keyboard ? 'mobile-keyboard' : ''}`}
       >
-        <WorkspaceNav collapsed={collapsed} view={route.view} toggleCollapsed={() => {
-          setCollapsed(!collapsed);
-          try { localStorage.setItem("taskpath-sidebar-collapsed",String(!collapsed)); } catch {}
-        }} />
+        <WorkspaceNav
+          collapsed={collapsed}
+          view={route.view}
+          toggleCollapsed={() => {
+            setCollapsed(!collapsed);
+            try {
+              localStorage.setItem('taskpath-sidebar-collapsed', String(!collapsed));
+            } catch {}
+          }}
+        />
         <div className="workspace-content">
-          <WorkspaceHeader openSearch={() => setSearchOpen(true)} route={route} tags={tags} greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ""} week={week} theme={theme} createTask={() => setEditor({task:null,status:route.focus === "today" ? "today" : "later"})} options={options} />
+          <WorkspaceHeader
+            openSearch={() => setSearchOpen(true)}
+            route={route}
+            tags={tags}
+            greeting={board?.nickname ? `${greeting.current.phrase}, ${board.nickname}` : ''}
+            week={week}
+            theme={theme}
+            createTask={() =>
+              setEditor({ task: null, status: route.focus === 'today' ? 'today' : 'later' })
+            }
+            options={options}
+          />
           {state.error && (
             <div id="error-banner" className="error-banner" role="alert">
               <span>{state.error}</span>
@@ -597,28 +566,61 @@ function Workspace({
               </button>
             </div>
           )}
-          {route.view === "board" && rollover.length > 0 && rolloverDismissed !== rolloverKey && <aside className="rollover-notice" aria-label="Planning review">
-            <p>{rollover.length} unfinished task{rollover.length === 1 ? '' : 's'} moved back for replanning. At midnight, Today returns to This Week; on Monday, unfinished plans return to Later. Calendar: {board?.timezone}.</p>
-            <button type="button" className="secondary-button" onClick={() => setModal('rollover')}>Review and replan</button>{' '}
-            <button type="button" className="subtle-button" onClick={() => setRolloverDismissed(rolloverKey)}>Dismiss planning review</button>
-          </aside>}
-          {route.view === "board" && !!board?.reminders.length && (
-            <ReminderPanel tasks={board.reminders} busy={state.busy} edit={edit} act={(task,action) => run(() => mutate(`/api/tasks/${task.id}/reminder`,"POST",{action,reminderAt:task.reminderAt}))} />
+          {route.view === 'board' && rollover.length > 0 && rolloverDismissed !== rolloverKey && (
+            <aside className="rollover-notice" aria-label="Planning review">
+              <p>
+                {rollover.length} unfinished task{rollover.length === 1 ? '' : 's'} moved back for
+                replanning. At midnight, Today returns to This Week; on Monday, unfinished plans
+                return to Later. Calendar: {board?.timezone}.
+              </p>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setModal('rollover')}
+              >
+                Review and replan
+              </button>{' '}
+              <button
+                type="button"
+                className="subtle-button"
+                onClick={() => setRolloverDismissed(rolloverKey)}
+              >
+                Dismiss planning review
+              </button>
+            </aside>
           )}
-          {route.view === "files" ? (
+          {route.view === 'board' && !!board?.reminders.length && (
+            <ReminderPanel
+              tasks={board.reminders}
+              busy={state.busy}
+              edit={edit}
+              act={(task, action) =>
+                run(() =>
+                  mutate(`/api/tasks/${task.id}/reminder`, 'POST', {
+                    action,
+                    reminderAt: task.reminderAt,
+                  }),
+                )
+              }
+            />
+          )}
+          {route.view === 'files' ? (
             <Files />
-          ) : board && route.view === "calendar" ? (
+          ) : board && route.view === 'calendar' ? (
             <CalendarView
               board={board}
               route={route}
               edit={edit}
-              create={(due) => setEditor({
-                task: null,
-                due,
-                status: due === board.day ? "today" : weekStart(due) === board.week ? "week" : "later",
-              })}
+              create={(due) =>
+                setEditor({
+                  task: null,
+                  due,
+                  status:
+                    due === board.day ? 'today' : weekStart(due) === board.week ? 'week' : 'later',
+                })
+              }
             />
-          ) : board && route.view === "stats" ? (
+          ) : board && route.view === 'stats' ? (
             <StatsView board={board} route={route} />
           ) : board ? (
             <Board
@@ -626,11 +628,17 @@ function Workspace({
               route={route}
               actions={{
                 edit,
-                duplicate: (task) => setEditor({
-                  task: null,
-                  status: task.status === "done" ? "later" : task.status,
-                  draft: { title: task.title, notes: task.notes, category: task.category, tags: [...task.tags] },
-                }),
+                duplicate: (task) =>
+                  setEditor({
+                    task: null,
+                    status: task.status === 'done' ? 'later' : task.status,
+                    draft: {
+                      title: task.title,
+                      notes: task.notes,
+                      category: task.category,
+                      tags: [...task.tags],
+                    },
+                  }),
                 create: (status) => setEditor({ task: null, status }),
                 remove,
                 archive,
@@ -668,16 +676,23 @@ function Workspace({
           </footer>
         </div>
       </main>
-      {board && <TaskSearch board={board} initialState={search}
-        close={() => setSearchOpen(false)} openTask={edit} suspended={!searchOpen || !!editor || !!archived}
-        syncComplete={state.syncComplete} />}
+      {board && (
+        <TaskSearch
+          board={board}
+          initialState={search}
+          close={() => setSearchOpen(false)}
+          openTask={edit}
+          suspended={!searchOpen || !!editor || !!archived}
+          syncComplete={state.syncComplete}
+        />
+      )}
       {editor && board && (
         <Editor
-          key={editor.task?.id || "new"}
+          key={editor.task?.id || 'new'}
           {...editor}
           board={board}
           initialTag={route.tag}
-          initialCategory={route.category === "work" ? "work" : "personal"}
+          initialCategory={route.category === 'work' ? 'work' : 'personal'}
           close={() => setEditor(null)}
           remove={remove}
           archive={archive}
@@ -685,56 +700,117 @@ function Workspace({
           notifications={toggleNotifications}
         />
       )}
-      {archived && <ArchiveDetails task={archived} close={() => setDetails(null)}
-        remove={() => run(async () => { await remove(archived); setDetails(null); })}
-        restore={() => run(async () => { await mutate(`/api/tasks/${archived.id}/unarchive`,"POST"); setDetails(null); })}
-      />}
-      {modal === "history" && <HistoryDialog close={() => setModal(null)} notify={notify} />}
-      {modal === "auto-lock" && <AutoLockDialog close={() => setModal(null)} />}
-      {modal === "rollover" && <Dialog id="rollover-dialog" title="Review unfinished tasks" onClose={() => setModal(null)} busy={state.busy}>
-        <p>Choose a fresh plan for these tasks. This review includes tasks hidden by your board filters.</p>
-        {rollover.length === 0 && <p>All tasks in this review have been replanned.</p>}
-        {rollover.map(item => {
-          const task = board?.tasks.find(t => t.id === item.id);
-          return task && <section key={item.id}>
-            <h3>{task.title}</h3><p>{columns[item.from]} → {columns[item.to]}</p>
-            <button type="button" className="secondary-button" disabled={state.busy} onClick={() => run(() => move(task, 'today'))}>Plan for Today</button>{' '}
-            <button type="button" className="secondary-button" disabled={state.busy} onClick={() => run(() => move(task, 'week'))}>Plan for This Week</button>{' '}
-            <button type="button" className="subtle-button" disabled={state.busy} onClick={() => run(() => move(task, 'later'))}>Keep in Later</button>
-          </section>;
-        })}
-        <button type="button" className="primary-button" disabled={state.busy} onClick={() => {setRolloverDismissed(rolloverKey); setModal(null);}}>Finish review</button>
-      </Dialog>}
-      {modal === "password" && <PasswordDialog close={() => setModal(null)} />}{" "}
-      {modal === "nickname" && (
-        <Nickname
-          initial={board?.nickname || ""}
-          close={() => setModal(null)}
+      {archived && (
+        <ArchiveDetails
+          task={archived}
+          close={() => setDetails(null)}
+          remove={() =>
+            run(async () => {
+              await remove(archived);
+              setDetails(null);
+            })
+          }
+          restore={() =>
+            run(async () => {
+              await mutate(`/api/tasks/${archived.id}/unarchive`, 'POST');
+              setDetails(null);
+            })
+          }
         />
-      )}{" "}
-      {modal === "push" && <PushDialog close={() => setModal(null)} />}{" "}
-      {modal === "import" && (
-        <ImportDialog close={() => setModal(null)} notify={notify} />
-      )}{" "}
-      {modal === "guide" && (
+      )}
+      {modal === 'history' && <HistoryDialog close={() => setModal(null)} notify={notify} />}
+      {modal === 'auto-lock' && <AutoLockDialog close={() => setModal(null)} />}
+      {modal === 'rollover' && (
         <Dialog
-          id="guide-dialog"
-          title="How it works"
+          id="rollover-dialog"
+          title="Review unfinished tasks"
           onClose={() => setModal(null)}
+          busy={state.busy}
         >
-          <GuideCopy />
           <p>
-            Your planning timezone: {board?.timezone}. Weeks begin on Monday.
+            Choose a fresh plan for these tasks. This review includes tasks hidden by your board
+            filters.
           </p>
+          {rollover.length === 0 && <p>All tasks in this review have been replanned.</p>}
+          {rollover.map((item) => {
+            const task = board?.tasks.find((t) => t.id === item.id);
+            return (
+              task && (
+                <section key={item.id}>
+                  <h3>{task.title}</h3>
+                  <p>
+                    {columns[item.from]} → {columns[item.to]}
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={state.busy}
+                    onClick={() => run(() => move(task, 'today'))}
+                  >
+                    Plan for Today
+                  </button>{' '}
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={state.busy}
+                    onClick={() => run(() => move(task, 'week'))}
+                  >
+                    Plan for This Week
+                  </button>{' '}
+                  <button
+                    type="button"
+                    className="subtle-button"
+                    disabled={state.busy}
+                    onClick={() => run(() => move(task, 'later'))}
+                  >
+                    Keep in Later
+                  </button>
+                </section>
+              )
+            );
+          })}
+          <button
+            type="button"
+            className="primary-button"
+            disabled={state.busy}
+            onClick={() => {
+              setRolloverDismissed(rolloverKey);
+              setModal(null);
+            }}
+          >
+            Finish review
+          </button>
         </Dialog>
       )}
-      {toast && <Toast text={toast.text} close={() => setToast(null)} undo={toast.undo ? () => {
-        const undo=toast.undo!; setToast(null); run(undo);
-      } : undefined} />}
+      {modal === 'password' && <PasswordDialog close={() => setModal(null)} />}{' '}
+      {modal === 'nickname' && (
+        <Nickname initial={board?.nickname || ''} close={() => setModal(null)} />
+      )}{' '}
+      {modal === 'push' && <PushDialog close={() => setModal(null)} />}{' '}
+      {modal === 'import' && <ImportDialog close={() => setModal(null)} notify={notify} />}{' '}
+      {modal === 'guide' && (
+        <Dialog id="guide-dialog" title="How it works" onClose={() => setModal(null)}>
+          <GuideCopy />
+          <p>Your planning timezone: {board?.timezone}. Weeks begin on Monday.</p>
+        </Dialog>
+      )}
+      {toast && (
+        <Toast
+          text={toast.text}
+          close={() => setToast(null)}
+          undo={
+            toast.undo
+              ? () => {
+                  const undo = toast.undo!;
+                  setToast(null);
+                  run(undo);
+                }
+              : undefined
+          }
+        />
+      )}
       <div id="announcer" className="sr-only" aria-live="polite">
-        {board?.reminders.length
-          ? `${board.reminders.length} reminders are due.`
-          : ""}
+        {board?.reminders.length ? `${board.reminders.length} reminders are due.` : ''}
       </div>
     </>
   );

@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 import { ActionMenu } from './action-menu';
 
-export function TaskMenu({ title, children }: { title:string; children:ReactNode }) {
-  return <ActionMenu label={'More options for ' + title} triggerClassName="task-menu-trigger" popupClassName="task-menu-popover">{children}</ActionMenu>;
+export function TaskMenu({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <ActionMenu
+      label={'More options for ' + title}
+      triggerClassName="task-menu-trigger"
+      popupClassName="task-menu-popover"
+    >
+      {children}
+    </ActionMenu>
+  );
 }

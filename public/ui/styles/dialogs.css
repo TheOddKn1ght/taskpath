@@ -41,7 +41,9 @@ dialog::backdrop {
   color: var(--muted);
 }
 
-.field input,.field textarea,.field select {
+.field input,
+.field textarea,
+.field select {
   padding: 11px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -51,7 +53,8 @@ dialog::backdrop {
   color: var(--text);
 }
 
-.field input::placeholder,.field textarea::placeholder {
+.field input::placeholder,
+.field textarea::placeholder {
   color: var(--muted);
 }
 

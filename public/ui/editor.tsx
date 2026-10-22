@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from "react";
-import type { Board, Task, Status, Category, TaskDraft } from "../types.js";
-import { Dialog } from "./dialog";
-import { Select, TagButton, DatePicker } from "./pickers";
-import { columns, message, mutate } from "./store";
-import { normalizeTags } from "../tags.js";
-import { localReminderValue, reminderFromInput } from "../dates.js";
-import { reminderIsToday } from "../offline-model.js";
+import { useState, useRef, useEffect } from 'react';
+import type { Board, Task, Status, Category, TaskDraft } from '../types.js';
+import { Dialog } from './dialog';
+import { Select, TagButton, DatePicker } from './pickers';
+import { columns, message, mutate } from './store';
+import { normalizeTags } from '../tags.js';
+import { localReminderValue, reminderFromInput } from '../dates.js';
+import { reminderIsToday } from '../offline-model.js';
 export function Editor({
   task,
   draft,
@@ -33,29 +33,37 @@ export function Editor({
   notify: (s: string) => void;
   notifications: () => Promise<void>;
 }) {
-  const [title, setTitle] = useState(task?.title ?? draft?.title ?? ""),
-    [notes, setNotes] = useState(task?.notes ?? draft?.notes ?? ""),
+  const [title, setTitle] = useState(task?.title ?? draft?.title ?? ''),
+    [notes, setNotes] = useState(task?.notes ?? draft?.notes ?? ''),
     [tags, setTags] = useState(task?.tags ?? draft?.tags ?? (initialTag ? [initialTag] : [])),
-    [tag, setTag] = useState(""),
+    [tag, setTag] = useState(''),
     [column, setColumn] = useState(task?.status || status),
     [category, setCategory] = useState<Category>(
       task?.category ?? draft?.category ?? initialCategory,
     ),
-    [due, setDue] = useState(task?.dueDate || initialDue || ""),
-    [reminder, setReminder] = useState(
-      localReminderValue(task?.reminderAt || null),
-    ),
-    [error, setError] = useState(""),
+    [due, setDue] = useState(task?.dueDate || initialDue || ''),
+    [reminder, setReminder] = useState(localReminderValue(task?.reminderAt || null)),
+    [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
-  const initial = useRef(JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }));
-  const dirty = JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }) !== initial.current;
+  const initial = useRef(
+    JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }),
+  );
+  const dirty =
+    JSON.stringify({ title, notes, tags, tag, column, category, due, reminder }) !==
+    initial.current;
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const requestClose = () => { if (dirty) setConfirmDiscard(true); else close(); };
+  const requestClose = () => {
+    if (dirty) setConfirmDiscard(true);
+    else close();
+  };
   useEffect(() => {
     if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
   const alive = useRef(true);
   useEffect(
@@ -72,7 +80,7 @@ export function Editor({
     try {
       return reminderIsToday(
         {
-          status: "today",
+          status: 'today',
           reminderAt: reminderAt(),
           deletedAt: null,
           archivedAt: null,
@@ -85,14 +93,14 @@ export function Editor({
     }
   })();
   useEffect(() => {
-    if (today && column !== "done") setColumn("today");
+    if (today && column !== 'done') setColumn('today');
   }, [today, column]);
   const add = () => {
     if (!tag.trim()) return;
     try {
       setTags(normalizeTags([...tags, tag]));
-      setTag("");
-      setError("");
+      setTag('');
+      setError('');
     } catch (e) {
       setError(message(e));
     }
@@ -100,7 +108,7 @@ export function Editor({
   async function run(work: () => Promise<void>) {
     if (busy) return;
     setBusy(true);
-    setError("");
+    setError('');
     try {
       await work();
       if (alive.current) close();
@@ -113,17 +121,27 @@ export function Editor({
   return (
     <Dialog
       id="task-dialog"
-      title={task ? "Edit task" : "New task"}
+      title={task ? 'Edit task' : 'New task'}
       className="task-dialog"
       onClose={requestClose}
       animateClose={!dirty}
       busy={busy}
     >
-      {confirmDiscard && <div role="alert" className="form-error">
-        <p>Discard your unsaved changes?</p>
-        <button type="button" className="secondary-button" onClick={() => setConfirmDiscard(false)}>Keep editing</button>{" "}
-        <button type="button" className="secondary-button danger" onClick={close}>Discard changes</button>
-      </div>}
+      {confirmDiscard && (
+        <div role="alert" className="form-error">
+          <p>Discard your unsaved changes?</p>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setConfirmDiscard(false)}
+          >
+            Keep editing
+          </button>{' '}
+          <button type="button" className="secondary-button danger" onClick={close}>
+            Discard changes
+          </button>
+        </div>
+      )}
       <form
         id="task-form"
         onSubmit={(e) => {
@@ -131,23 +149,19 @@ export function Editor({
           void run(async () => {
             const all = normalizeTags([...tags, ...(tag.trim() ? [tag] : [])]);
             const result = await mutate(
-              task ? `/api/tasks/${task.id}` : "/api/tasks",
-              task ? "PATCH" : "POST",
+              task ? `/api/tasks/${task.id}` : '/api/tasks',
+              task ? 'PATCH' : 'POST',
               {
                 title,
                 notes,
                 tags: all,
-                status: today && column !== "done" ? "today" : column,
+                status: today && column !== 'done' ? 'today' : column,
                 category,
                 dueDate: due || null,
                 reminderAt: reminderAt(),
               },
             );
-            notify(
-              task
-                ? "Task saved."
-                : `Task added to ${columns[result.task.status]}.`,
-            );
+            notify(task ? 'Task saved.' : `Task added to ${columns[result.task.status]}.`);
           });
         }}
       >
@@ -184,7 +198,7 @@ export function Editor({
                 type="button"
                 className="tag-chip"
                 key={t}
-                aria-label={"Remove tag " + t}
+                aria-label={'Remove tag ' + t}
                 onClick={() => setTags(tags.filter((v) => v !== t))}
               >
                 {t}
@@ -198,24 +212,19 @@ export function Editor({
               value={tag}
               onChange={(e) => setTag(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   add();
-                } else if (e.key === "ArrowDown") {
+                } else if (e.key === 'ArrowDown') {
                   e.preventDefault();
                   e.currentTarget.parentElement
-                    ?.querySelector<HTMLButtonElement>("#browse-tags")
+                    ?.querySelector<HTMLButtonElement>('#browse-tags')
                     ?.click();
                 }
               }}
               placeholder="Add a tag"
             />
-            <button
-              type="button"
-              id="add-tag"
-              className="secondary-button"
-              onClick={add}
-            >
+            <button type="button" id="add-tag" className="secondary-button" onClick={add}>
               Add
             </button>
             <TagButton
@@ -235,7 +244,7 @@ export function Editor({
               options={Object.entries(columns).map(([value, label]) => ({
                 value,
                 label,
-                disabled: today && (value === "later" || value === "week"),
+                disabled: today && (value === 'later' || value === 'week'),
               }))}
               onChange={(v) => setColumn(v as Status)}
             />
@@ -246,8 +255,8 @@ export function Editor({
               label="Category"
               value={category}
               options={[
-                { value: "work", label: "Work" },
-                { value: "personal", label: "Personal" },
+                { value: 'work', label: 'Work' },
+                { value: 'personal', label: 'Personal' },
               ]}
               onChange={(v) => setCategory(v as Category)}
             />
@@ -255,8 +264,8 @@ export function Editor({
         </div>
         {today && (
           <p id="reminder-column-hint" className="schedule-hint" role="status">
-            Tasks with a reminder today stay in Today. Change or clear the
-            reminder to move to Later or This Week.
+            Tasks with a reminder today stay in Today. Change or clear the reminder to move to Later
+            or This Week.
           </p>
         )}
         <details
@@ -266,7 +275,7 @@ export function Editor({
           ref={(el) => {
             if (el && !el.dataset.initialized) {
               el.open = !!(task?.dueDate || task?.reminderAt || initialDue);
-              el.dataset.initialized = "true";
+              el.dataset.initialized = 'true';
             }
           }}
         >
@@ -280,43 +289,46 @@ export function Editor({
                   type="checkbox"
                   checked={!!due}
                   onChange={(e) => {
-                    setDue(e.target.checked ? board.day : "");
-                    if (!e.target.checked) setReminder("");
+                    setDue(e.target.checked ? board.day : '');
+                    if (!e.target.checked) setReminder('');
                   }}
-                />{" "}
+                />{' '}
                 Due date
               </label>
-              {!!due && <DatePicker value={due} onChange={(value) => {
-                setDue(value);
-                if (!value) setReminder("");
-              }} />}
+              {!!due && (
+                <DatePicker
+                  value={due}
+                  onChange={(value) => {
+                    setDue(value);
+                    if (!value) setReminder('');
+                  }}
+                />
+              )}
             </div>
-            {(due || reminder) && <label className="field">
-              Remind me
-              <DatePicker timed value={reminder} defaultDate={due} onChange={setReminder} />
-            </label>}
+            {(due || reminder) && (
+              <label className="field">
+                Remind me
+                <DatePicker timed value={reminder} defaultDate={due} onChange={setReminder} />
+              </label>
+            )}
           </div>
           <p className="schedule-hint">
-            Reminder times use your device timezone:{" "}
+            Reminder times use your device timezone:{' '}
             {Intl.DateTimeFormat().resolvedOptions().timeZone}.
           </p>
           <p className="schedule-hint">
-            Missed reminders appear when you return. Enable Background reminders
-            in workspace options for alerts while the app is closed.
+            Missed reminders appear when you return. Enable Background reminders in workspace
+            options for alerts while the app is closed.
           </p>
-          <button
-            type="button"
-            className="subtle-button"
-            onClick={() => void notifications()}
-          >
+          <button type="button" className="subtle-button" onClick={() => void notifications()}>
             Enable desktop notifications
           </button>
           <button
             type="button"
             className="subtle-button"
             onClick={() => {
-              setDue("");
-              setReminder("");
+              setDue('');
+              setReminder('');
             }}
           >
             Clear dates
@@ -348,16 +360,11 @@ export function Editor({
               </button>
             </>
           )}
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            data-dialog-close
-          >
+          <button type="button" className="secondary-button" disabled={busy} data-dialog-close>
             Cancel
           </button>
           <button id="save-task" className="primary-button" disabled={busy}>
-            {task ? "Save changes" : "Add task"}
+            {task ? 'Save changes' : 'Add task'}
           </button>
         </div>
       </form>

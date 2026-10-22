@@ -1,5 +1,18 @@
-export function Toast({text,undo,close}:{text:string;undo?:()=>void;close:()=>void}) { return (
-    <div id="toast" className="toast fixed flex gap-4 items-center bg-toast text-on-toast rounded-md py-[11px] pr-[13px] pl-[17px] text-[12px] max-w-[calc(100vw-24px)] z-10" role="status">
+export function Toast({
+  text,
+  undo,
+  close,
+}: {
+  text: string;
+  undo?: () => void;
+  close: () => void;
+}) {
+  return (
+    <div
+      id="toast"
+      className="toast fixed flex gap-4 items-center bg-toast text-on-toast rounded-md py-[11px] pr-[13px] pl-[17px] text-[12px] max-w-[calc(100vw-24px)] z-10"
+      role="status"
+    >
       <span id="toast-message">{text}</span>
       {undo && (
         <button
@@ -19,6 +32,5 @@ export function Toast({text,undo,close}:{text:string;undo?:()=>void;close:()=>vo
         ×
       </button>
     </div>
-
   );
 }

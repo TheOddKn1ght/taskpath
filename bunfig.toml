@@ -1,3 +1,8 @@
 [install]
 # 14 days, in seconds.
 minimumReleaseAge = 1209600
+
+[fmt]
+printWidth = 100
+singleQuote = true
+ignorePatterns = ["**/*.md", "public/vendor/**", "public/themes/**"]

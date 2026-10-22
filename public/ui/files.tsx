@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 import {
   addFile,
   listFiles,
@@ -7,27 +7,23 @@ import {
   deleteStoredFile,
   fileStatus,
   syncFiles,
-} from "../file-client.js";
-import { isUnlocked } from "../offline.js";
-import { Icon } from "./icons";
-import { ActionMenu } from "./action-menu";
-import { Dialog } from "./dialog";
-import { message } from "./store";
+} from '../file-client.js';
+import { isUnlocked } from '../offline.js';
+import { Icon } from './icons';
+import { ActionMenu } from './action-menu';
+import { Dialog } from './dialog';
+import { message } from './store';
 const size = (bytes: number) =>
   bytes >= 1e6
-    ? `${(bytes / 1e6).toLocaleString("en", { maximumFractionDigits: 2 })} MB`
-    : `${bytes.toLocaleString("en")} bytes`;
+    ? `${(bytes / 1e6).toLocaleString('en', { maximumFractionDigits: 2 })} MB`
+    : `${bytes.toLocaleString('en')} bytes`;
 export function Files() {
-  const [data, setData] = useState<Awaited<
-      ReturnType<typeof listFiles>
-    > | null>(null),
-    [query, setQuery] = useState(""),
-    [error, setError] = useState(""),
+  const [data, setData] = useState<Awaited<ReturnType<typeof listFiles>> | null>(null),
+    [query, setQuery] = useState(''),
+    [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [drag, setDrag] = useState(false),
-    [preview, setPreview] = useState<{ url: string; name: string } | null>(
-      null,
-    ),
+    [preview, setPreview] = useState<{ url: string; name: string } | null>(null),
     [edit, setEdit] = useState<{
       id: string;
       name: string;
@@ -42,8 +38,7 @@ export function Files() {
     const r = ++revision.current;
     try {
       const next = await listFiles();
-      if (alive.current && isUnlocked() && r === revision.current)
-        setData(next);
+      if (alive.current && isUnlocked() && r === revision.current) setData(next);
     } catch (e) {
       if (alive.current) setError(message(e));
     }
@@ -51,11 +46,11 @@ export function Files() {
   useEffect(() => {
     alive.current = true;
     void refresh();
-    window.addEventListener("taskpath-files", refresh);
+    window.addEventListener('taskpath-files', refresh);
     return () => {
       alive.current = false;
       revision.current++;
-      window.removeEventListener("taskpath-files", refresh);
+      window.removeEventListener('taskpath-files', refresh);
       for (const url of urls.current) URL.revokeObjectURL(url);
       urls.current.clear();
     };
@@ -64,7 +59,7 @@ export function Files() {
     if (working.current) return;
     working.current = true;
     setBusy(true);
-    setError("");
+    setError('');
     try {
       await fn();
       if (alive.current) await refresh();
@@ -87,17 +82,16 @@ export function Files() {
     const file = await readStoredFile(id);
     try {
       if (!alive.current || !isUnlocked()) return;
-      if (view && !file.imageType)
-        throw new Error("This format is download-only.");
+      if (view && !file.imageType) throw new Error('This format is download-only.');
       const url = URL.createObjectURL(
         new Blob([file.bytes], {
-          type: view ? file.imageType! : "application/octet-stream",
+          type: view ? file.imageType! : 'application/octet-stream',
         }),
       );
       urls.current.add(url);
       if (view) setPreview({ url, name: file.details.name });
       else {
-        const a = document.createElement("a");
+        const a = document.createElement('a');
         a.href = url;
         a.download = file.details.name;
         a.click();
@@ -114,9 +108,9 @@ export function Files() {
     data?.files
       .filter((f) =>
         f.details.name
-          .normalize("NFC")
+          .normalize('NFC')
           .toLocaleLowerCase()
-          .includes(query.normalize("NFC").toLocaleLowerCase()),
+          .includes(query.normalize('NFC').toLocaleLowerCase()),
       )
       .sort(
         (a, b) =>
@@ -134,9 +128,9 @@ export function Files() {
     <section
       id="files-view"
       aria-label="Encrypted files"
-      className={drag ? "files-dragover" : ""}
+      className={drag ? 'files-dragover' : ''}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) {
+        if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault();
           setDrag(true);
         }
@@ -153,15 +147,11 @@ export function Files() {
           <h2>Files</h2>
           <p className="files-usage">
             {data?.quota
-              ? `${size(data.files.reduce((n, f) => n + f.bytes, 0))} on this device · ${size(data.quota.usedBytes)} / ${size(data.quota.quotaBytes)} synced${data.quota.usedBytes > data.quota.quotaBytes ? " · Over quota" : ""}`
-              : "Connect once to refresh the storage allowance. Default: 10 MB."}
+              ? `${size(data.files.reduce((n, f) => n + f.bytes, 0))} on this device · ${size(data.quota.usedBytes)} / ${size(data.quota.quotaBytes)} synced${data.quota.usedBytes > data.quota.quotaBytes ? ' · Over quota' : ''}`
+              : 'Connect once to refresh the storage allowance. Default: 10 MB.'}
           </p>
         </div>
-        <button
-          className="primary-button"
-          disabled={busy}
-          onClick={() => input.current?.click()}
-        >
+        <button className="primary-button" disabled={busy} onClick={() => input.current?.click()}>
           <Icon name="upload" /> Upload files
         </button>
         <input
@@ -171,14 +161,10 @@ export function Files() {
           hidden
           onChange={(e) => {
             upload([...(e.target.files || [])]);
-            e.target.value = "";
+            e.target.value = '';
           }}
         />
-        <button
-          className="file-sync-button"
-          disabled={busy}
-          onClick={() => void action(syncFiles)}
-        >
+        <button className="file-sync-button" disabled={busy} onClick={() => void action(syncFiles)}>
           <Icon name="sync" /> Retry sync
         </button>
       </header>
@@ -194,7 +180,7 @@ export function Files() {
           data?.error ||
           (data?.deletions.length
             ? `${data.deletions.length} deletion(s) waiting to sync`
-            : "Files are encrypted before leaving this device.")}
+            : 'Files are encrypted before leaving this device.')}
       </p>
       <div className="files-list">
         {files.map((f) => (
@@ -202,71 +188,69 @@ export function Files() {
             <div className="file-info">
               <h3>{f.details.name}</h3>
               <p>
-                {size(f.bytes)} ·{" "}
-                {new Date(f.envelope.createdAt).toLocaleDateString("en")} ·{" "}
+                {size(f.bytes)} · {new Date(f.envelope.createdAt).toLocaleDateString('en')} ·{' '}
                 {fileStatus(f)}
               </p>
             </div>
             <div className="file-actions">
               <button
                 className="file-action-button"
-                disabled={busy || !f.cached || "unreadable" in f}
-                onClick={() =>
-                  void action(() => open(f.envelope.fileId, false))
-                }
+                disabled={busy || !f.cached || 'unreadable' in f}
+                onClick={() => void action(() => open(f.envelope.fileId, false))}
               >
                 <Icon name="download" /> Download
               </button>
-              {["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
-                f.details.type,
-              ) && (
+              {['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(f.details.type) && (
                 <button
                   className="file-action-button"
-                  disabled={busy || !f.cached || "unreadable" in f}
-                  onClick={() =>
-                    void action(() => open(f.envelope.fileId, true))
-                  }
+                  disabled={busy || !f.cached || 'unreadable' in f}
+                  onClick={() => void action(() => open(f.envelope.fileId, true))}
                 >
                   <Icon name="eye" /> Preview
                 </button>
               )}
-              <ActionMenu label={"More options for " + f.details.name} triggerClassName="file-menu-trigger" popupClassName="file-menu-popover">
-              <button
-                type="button" role="menuitem"
-                disabled={busy || "unreadable" in f}
-                onClick={() =>
-                  setEdit({
-                    id: f.envelope.fileId,
-                    name: f.details.name,
-                    remove: false,
-                  })
-                }
+              <ActionMenu
+                label={'More options for ' + f.details.name}
+                triggerClassName="file-menu-trigger"
+                popupClassName="file-menu-popover"
               >
-                <Icon name="edit" /> Rename
-              </button>
-              <button
-                type="button" role="menuitem" className="danger"
-                disabled={busy}
-                onClick={() =>
-                  setEdit({
-                    id: f.envelope.fileId,
-                    name: f.details.name,
-                    remove: true,
-                  })
-                }
-              >
-                <Icon name="trash" />
-                {f.pending === "upload" ? "Discard" : "Delete"}
-              </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || 'unreadable' in f}
+                  onClick={() =>
+                    setEdit({
+                      id: f.envelope.fileId,
+                      name: f.details.name,
+                      remove: false,
+                    })
+                  }
+                >
+                  <Icon name="edit" /> Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger"
+                  disabled={busy}
+                  onClick={() =>
+                    setEdit({
+                      id: f.envelope.fileId,
+                      name: f.details.name,
+                      remove: true,
+                    })
+                  }
+                >
+                  <Icon name="trash" />
+                  {f.pending === 'upload' ? 'Discard' : 'Delete'}
+                </button>
               </ActionMenu>
             </div>
           </article>
         ))}
         {!files.length && (
           <p className="files-empty">
-            {query
-              ? "No matching files."
-              : "Drop files here or choose Upload files."}
+            {query ? 'No matching files.' : 'Drop files here or choose Upload files.'}
           </p>
         )}
       </div>
@@ -281,9 +265,7 @@ export function Files() {
             alt={preview.name}
             src={preview.url}
             onError={() =>
-              setError(
-                "This image cannot be displayed. You can download the original file.",
-              )
+              setError('This image cannot be displayed. You can download the original file.')
             }
           />
         </Dialog>
@@ -291,7 +273,7 @@ export function Files() {
       {edit && (
         <Dialog
           id="file-action"
-          title={edit.remove ? "Delete file" : "Rename file"}
+          title={edit.remove ? 'Delete file' : 'Rename file'}
           className="file-action-dialog"
           onClose={() => setEdit(null)}
           busy={busy}
@@ -299,7 +281,7 @@ export function Files() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const name = String(new FormData(e.currentTarget).get("name"));
+              const name = String(new FormData(e.currentTarget).get('name'));
               void action(async () => {
                 if (edit.remove) await deleteStoredFile(edit.id);
                 else await renameStoredFile(edit.id, name);
@@ -310,7 +292,7 @@ export function Files() {
             <p>
               {edit.remove
                 ? `Permanently delete “${edit.name}”? This cannot be undone.`
-                : "Choose a filename."}
+                : 'Choose a filename.'}
             </p>
             {!edit.remove && (
               <input
@@ -323,16 +305,11 @@ export function Files() {
             )}
             {error && <p role="alert">{error}</p>}
             <div className="dialog-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                data-dialog-close
-                disabled={busy}
-              >
+              <button type="button" className="secondary-button" data-dialog-close disabled={busy}>
                 Cancel
               </button>
               <button className="primary-button" disabled={busy}>
-                {edit.remove ? "Delete permanently" : "Save"}
+                {edit.remove ? 'Delete permanently' : 'Save'}
               </button>
             </div>
           </form>

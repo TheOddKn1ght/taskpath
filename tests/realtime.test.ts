@@ -9,22 +9,33 @@ import { ClientStore } from './client-helpers';
 import { encryptChange, decryptEnvelope, createVault } from '../public/crypto.js';
 const until = async (condition: () => boolean, timeout = 4000) => {
   const end = Date.now() + timeout;
-  while (!condition()) { if (Date.now() > end) throw new Error('Timed out'); await Bun.sleep(10); }
+  while (!condition()) {
+    if (Date.now() > end) throw new Error('Timed out');
+    await Bun.sleep(10);
+  }
 };
 
 function serverSocket(userId: string) {
-  const authorized = mock(() => true), send = mock((_message: string) => 1), close = mock((_code?: number, _reason?: string) => {});
-  const socket = { data: { userId, authorized }, send, close } as unknown as ServerWebSocket<RealtimeData>;
+  const authorized = mock(() => true),
+    send = mock((_message: string) => 1),
+    close = mock((_code?: number, _reason?: string) => {});
+  const socket = {
+    data: { userId, authorized },
+    send,
+    close,
+  } as unknown as ServerWebSocket<RealtimeData>;
   return { socket, authorized, send, close };
 }
 
 test('notifications authorize only the affected user devices regardless of connected user count', () => {
-  const hub = new Realtime(), devices = [serverSocket('owner'), serverSocket('owner')];
+  const hub = new Realtime(),
+    devices = [serverSocket('owner'), serverSocket('owner')];
   const others = Array.from({ length: 1000 }, (_, i) => serverSocket(`other-${i}`));
   try {
     for (const device of [...devices, ...others]) {
       hub.websocket.open!(device.socket);
-      device.authorized.mockClear(); device.send.mockClear();
+      device.authorized.mockClear();
+      device.send.mockClear();
     }
     hub.notify('owner');
     for (const device of devices) {
@@ -38,11 +49,16 @@ test('notifications authorize only the affected user devices regardless of conne
     }
     hub.notify('unknown');
     expect(devices[0].authorized).toHaveBeenCalledTimes(1);
-  } finally { hub.close(); }
+  } finally {
+    hub.close();
+  }
 });
 
 test('notification membership handles revoked sessions, disconnects, reconnects and shutdown', () => {
-  const hub = new Realtime(), revoked = serverSocket('owner'), live = serverSocket('owner'), other = serverSocket('other');
+  const hub = new Realtime(),
+    revoked = serverSocket('owner'),
+    live = serverSocket('owner'),
+    other = serverSocket('other');
   try {
     for (const device of [revoked, live, other]) hub.websocket.open!(device.socket);
     revoked.authorized.mockReturnValue(false);
@@ -72,78 +88,192 @@ test('notification membership handles revoked sessions, disconnects, reconnects 
     expect(reconnected.close).toHaveBeenCalledTimes(1);
     expect(reconnected.close).toHaveBeenCalledWith(1001, 'Server restarting');
     reconnected.authorized.mockClear();
-    hub.notify('owner'); hub.checkSessions();
+    hub.notify('owner');
+    hub.checkSessions();
     expect(reconnected.authorized).not.toHaveBeenCalled();
-  } finally { hub.close(); }
+  } finally {
+    hub.close();
+  }
 });
 
 test('real WebSockets propagate encrypted edits between devices, enforce Origin, and close revoked sessions', async () => {
-  const { store, auth } = await fixture(); const hub = new Realtime(50);
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, websocket: hub.websocket, fetch: createHandler(store, auth, undefined, hub) });
-  const origin = server.url.origin, sockets: WebSocket[] = [];
-  const post = (path: string, body: any, cookie = '') => fetch(origin + path, { method: 'POST', headers: { 'x-taskpath-sync':'2', origin, cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const { store, auth } = await fixture();
+  const hub = new Realtime(50);
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    websocket: hub.websocket,
+    fetch: createHandler(store, auth, undefined, hub),
+  });
+  const origin = server.url.origin,
+    sockets: WebSocket[] = [];
+  const post = (path: string, body: any, cookie = '') =>
+    fetch(origin + path, {
+      method: 'POST',
+      headers: { 'x-taskpath-sync': '2', origin, cookie, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   try {
     expect((await fetch(origin + '/api/events', { headers: { origin } })).status).toBe(401);
-    const session = async () => (await post('/api/auth/login', { userId: testUserId, credential: testVault.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
-    const a = await session(), b = await session();
-    const invitation = auth.createInvitation(), other = await createVault('another long vault password');
+    const session = async () =>
+      (
+        await post('/api/auth/login', {
+          userId: testUserId,
+          credential: testVault.credential,
+          revision: 1,
+        })
+      ).headers
+        .get('set-cookie')!
+        .split(';')[0];
+    const a = await session(),
+      b = await session();
+    const invitation = auth.createInvitation(),
+      other = await createVault('another long vault password');
     await auth.setup(invitation.userId, invitation.token, other.config, other.credential);
-    const c = (await post('/api/auth/login', { userId: invitation.userId, credential: other.credential, revision: 1 })).headers.get('set-cookie')!.split(';')[0];
-    expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin: 'https://evil.example' } })).status).toBe(403);
-    expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(426);
-    const messages: string[][] = [[], [], []]; const closed: number[] = [];
+    const c = (
+      await post('/api/auth/login', {
+        userId: invitation.userId,
+        credential: other.credential,
+        revision: 1,
+      })
+    ).headers
+      .get('set-cookie')!
+      .split(';')[0];
+    expect(
+      (
+        await fetch(origin + '/api/events', {
+          headers: { cookie: a, origin: 'https://evil.example' },
+        })
+      ).status,
+    ).toBe(403);
+    expect((await fetch(origin + '/api/events', { headers: { cookie: a, origin } })).status).toBe(
+      426,
+    );
+    const messages: string[][] = [[], [], []];
+    const closed: number[] = [];
     for (const [i, cookie] of [a, b, c].entries()) {
-      const socket = new (WebSocket as unknown as { new(url: string, options: import('bun').WebSocketOptions): WebSocket })(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
-      socket.onmessage = event => messages[i].push(String(event.data));
-      socket.onclose = event => { closed[i] = event.code; }; sockets.push(socket);
+      const socket = new (
+        WebSocket as unknown as {
+          new (url: string, options: import('bun').WebSocketOptions): WebSocket;
+        }
+      )(origin.replace('http', 'ws') + '/api/events', { headers: { cookie, origin } });
+      socket.onmessage = (event) => messages[i].push(String(event.data));
+      socket.onclose = (event) => {
+        closed[i] = event.code;
+      };
+      sockets.push(socket);
     }
-    await until(() => messages.every(list => list.some(m => JSON.parse(m).type === 'ready')));
-    const device = new ClientStore(), task = device.create({ title: 'PRIVATE_WEBSOCKET_CONTENT', tags: ['laptop'] });
-    const encrypted = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[0]);
-    const send = (row: any, cookie: string) => post('/api/sync', { workspaceKey: testVault.config.vaultId, changes: [row] }, cookie);
+    await until(() => messages.every((list) => list.some((m) => JSON.parse(m).type === 'ready')));
+    const device = new ClientStore(),
+      task = device.create({ title: 'PRIVATE_WEBSOCKET_CONTENT', tags: ['laptop'] });
+    const encrypted = await encryptChange(
+      testVault.key,
+      testVault.config.vaultId,
+      device.record.pending[0],
+    );
+    const send = (row: any, cookie: string) =>
+      post('/api/sync', { workspaceKey: testVault.config.vaultId, changes: [row] }, cookie);
     expect((await send(encrypted, a)).status).toBe(200);
-    await until(() => messages.slice(0,2).every(list => list.some(m => JSON.parse(m).type === 'changed')));
-    const response = await (await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync':'2' } })).json();
+    await until(() =>
+      messages.slice(0, 2).every((list) => list.some((m) => JSON.parse(m).type === 'changed')),
+    );
+    const response = await (
+      await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync': '2' } })
+    ).json();
     expect(JSON.stringify(response)).not.toContain(task.title);
-    expect(await decryptEnvelope(testVault.key, testVault.config.vaultId, response.rows[0])).toMatchObject({ title: task.title, tags: ['laptop'] });
+    expect(
+      await decryptEnvelope(testVault.key, testVault.config.vaultId, response.rows[0]),
+    ).toMatchObject({ title: task.title, tags: ['laptop'] });
     device.update(task.id, { tags: ['phone', 'shared'] });
-    const second = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending[1]);
+    const second = await encryptChange(
+      testVault.key,
+      testVault.config.vaultId,
+      device.record.pending[1],
+    );
     await send(second, b);
-    await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2));
-    await send(second, b); await Bun.sleep(100);
-    expect(messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 2)).toBe(true);
+    await until(() =>
+      messages
+        .slice(0, 2)
+        .every((list) => list.filter((m) => JSON.parse(m).type === 'changed').length === 2),
+    );
+    await send(second, b);
+    await Bun.sleep(100);
+    expect(
+      messages
+        .slice(0, 2)
+        .every((list) => list.filter((m) => JSON.parse(m).type === 'changed').length === 2),
+    ).toBe(true);
     queueChange(device.record, `/api/tasks/${task.id}/archive`, 'POST');
-    const archived = await encryptChange(testVault.key, testVault.config.vaultId, device.record.pending.at(-1)!);
+    const archived = await encryptChange(
+      testVault.key,
+      testVault.config.vaultId,
+      device.record.pending.at(-1)!,
+    );
     await send(archived, a);
-    await until(() => messages.slice(0,2).every(list => list.filter(m => JSON.parse(m).type === 'changed').length === 3));
-    const archivedSnapshot = await (await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync':'2' } })).json();
-    expect((await decryptEnvelope(testVault.key, testVault.config.vaultId, archivedSnapshot.rows[0])).archivedAt).toBeTruthy();
+    await until(() =>
+      messages
+        .slice(0, 2)
+        .every((list) => list.filter((m) => JSON.parse(m).type === 'changed').length === 3),
+    );
+    const archivedSnapshot = await (
+      await fetch(origin + '/api/sync', { headers: { cookie: b, 'x-taskpath-sync': '2' } })
+    ).json();
+    expect(
+      (await decryptEnvelope(testVault.key, testVault.config.vaultId, archivedSnapshot.rows[0]))
+        .archivedAt,
+    ).toBeTruthy();
     expect(JSON.stringify(messages)).not.toContain('archivedAt');
     expect(JSON.stringify(messages)).not.toContain(task.title);
-    expect(messages[2].some(m => JSON.parse(m).type === 'changed')).toBe(false);
-    auth.disable(invitation.userId); await until(() => closed[2] === 4401);
-    expect(closed[0]).toBeUndefined(); expect(closed[1]).toBeUndefined();
-    await post('/api/auth/logout', {}, a); await until(() => closed[0] === 4401);
+    expect(messages[2].some((m) => JSON.parse(m).type === 'changed')).toBe(false);
+    auth.disable(invitation.userId);
+    await until(() => closed[2] === 4401);
+    expect(closed[0]).toBeUndefined();
     expect(closed[1]).toBeUndefined();
-    store.db.exec('UPDATE auth_sessions SET expiresAt=0'); await until(() => closed[1] === 4401);
-  } finally { sockets.forEach(s => s.close()); hub.close(); await server.stop(true); store.close(); }
+    await post('/api/auth/logout', {}, a);
+    await until(() => closed[0] === 4401);
+    expect(closed[1]).toBeUndefined();
+    store.db.exec('UPDATE auth_sessions SET expiresAt=0');
+    await until(() => closed[1] === 4401);
+  } finally {
+    sockets.forEach((s) => s.close());
+    hub.close();
+    await server.stop(true);
+    store.close();
+  }
 });
 class FakeSocket {
   static instances: FakeSocket[] = [];
   readyState = 0;
   onmessage?: (event: any) => void;
   onclose?: (event: any) => void;
-  constructor(public url: string) { FakeSocket.instances.push(this); }
-  receive(type: string) { this.readyState = 1; this.onmessage?.({ data: JSON.stringify({ type }) }); }
-  close(code = 1000) { this.readyState = 3; this.onclose?.({ code }); }
+  constructor(public url: string) {
+    FakeSocket.instances.push(this);
+  }
+  receive(type: string) {
+    this.readyState = 1;
+    this.onmessage?.({ data: JSON.stringify({ type }) });
+  }
+  close(code = 1000) {
+    this.readyState = 3;
+    this.onclose?.({ code });
+  }
 }
 
 test('client coalesces bursts but fetches again when a notice arrives during sync', async () => {
-  let calls = 0, release!: () => void;
-  const gate = new Promise<void>(resolve => { release = resolve; });
-  const client = createRealtime({ url: 'https://tasks.example.com', Socket: FakeSocket, active: () => true,
+  let calls = 0,
+    release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const client = createRealtime({
+    url: 'https://tasks.example.com',
+    Socket: FakeSocket,
+    active: () => true,
     localState: async () => ({ board: {}, locked: false }),
-    sync: async () => { calls++; if (calls === 1) await gate; },
+    sync: async () => {
+      calls++;
+      if (calls === 1) await gate;
+    },
   });
   try {
     await client.reconcile();
@@ -151,18 +281,29 @@ test('client coalesces bursts but fetches again when a notice arrives during syn
     expect(socket.url).toBe('wss://tasks.example.com/api/events');
     socket.receive('ready');
     await until(() => calls === 1);
-    socket.receive('changed'); socket.receive('changed'); socket.receive('heartbeat');
+    socket.receive('changed');
+    socket.receive('changed');
+    socket.receive('heartbeat');
     release();
     await until(() => calls === 2);
     expect(client.connected).toBe(true);
-  } finally { release(); client.pause(); }
+  } finally {
+    release();
+    client.pause();
+  }
 });
 
 test('client reconnects and catches up on wake, stops for locked/expired sessions', async () => {
   let calls = 0;
   const record = { board: {}, locked: false, authRequired: false };
-  const client = createRealtime({ url: 'http://localhost:3000', Socket: FakeSocket, active: () => true,
-    localState: async () => record, sync: async () => { calls++; },
+  const client = createRealtime({
+    url: 'http://localhost:3000',
+    Socket: FakeSocket,
+    active: () => true,
+    localState: async () => record,
+    sync: async () => {
+      calls++;
+    },
   });
   try {
     await client.reconcile();
@@ -186,41 +327,117 @@ test('client reconnects and catches up on wake, stops for locked/expired session
     await client.reconcile();
     expect(resumed.readyState).toBe(3);
     const count = FakeSocket.instances.length;
-    record.authRequired = false; record.locked = true;
+    record.authRequired = false;
+    record.locked = true;
     await client.reconcile();
     expect(FakeSocket.instances).toHaveLength(count);
-  } finally { client.pause(); }
+  } finally {
+    client.pause();
+  }
 });
 
 test('connected idle polling waits for recovery while pending edits, wakes and notices catch up', async () => {
- let calls=0,time=1000,visible=true;
- const record={board:{},locked:false,authRequired:false,syncComplete:true,pending:[] as any[]};
- const client=createRealtime({url:'http://localhost',Socket:FakeSocket,active:()=>visible,now:()=>time,recoveryMs:120000,localState:async()=>record,sync:async()=>{calls++;}});
- try {
-  await client.reconcile(); FakeSocket.instances.at(-1)!.receive('ready');
-  await until(()=>calls===1);await Bun.sleep(0);
-  for(let i=0;i<4;i++){time+=15000;await client.poll();}
-  expect(calls).toBe(1);
-  time+=60000;await client.poll();expect(calls).toBe(2);
-  record.pending=[{}];await client.poll();expect(calls).toBe(3);record.pending=[];
-  record.syncComplete=false;await client.poll();expect(calls).toBe(4);record.syncComplete=true;
-  time+=2000;client.resume();await until(()=>calls===5);
-  client.resume();await Bun.sleep(0);expect(calls).toBe(5);
-  visible=false;time+=200000;await client.poll();expect(calls).toBe(5);
-  visible=true;record.locked=true;await client.poll();expect(calls).toBe(5);expect(client.connected).toBe(false);
- }finally{client.pause();}
+  let calls = 0,
+    time = 1000,
+    visible = true;
+  const record = {
+    board: {},
+    locked: false,
+    authRequired: false,
+    syncComplete: true,
+    pending: [] as any[],
+  };
+  const client = createRealtime({
+    url: 'http://localhost',
+    Socket: FakeSocket,
+    active: () => visible,
+    now: () => time,
+    recoveryMs: 120000,
+    localState: async () => record,
+    sync: async () => {
+      calls++;
+    },
+  });
+  try {
+    await client.reconcile();
+    FakeSocket.instances.at(-1)!.receive('ready');
+    await until(() => calls === 1);
+    await Bun.sleep(0);
+    for (let i = 0; i < 4; i++) {
+      time += 15000;
+      await client.poll();
+    }
+    expect(calls).toBe(1);
+    time += 60000;
+    await client.poll();
+    expect(calls).toBe(2);
+    record.pending = [{}];
+    await client.poll();
+    expect(calls).toBe(3);
+    record.pending = [];
+    record.syncComplete = false;
+    await client.poll();
+    expect(calls).toBe(4);
+    record.syncComplete = true;
+    time += 2000;
+    client.resume();
+    await until(() => calls === 5);
+    client.resume();
+    await Bun.sleep(0);
+    expect(calls).toBe(5);
+    visible = false;
+    time += 200000;
+    await client.poll();
+    expect(calls).toBe(5);
+    visible = true;
+    record.locked = true;
+    await client.poll();
+    expect(calls).toBe(5);
+    expect(client.connected).toBe(false);
+  } finally {
+    client.pause();
+  }
 });
 
-
 test('file retries and reminder metadata bypass the idle recovery delay', async () => {
- let calls=0,filesPending=false;
- const record={board:{},locked:false,syncComplete:true,error:null as string|null,reminderOutbox:{} as Record<string,any>};
- const client=createRealtime({url:'http://localhost',Socket:FakeSocket,active:()=>true,now:()=>1000,needsRetry:async()=>filesPending,localState:async()=>record,sync:async()=>{calls++;}});
- try {
-  await client.reconcile();FakeSocket.instances.at(-1)!.receive('ready');await Bun.sleep(0);
-  await client.poll();expect(calls).toBe(1);
-  filesPending=true;await client.poll();expect(calls).toBe(2);filesPending=false;
-  record.reminderOutbox={task:{}};await client.poll();expect(calls).toBe(3);record.reminderOutbox={};
-  record.error='Temporary failure';await client.poll();expect(calls).toBe(4);
- }finally{client.pause();}
+  let calls = 0,
+    filesPending = false;
+  const record = {
+    board: {},
+    locked: false,
+    syncComplete: true,
+    error: null as string | null,
+    reminderOutbox: {} as Record<string, any>,
+  };
+  const client = createRealtime({
+    url: 'http://localhost',
+    Socket: FakeSocket,
+    active: () => true,
+    now: () => 1000,
+    needsRetry: async () => filesPending,
+    localState: async () => record,
+    sync: async () => {
+      calls++;
+    },
+  });
+  try {
+    await client.reconcile();
+    FakeSocket.instances.at(-1)!.receive('ready');
+    await Bun.sleep(0);
+    await client.poll();
+    expect(calls).toBe(1);
+    filesPending = true;
+    await client.poll();
+    expect(calls).toBe(2);
+    filesPending = false;
+    record.reminderOutbox = { task: {} };
+    await client.poll();
+    expect(calls).toBe(3);
+    record.reminderOutbox = {};
+    record.error = 'Temporary failure';
+    await client.poll();
+    expect(calls).toBe(4);
+  } finally {
+    client.pause();
+  }
 });

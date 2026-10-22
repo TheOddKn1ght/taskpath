@@ -7,20 +7,28 @@ export function localReminderValue(iso: string | null | undefined) {
 
 export function reminderFromInput(value: string) {
   if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('Choose a valid reminder date and time.');
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value))
+    throw new Error('Choose a valid reminder date and time.');
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) || localReminderValue(date.toISOString()) !== value) {
-    throw new Error('That local time does not exist. Choose another time (check the daylight-saving transition).');
+    throw new Error(
+      'That local time does not exist. Choose another time (check the daylight-saving transition).',
+    );
   }
   return date.toISOString();
 }
 
 export function dueLabel(dueDate: string, today: string) {
-  const delta = Math.round((Date.parse(`${dueDate}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
+  const delta = Math.round(
+    (Date.parse(`${dueDate}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000,
+  );
   if (delta === 0) return 'Today';
   if (delta === 1) return 'Tomorrow';
   const date = new Date(`${dueDate}T12:00:00Z`).toLocaleDateString('en-US', {
-    timeZone: 'UTC', month: 'short', day: 'numeric', ...(dueDate.slice(0, 4) !== today.slice(0, 4) ? { year: 'numeric' } : {}),
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+    ...(dueDate.slice(0, 4) !== today.slice(0, 4) ? { year: 'numeric' } : {}),
   });
   return `${delta < 0 ? 'Overdue · ' : ''}${date}`;
 }

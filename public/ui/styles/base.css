@@ -8,7 +8,10 @@ body {
   background: var(--paper);
 }
 
-button,input,textarea,select {
+button,
+input,
+textarea,
+select {
   font: inherit;
   color: inherit;
 }
@@ -20,25 +23,37 @@ button {
 }
 
 button:disabled {
-  opacity: .5;
+  opacity: 0.5;
   cursor: wait;
 }
 
-button,a,input,textarea,select {
+button,
+a,
+input,
+textarea,
+select {
   -webkit-tap-highlight-color: transparent;
 }
 
-button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,article:focus-visible,summary:focus-visible {
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+article:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 
-h1,h2,p {
+h1,
+h2,
+p {
   margin: 0;
 }
 
 [hidden] {
-  display: none!important;
+  display: none !important;
 }
 
 svg {

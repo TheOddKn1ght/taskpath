@@ -1,13 +1,16 @@
 /* Phone workspace: thumb-reachable tabs, clear hierarchy, no navigation drawer. */
-@media (max-width:760px) {
+@media (max-width: 760px) {
   :root {
     --mobile-tabs-height: 72px;
   }
   html {
     scroll-padding-bottom: calc(var(--mobile-tabs-height) + env(safe-area-inset-bottom) + 20px);
   }
-  #main,#main.sidebar-collapsed {
-    padding: env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) calc(var(--mobile-tabs-height) + env(safe-area-inset-bottom) + 20px) max(16px,env(safe-area-inset-left));
+  #main,
+  #main.sidebar-collapsed {
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right))
+      calc(var(--mobile-tabs-height) + env(safe-area-inset-bottom) + 20px)
+      max(16px, env(safe-area-inset-left));
   }
   #sidebar {
     display: block;
@@ -15,22 +18,24 @@
     z-index: 15;
     inset: auto 0 0;
     min-height: 0;
-    padding: 6px max(12px,env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+    padding: 6px max(12px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
     border: 0;
     border-top: 1px solid var(--line);
     background: var(--paper);
-    box-shadow: 0 -4px 20px color-mix(in srgb,var(--menu-shadow) 25%,transparent);
+    box-shadow: 0 -4px 20px color-mix(in srgb, var(--menu-shadow) 25%, transparent);
   }
   #sidebar-toggle {
     display: none;
   }
   #sidebar nav {
-    grid-template-columns: repeat(5,minmax(0,1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
     max-width: 600px;
     margin: auto;
   }
-  #sidebar nav button,.sidebar-collapsed #sidebar nav button {
+  #sidebar nav button,
+  .sidebar-collapsed #sidebar nav button {
     flex-direction: column;
     justify-content: center;
     gap: 4px;
@@ -45,23 +50,25 @@
     width: 22px;
     height: 22px;
   }
-  #sidebar .nav-label,.sidebar-collapsed #sidebar .nav-label {
+  #sidebar .nav-label,
+  .sidebar-collapsed #sidebar .nav-label {
     max-width: none;
     opacity: 1;
   }
-  #sidebar [aria-current="page"] {
-    background: color-mix(in srgb,var(--selection) 55%,transparent);
+  #sidebar [aria-current='page'] {
+    background: color-mix(in srgb, var(--selection) 55%, transparent);
     color: var(--accent);
   }
   #sidebar button:focus-visible {
     outline-offset: -2px;
   }
-  #main.mobile-keyboard #sidebar,#main.mobile-keyboard #new-task {
+  #main.mobile-keyboard #sidebar,
+  #main.mobile-keyboard #new-task {
     display: none;
   }
   #main .app-header {
     display: grid;
-    grid-template-columns: minmax(0,1fr) repeat(2,44px);
+    grid-template-columns: minmax(0, 1fr) repeat(2, 44px);
     gap: 12px 8px;
     padding: 20px 0;
     align-items: center;
@@ -83,7 +90,8 @@
     margin-top: 6px;
     font-size: 11px;
   }
-  #greeting:empty,#week-label {
+  #greeting:empty,
+  #week-label {
     display: none;
   }
   #main .toolbar {
@@ -92,7 +100,7 @@
   #new-task {
     position: fixed;
     z-index: 16;
-    right: max(16px,env(safe-area-inset-right));
+    right: max(16px, env(safe-area-inset-right));
     bottom: calc(var(--mobile-tabs-height) + env(safe-area-inset-bottom) + 16px);
     width: 56px;
     height: 56px;
@@ -178,8 +186,13 @@
     background: transparent;
     color: var(--muted);
   }
-  #focus-today span { display: none; }
-  #focus-today svg { width: 19px; height: 19px; }
+  #focus-today span {
+    display: none;
+  }
+  #focus-today svg {
+    width: 19px;
+    height: 19px;
+  }
   .board {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -222,7 +235,7 @@
     background: transparent;
   }
   .complete-button::before {
-    content: "";
+    content: '';
     position: absolute;
     inset: 12px;
     border: 1px solid var(--check-line);
@@ -245,7 +258,9 @@
   .complete-button svg {
     position: relative;
   }
-  .task-notes,.task-dates,.task-card .card-tags {
+  .task-notes,
+  .task-dates,
+  .task-card .card-tags {
     margin-left: 48px;
   }
   .task-notes {
@@ -261,17 +276,24 @@
   .quick-add {
     min-height: 44px;
   }
-  .quick-add input,.field input,.field textarea,.file-action-dialog input {
+  .quick-add input,
+  .field input,
+  .field textarea,
+  .file-action-dialog input {
     font-size: 16px;
   }
-  .quick-add button,.add-task {
+  .quick-add button,
+  .add-task {
     min-width: 44px;
     min-height: 44px;
   }
-  .field input,.field textarea,.picker-trigger {
+  .field input,
+  .field textarea,
+  .picker-trigger {
     border-radius: 10px;
   }
-  .primary-button,.secondary-button {
+  .primary-button,
+  .secondary-button {
     min-height: 44px;
     font-size: 14px;
   }
@@ -320,7 +342,7 @@
     margin: auto 0 0;
     max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
     border-radius: 20px 20px 0 0;
-    padding: 20px 16px max(20px,env(safe-area-inset-bottom));
+    padding: 20px 16px max(20px, env(safe-area-inset-bottom));
     overscroll-behavior: contain;
   }
   .task-dialog .dialog-top > button {
@@ -329,15 +351,15 @@
   }
   .task-dialog .dialog-actions {
     position: sticky;
-    bottom: calc(-1 * max(20px,env(safe-area-inset-bottom)));
+    bottom: calc(-1 * max(20px, env(safe-area-inset-bottom)));
     background: var(--paper);
-    padding: 12px 0 max(12px,env(safe-area-inset-bottom));
+    padding: 12px 0 max(12px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
   }
 }
 
-@media (max-width:760px) and (prefers-reduced-motion:no-preference) {
+@media (max-width: 760px) and (prefers-reduced-motion: no-preference) {
   #sidebar nav button:active {
-    transform: scale(.96);
+    transform: scale(0.96);
   }
 }

@@ -8,13 +8,9 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": [],
-    "lib": [
-      "ESNext"
-    ],
+    "lib": ["ESNext"],
     "paths": {
-      "/assets/__TASKPATH_RELEASE__/*": [
-        "./public/*"
-      ]
+      "/assets/__TASKPATH_RELEASE__/*": ["./public/*"]
     }
   }
 }

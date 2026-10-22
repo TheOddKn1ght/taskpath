@@ -6,140 +6,265 @@ import { compactHTML } from '../scripts/build';
 import { clientStyles } from '../src/client-styles';
 import { createHandler } from '../src/server';
 import { Store } from '../src/store';
-import { sourceRelease, stampRelease, releaseForDirectory, BUILD_MANIFEST } from '../src/client-release';
+import {
+  sourceRelease,
+  stampRelease,
+  releaseForDirectory,
+  BUILD_MANIFEST,
+} from '../src/client-release';
 
 const root = resolve(import.meta.dir, '..');
-const sourceName = (name: string) => name === 'app.js' ? 'app.tsx' : name.endsWith('.js') && !name.startsWith('vendor/') ? name.replace(/\.js$/, '.ts') : name;
+const sourceName = (name: string) =>
+  name === 'app.js'
+    ? 'app.tsx'
+    : name.endsWith('.js') && !name.startsWith('vendor/')
+      ? name.replace(/\.js$/, '.ts')
+      : name;
 const built = resolve(root, 'dist/public');
 const hasBuild = await Bun.file(resolve(built, BUILD_MANIFEST)).exists();
 const release = hasBuild ? releaseForDirectory(built) : sourceRelease('built');
 const ASSET_VERSION = release.version;
 
 test('HTML compaction preserves inline spacing, entities, attributes and literal text', async () => {
-  const source = '<!doctype html>\n<p title="a  b">Hello \n <strong>world</strong> &amp; friends&nbsp;!</p><!-- discard -->\n<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea><script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>';
+  const source =
+    '<!doctype html>\n<p title="a  b">Hello \n <strong>world</strong> &amp; friends&nbsp;!</p><!-- discard -->\n<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea><script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>';
   const result = await compactHTML(source);
   expect(result).toContain('<p title="a  b">Hello <strong>world</strong> &amp; friends&nbsp;!</p>');
   expect(result).toContain('<pre>  a\n b &lt;c&gt;</pre><textarea> a\n  b</textarea>');
-  expect(result).toContain('<script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>');
+  expect(result).toContain(
+    '<script>let x = "a  b";</script><style>p::after{content:"a  b"}</style>',
+  );
   expect(result).not.toContain('discard');
 });
 
-test.skipIf(!hasBuild)('minified client preserves module exports, reachable imports, PWA assets and CSP', async () => {
-  const scan = new Bun.Transpiler({ loader: 'js' });
-  const files = [...new Bun.Glob('**/*').scanSync({ cwd: built, onlyFiles: true })];
-  expect(files.some(name => name.endsWith('.map') || name.endsWith('.ts'))).toBe(false);
-  for (const name of files.filter(name => name.endsWith('.js'))) {
-    const output = await Bun.file(resolve(built, name)).text();
-    const source = await Bun.file(resolve(root, 'public', sourceName(name))).text();
-    expect(scan.scan(output).exports.sort()).toEqual(new Bun.Transpiler({loader: name === 'app.js' ? 'tsx' : name.startsWith('vendor/') ? 'js' : 'ts'}).scan(source).exports.sort());
-    for (const { path } of scan.scan(output).imports) {
-      const target = path.startsWith(`/assets/${ASSET_VERSION}/`)
-        ? resolve(built, path.slice(`/assets/${ASSET_VERSION}/`.length))
-        : resolve(built, dirname(name), path);
-      expect(await Bun.file(target).exists()).toBe(true);
+test.skipIf(!hasBuild)(
+  'minified client preserves module exports, reachable imports, PWA assets and CSP',
+  async () => {
+    const scan = new Bun.Transpiler({ loader: 'js' });
+    const files = [...new Bun.Glob('**/*').scanSync({ cwd: built, onlyFiles: true })];
+    expect(files.some((name) => name.endsWith('.map') || name.endsWith('.ts'))).toBe(false);
+    for (const name of files.filter((name) => name.endsWith('.js'))) {
+      const output = await Bun.file(resolve(built, name)).text();
+      const source = await Bun.file(resolve(root, 'public', sourceName(name))).text();
+      expect(scan.scan(output).exports.sort()).toEqual(
+        new Bun.Transpiler({
+          loader: name === 'app.js' ? 'tsx' : name.startsWith('vendor/') ? 'js' : 'ts',
+        })
+          .scan(source)
+          .exports.sort(),
+      );
+      for (const { path } of scan.scan(output).imports) {
+        const target = path.startsWith(`/assets/${ASSET_VERSION}/`)
+          ? resolve(built, path.slice(`/assets/${ASSET_VERSION}/`.length))
+          : resolve(built, dirname(name), path);
+        expect(await Bun.file(target).exists()).toBe(true);
+      }
+      expect(output).not.toContain('sourceMappingURL');
+      expect(output).not.toContain('__TASKPATH_RELEASE__');
     }
-    expect(output).not.toContain('sourceMappingURL');
-    expect(output).not.toContain('__TASKPATH_RELEASE__');
-  }
-  // These are separate runtimes: one shared state inside the page bundle and
-  // ciphertext-only state inside the worker. Neither fetches child modules.
-  for (const name of ['app.js', 'sw.js']) expect(scan.scan(await Bun.file(resolve(built, name)).text()).imports).toEqual([]);
-  expect(await Bun.file(resolve(built, 'sw.js')).text()).not.toContain('react.production');
-  expect(scan.scan(await Bun.file(resolve(built, 'theme.js')).text()).exports).toEqual([]);
-  const store = new Store();
-  try {
-    const handler = createHandler(store, undefined, undefined, undefined, built);
-    for (const name of files.filter(name => /\.(js|css|html|webmanifest|png|svg)$/.test(name))) {
-      const path = name === 'index.html' ? '/' : name === 'sw.js' ? '/sw.js' : `/assets/${ASSET_VERSION}/${name}`;
-      const response = (await handler(new Request('http://localhost' + path)))!;
-      expect(response.status, `GET ${path}`).toBe(200);
-      expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from(await Bun.file(resolve(built, name)).arrayBuffer()));
+    // These are separate runtimes: one shared state inside the page bundle and
+    // ciphertext-only state inside the worker. Neither fetches child modules.
+    for (const name of ['app.js', 'sw.js'])
+      expect(scan.scan(await Bun.file(resolve(built, name)).text()).imports).toEqual([]);
+    expect(await Bun.file(resolve(built, 'sw.js')).text()).not.toContain('react.production');
+    expect(scan.scan(await Bun.file(resolve(built, 'theme.js')).text()).exports).toEqual([]);
+    const store = new Store();
+    try {
+      const handler = createHandler(store, undefined, undefined, undefined, built);
+      for (const name of files.filter((name) =>
+        /\.(js|css|html|webmanifest|png|svg)$/.test(name),
+      )) {
+        const path =
+          name === 'index.html'
+            ? '/'
+            : name === 'sw.js'
+              ? '/sw.js'
+              : `/assets/${ASSET_VERSION}/${name}`;
+        const response = (await handler(new Request('http://localhost' + path)))!;
+        expect(response.status, `GET ${path}`).toBe(200);
+        expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self'");
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(
+          Buffer.from(await Bun.file(resolve(built, name)).arrayBuffer()),
+        );
+      }
+      for (const encoding of ['br', 'gzip'] as const) {
+        const url = `http://localhost/assets/${ASSET_VERSION}/app.js`;
+        const response = (await handler(
+          new Request(url, { headers: { 'accept-encoding': encoding } }),
+        ))!;
+        expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+        expect(response.headers.get('vary')).toBe('Accept-Encoding');
+        expect(response.headers.get('content-encoding')).toBe(encoding);
+        const bytes = Buffer.from(await response.arrayBuffer());
+        const source = Buffer.from(await Bun.file(resolve(built, 'app.js')).arrayBuffer());
+        expect(encoding === 'br' ? brotliDecompressSync(bytes) : gunzipSync(bytes)).toEqual(source);
+        expect(bytes.length).toBeLessThan(source.length / 2);
+        const head = (await handler(
+          new Request(url, { method: 'HEAD', headers: { 'accept-encoding': encoding } }),
+        ))!;
+        expect(head.headers.get('content-encoding')).toBe(encoding);
+        expect(await head.text()).toBe('');
+      }
+      for (const path of ['/', '/sw.js', '/api/auth/status']) {
+        const response = (await handler(
+          new Request('http://localhost' + path, { headers: { 'accept-encoding': 'br' } }),
+        ))!;
+        expect(response.headers.get('cache-control')).toBe('no-store');
+        expect(response.headers.get('content-encoding')).toBeNull();
+      }
+      expect(
+        (await handler(
+          new Request(`http://localhost/assets/${ASSET_VERSION}/.taskpath-build.json`),
+        ))!.status,
+      ).not.toBe(200);
+      const html = await Bun.file(resolve(built, 'index.html')).text();
+      for (const [, url] of html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)) {
+        expect((await handler(new Request('http://localhost' + url)))!.status).toBe(200);
+      }
+      expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(
+        JSON.parse(
+          stampRelease(
+            await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(),
+            release,
+          ),
+        ),
+      );
+      expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(
+        await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text(),
+      );
+      for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
+        const source =
+          name === 'style.css'
+            ? await clientStyles(sourceRelease())
+            : await Bun.file(resolve(root, 'public', sourceName(name))).text();
+        expect(Bun.file(resolve(built, name)).size).toBeLessThan(
+          new TextEncoder().encode(stampRelease(source, release)).length,
+        );
+      }
+      expect(files.filter((name) => name.endsWith('.css'))).toEqual(['style.css']);
+      expect(await Bun.file(resolve(built, 'style.css')).text()).not.toContain('@import');
+    } finally {
+      store.close();
     }
-    for (const encoding of ['br','gzip'] as const) {
-      const url = `http://localhost/assets/${ASSET_VERSION}/app.js`;
-      const response = (await handler(new Request(url,{headers:{'accept-encoding':encoding}})))!;
-      expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
-      expect(response.headers.get('vary')).toBe('Accept-Encoding');
-      expect(response.headers.get('content-encoding')).toBe(encoding);
-      const bytes = Buffer.from(await response.arrayBuffer());
-      const source = Buffer.from(await Bun.file(resolve(built,'app.js')).arrayBuffer());
-      expect(encoding === 'br' ? brotliDecompressSync(bytes) : gunzipSync(bytes)).toEqual(source);
-      expect(bytes.length).toBeLessThan(source.length / 2);
-      const head = (await handler(new Request(url,{method:'HEAD',headers:{'accept-encoding':encoding}})))!;
-      expect(head.headers.get('content-encoding')).toBe(encoding);
-      expect(await head.text()).toBe('');
-    }
-    for (const path of ['/', '/sw.js', '/api/auth/status']) {
-      const response=(await handler(new Request('http://localhost'+path,{headers:{'accept-encoding':'br'}})))!;
-      expect(response.headers.get('cache-control')).toBe('no-store');
-      expect(response.headers.get('content-encoding')).toBeNull();
-    }
-    expect((await handler(new Request(`http://localhost/assets/${ASSET_VERSION}/.taskpath-build.json`)))!.status).not.toBe(200);
-    const html = await Bun.file(resolve(built, 'index.html')).text();
-    for (const [, url] of html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)) {
-      expect((await handler(new Request('http://localhost' + url)))!.status).toBe(200);
-    }
-    expect(await Bun.file(resolve(built, 'manifest.webmanifest')).json()).toEqual(JSON.parse(stampRelease(await Bun.file(resolve(root, 'public/manifest.webmanifest')).text(), release)));
-    expect(await Bun.file(resolve(built, 'vendor/marked.LICENSE.md')).text()).toBe(await Bun.file(resolve(root, 'public/vendor/marked.LICENSE.md')).text());
-    for (const name of ['style.css', 'index.html', 'manifest.webmanifest']) {
-      const source = name === 'style.css' ? await clientStyles(sourceRelease()) : await Bun.file(resolve(root, 'public', sourceName(name))).text();
-      expect(Bun.file(resolve(built, name)).size).toBeLessThan(new TextEncoder().encode(stampRelease(source,release)).length);
-    }
-    expect(files.filter(name => name.endsWith('.css'))).toEqual(['style.css']);
-    expect(await Bun.file(resolve(built, 'style.css')).text()).not.toContain('@import');
-  } finally { store.close(); }
-});
+  },
+);
 
-test.skipIf(!hasBuild)('bundled worker precaches and serves the offline shell without standalone JavaScript modules', async () => {
-  type WorkerEvent = { waitUntil(promise: Promise<void>): void; request?: Pick<Request, 'url' | 'method' | 'mode'>; respondWith?(promise: Promise<Response>): void };
-  const handlers = new Map<string, (event: WorkerEvent) => void>();
-  const fetched: string[] = [], cached: string[] = [];
-  const responses = new Map<string, Response>();
-  let offline = false;
-  const store = new Store();
-  try {
-    const handler = createHandler(store, undefined, undefined, undefined, built);
-    runInNewContext(await Bun.file(resolve(built, 'sw.js')).text(), {
-      TextEncoder, TextDecoder, URL, Response, AbortSignal, setTimeout,
-      self: { location: { origin: 'http://localhost' }, addEventListener: (name: string, callback: (event: WorkerEvent) => void) => handlers.set(name, callback) },
-      caches: { open: async () => ({ put: async (path: string, response: Response) => { cached.push(path); responses.set(path, response); }, match: async (path: string) => responses.get(path)?.clone() }) },
-      fetch: async (input: string | {url:string}) => { if (offline) throw new TypeError('Offline'); const path = typeof input === 'string' ? input : new URL(input.url).pathname; fetched.push(path); return handler(new Request('http://localhost' + path)); },
-    });
-    let installation: Promise<void> | undefined;
-    handlers.get('install')!({ waitUntil(promise) { installation = promise; } });
-    await installation;
-    const prefix = `/assets/${ASSET_VERSION}/`;
-    expect(fetched.filter(path => path.endsWith('.js')).sort()).toEqual(['app.js', 'theme.js'].map(name => prefix + name));
-    expect(cached.sort()).toEqual(fetched.sort());
-    expect(cached).toContain('/offline-shell');
-    expect(cached).toContain(prefix + 'style.css');
-    expect(cached.some(path => path.includes('/themes/'))).toBe(false);
-    const themeFetch = async (path: string) => {
-      let response: Promise<Response> | undefined;
-      handlers.get('fetch')!({ request: { url: 'http://localhost' + path, method: 'GET', mode: 'cors' }, waitUntil() {}, respondWith(promise) { response = promise; } });
-      return (await response!)!;
+test.skipIf(!hasBuild)(
+  'bundled worker precaches and serves the offline shell without standalone JavaScript modules',
+  async () => {
+    type WorkerEvent = {
+      waitUntil(promise: Promise<void>): void;
+      request?: Pick<Request, 'url' | 'method' | 'mode'>;
+      respondWith?(promise: Promise<Response>): void;
     };
-    const visited = prefix + 'themes/midnight/favicon.svg';
-    const themed = await (await themeFetch(visited)).text();
-    expect(cached).toContain(visited);
-    offline = true;
-    expect(await (await themeFetch(visited)).text()).toBe(themed);
-    for (const asset of ['manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']) {
-      const path = prefix + 'themes/ice/' + asset;
-      const fallback = await themeFetch(path);
-      expect(Buffer.from(await fallback.arrayBuffer())).toEqual(Buffer.from(await Bun.file(resolve(built, asset)).arrayBuffer()));
-      expect(cached).not.toContain(path); // Never permanently cache a fallback as themed artwork.
+    const handlers = new Map<string, (event: WorkerEvent) => void>();
+    const fetched: string[] = [],
+      cached: string[] = [];
+    const responses = new Map<string, Response>();
+    let offline = false;
+    const store = new Store();
+    try {
+      const handler = createHandler(store, undefined, undefined, undefined, built);
+      runInNewContext(await Bun.file(resolve(built, 'sw.js')).text(), {
+        TextEncoder,
+        TextDecoder,
+        URL,
+        Response,
+        AbortSignal,
+        setTimeout,
+        self: {
+          location: { origin: 'http://localhost' },
+          addEventListener: (name: string, callback: (event: WorkerEvent) => void) =>
+            handlers.set(name, callback),
+        },
+        caches: {
+          open: async () => ({
+            put: async (path: string, response: Response) => {
+              cached.push(path);
+              responses.set(path, response);
+            },
+            match: async (path: string) => responses.get(path)?.clone(),
+          }),
+        },
+        fetch: async (input: string | { url: string }) => {
+          if (offline) throw new TypeError('Offline');
+          const path = typeof input === 'string' ? input : new URL(input.url).pathname;
+          fetched.push(path);
+          return handler(new Request('http://localhost' + path));
+        },
+      });
+      let installation: Promise<void> | undefined;
+      handlers.get('install')!({
+        waitUntil(promise) {
+          installation = promise;
+        },
+      });
+      await installation;
+      const prefix = `/assets/${ASSET_VERSION}/`;
+      expect(fetched.filter((path) => path.endsWith('.js')).sort()).toEqual(
+        ['app.js', 'theme.js'].map((name) => prefix + name),
+      );
+      expect(cached.sort()).toEqual(fetched.sort());
+      expect(cached).toContain('/offline-shell');
+      expect(cached).toContain(prefix + 'style.css');
+      expect(cached.some((path) => path.includes('/themes/'))).toBe(false);
+      const themeFetch = async (path: string) => {
+        let response: Promise<Response> | undefined;
+        handlers.get('fetch')!({
+          request: { url: 'http://localhost' + path, method: 'GET', mode: 'cors' },
+          waitUntil() {},
+          respondWith(promise) {
+            response = promise;
+          },
+        });
+        return (await response!)!;
+      };
+      const visited = prefix + 'themes/midnight/favicon.svg';
+      const themed = await (await themeFetch(visited)).text();
+      expect(cached).toContain(visited);
+      offline = true;
+      expect(await (await themeFetch(visited)).text()).toBe(themed);
+      for (const asset of [
+        'manifest.webmanifest',
+        'favicon.svg',
+        'icon-192.png',
+        'icon-512.png',
+        'apple-touch-icon.png',
+      ]) {
+        const path = prefix + 'themes/ice/' + asset;
+        const fallback = await themeFetch(path);
+        expect(Buffer.from(await fallback.arrayBuffer())).toEqual(
+          Buffer.from(await Bun.file(resolve(built, asset)).arrayBuffer()),
+        );
+        expect(cached).not.toContain(path); // Never permanently cache a fallback as themed artwork.
+      }
+      offline = false;
+      const shell = await Bun.file(resolve(built, 'index.html')).text();
+      for (const [, url] of shell.matchAll(/(?:src|href)="(\/assets\/[^"#]+)"/g))
+        expect(cached).toContain(url);
+      offline = true;
+      for (const path of ['/', '/login', prefix + 'app.js', prefix + 'theme.js']) {
+        let response: Promise<Response> | undefined;
+        handlers.get('fetch')!({
+          request: {
+            url: 'http://localhost' + path,
+            method: 'GET',
+            mode: path.endsWith('.js') ? 'cors' : 'navigate',
+          },
+          waitUntil() {},
+          respondWith(promise) {
+            response = promise;
+          },
+        });
+        expect(response).toBeDefined();
+        expect(await (await response!).text()).toBe(
+          path.endsWith('.js')
+            ? await Bun.file(resolve(built, path.slice(prefix.length))).text()
+            : shell,
+        );
+      }
+    } finally {
+      store.close();
     }
-    offline = false;
-    const shell = await Bun.file(resolve(built, 'index.html')).text();
-    for (const [, url] of shell.matchAll(/(?:src|href)="(\/assets\/[^"#]+)"/g)) expect(cached).toContain(url);
-    offline = true;
-    for (const path of ['/', '/login', prefix + 'app.js', prefix + 'theme.js']) {
-      let response: Promise<Response> | undefined;
-      handlers.get('fetch')!({ request: { url: 'http://localhost' + path, method: 'GET', mode: path.endsWith('.js') ? 'cors' : 'navigate' }, waitUntil() {}, respondWith(promise) { response = promise; } });
-      expect(response).toBeDefined();
-      expect(await (await response!).text()).toBe(path.endsWith('.js') ? await Bun.file(resolve(built, path.slice(prefix.length))).text() : shell);
-    }
-  } finally { store.close(); }
-});
+  },
+);

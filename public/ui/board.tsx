@@ -1,28 +1,20 @@
-import {
-  useRef,
-  useState,
-  useEffect,
-  type DragEvent,
-  type PointerEvent,
-} from "react";
-import type { Board as BoardData, Task, Status, Route } from "../types.js";
-import { columns, boardOrder, move, mutate, message, navigate } from "./store";
-import { Icon } from "./icons";
-import { Select } from "./pickers";
-import { TaskMenu } from "./task-menu";
-import { dueLabel } from "../dates.js";
+import { useRef, useState, useEffect, type DragEvent, type PointerEvent } from 'react';
+import type { Board as BoardData, Task, Status, Route } from '../types.js';
+import { columns, boardOrder, move, mutate, message, navigate } from './store';
+import { Icon } from './icons';
+import { Select } from './pickers';
+import { TaskMenu } from './task-menu';
+import { dueLabel } from '../dates.js';
 export const dateLabel = (iso: string | null) =>
   iso
-    ? new Date(iso).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        ...(new Date(iso).getFullYear() !== new Date().getFullYear()
-          ? { year: "numeric" }
-          : {}),
+    ? new Date(iso).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        ...(new Date(iso).getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
       })
-    : "";
+    : '';
 interface Actions {
   edit: (task: Task) => void;
   duplicate: (task: Task) => void;
@@ -65,13 +57,11 @@ export function Board({
     origin = useRef<HTMLElement | null>(null);
   const filtered = board.tasks.filter(
     (t) =>
-      !!t.archivedAt === (route.view === "archive") &&
-      (route.category === "all" || t.category === route.category) &&
+      !!t.archivedAt === (route.view === 'archive') &&
+      (route.category === 'all' || t.category === route.category) &&
       (!route.tag || t.tags.includes(route.tag)),
-
   );
-  const run = (fn: () => Promise<unknown>) =>
-    void fn().catch((e) => actions.notify(message(e)));
+  const run = (fn: () => Promise<unknown>) => void fn().catch((e) => actions.notify(message(e)));
   function clear() {
     cancelAnimationFrame(raf.current);
     dragId.current = null;
@@ -82,60 +72,55 @@ export function Board({
   }
   useEffect(() => {
     const cancel = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         clear();
         setContext(null);
       }
     };
-    window.addEventListener("keydown", cancel);
+    window.addEventListener('keydown', cancel);
     return () => {
       cancelAnimationFrame(raf.current);
-      window.removeEventListener("keydown", cancel);
+      window.removeEventListener('keydown', cancel);
     };
   }, []);
   useEffect(() => {
     if (!context) return;
     const el = menu.current!;
-    el.querySelector<HTMLElement>("button")?.focus();
+    el.querySelector<HTMLElement>('button')?.focus();
     const rect = el.getBoundingClientRect();
-    el.style.left =
-      Math.max(8, Math.min(context.x, innerWidth - rect.width - 8)) + "px";
-    el.style.top =
-      Math.max(8, Math.min(context.y, innerHeight - rect.height - 8)) + "px";
+    el.style.left = Math.max(8, Math.min(context.x, innerWidth - rect.width - 8)) + 'px';
+    el.style.top = Math.max(8, Math.min(context.y, innerHeight - rect.height - 8)) + 'px';
     const dismiss = (e: Event) => {
       if (!el.contains(e.target as Node)) setContext(null);
     };
-    window.addEventListener("pointerdown", dismiss);
-    window.addEventListener("resize", dismiss);
-    document.addEventListener("scroll", dismiss, true);
+    window.addEventListener('pointerdown', dismiss);
+    window.addEventListener('resize', dismiss);
+    document.addEventListener('scroll', dismiss, true);
     return () => {
-      window.removeEventListener("pointerdown", dismiss);
-      window.removeEventListener("resize", dismiss);
-      document.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', dismiss, true);
       origin.current?.focus({ preventScroll: true });
     };
   }, [context]);
   function mark(element: Element | null, y: number) {
-    const column = element?.closest<HTMLElement>(".column");
+    const column = element?.closest<HTMLElement>('.column');
     if (!column) {
       drop.current = null;
       setTarget(null);
       return;
     }
-    const card = element?.closest<HTMLElement>(".task-card");
+    const card = element?.closest<HTMLElement>('.task-card');
     if (card?.dataset.id === dragId.current) return;
     let beforeId: string | null = null;
     if (card) {
       beforeId =
-        y <
-        card.getBoundingClientRect().top +
-          card.getBoundingClientRect().height / 2
+        y < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2
           ? card.dataset.id!
           : (card.nextElementSibling as HTMLElement | null)?.dataset.id || null;
       if (beforeId === dragId.current)
         beforeId =
-          (card?.nextElementSibling?.nextElementSibling as HTMLElement | null)
-            ?.dataset.id || null;
+          (card?.nextElementSibling?.nextElementSibling as HTMLElement | null)?.dataset.id || null;
     }
     drop.current = { status: column.dataset.status as Status, beforeId };
     setTarget(drop.current);
@@ -171,17 +156,11 @@ export function Board({
     mark(document.elementFromPoint(e.clientX, e.clientY), e.clientY);
   }
   function reordered(t: Task, direction: number) {
-    const peers = board.tasks.filter(
-      (p) => !p.archivedAt && p.status === t.status,
-    );
+    const peers = board.tasks.filter((p) => !p.archivedAt && p.status === t.status);
     const index = peers.findIndex((p) => p.id === t.id);
     if (index + direction < 0 || index + direction >= peers.length) return;
     run(() =>
-      move(
-        t,
-        t.status,
-        direction < 0 ? peers[index - 1].id : peers[index + 2]?.id || null,
-      ),
+      move(t, t.status, direction < 0 ? peers[index - 1].id : peers[index + 2]?.id || null),
     );
   }
   function card(t: Task, index: number, total: number) {
@@ -189,18 +168,18 @@ export function Board({
     return (
       <article
         key={t.id}
-        className={`task-card ${archived ? "archived-card" : ""} ${t.status === "done" ? "is-done" : ""} ${dragging === t.id ? "dragging" : ""} ${target?.beforeId === t.id ? "drop-before" : ""}`}
+        className={`task-card ${archived ? 'archived-card' : ''} ${t.status === 'done' ? 'is-done' : ''} ${dragging === t.id ? 'dragging' : ''} ${target?.beforeId === t.id ? 'drop-before' : ''}`}
         data-id={t.id}
         draggable={!archived}
         tabIndex={0}
-        aria-label={`${t.title}. ${archived ? "Archived" : columns[t.status]}.`}
+        aria-label={`${t.title}. ${archived ? 'Archived' : columns[t.status]}.`}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
-          if (e.key === "Enter") {
+          if (e.key === 'Enter') {
             e.preventDefault();
             actions.edit(t);
           }
-          if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
             e.preventDefault();
             const r = e.currentTarget.getBoundingClientRect();
             origin.current = e.currentTarget;
@@ -214,24 +193,22 @@ export function Board({
         }}
         onDragStart={(e) => {
           if (archived) return;
-          e.dataTransfer.effectAllowed = "move";
-          e.dataTransfer.setData("text/plain", t.id);
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', t.id);
           dragId.current = t.id;
           setDragging(t.id);
           setContext(null);
         }}
         onDragEnd={clear}
       >
-        <div className={archived ? "archive-copy" : "task-main"}>
+        <div className={archived ? 'archive-copy' : 'task-main'}>
           {!archived && (
             <button
               className="complete-button"
-              aria-label={`${t.status === "done" ? "Reopen" : "Complete"} ${t.title}`}
-              onClick={() =>
-                run(() => move(t, t.status === "done" ? "today" : "done"))
-              }
+              aria-label={`${t.status === 'done' ? 'Reopen' : 'Complete'} ${t.title}`}
+              onClick={() => run(() => move(t, t.status === 'done' ? 'today' : 'done'))}
             >
-              {t.status === "done" && <Icon name="check" />}
+              {t.status === 'done' && <Icon name="check" />}
             </button>
           )}
           <button className="task-title" onClick={() => actions.edit(t)}>
@@ -245,46 +222,34 @@ export function Board({
         </div>
         {!archived && t.notes && <p className="task-notes">{t.notes}</p>}
         {!archived &&
-          (t.dueDate ||
-            (t.reminderAt &&
-              !t.reminderDismissedAt &&
-              t.status !== "done")) && (
+          (t.dueDate || (t.reminderAt && !t.reminderDismissedAt && t.status !== 'done')) && (
             <div className="task-dates">
               {t.dueDate && (
                 <span
                   className={
-                    "task-date" +
-                    (t.dueDate < board.day && t.status !== "done"
-                      ? " overdue"
+                    'task-date' +
+                    (t.dueDate < board.day && t.status !== 'done'
+                      ? ' overdue'
                       : t.dueDate === board.day
-                        ? " due-today"
-                        : "")
+                        ? ' due-today'
+                        : '')
                   }
                 >
                   <Icon name="calendar" />
                   <time dateTime={t.dueDate}>
                     {dueLabel(t.dueDate, board.day).replace(
-                      t.status === "done" ? "Overdue · " : "\0",
-                      "",
+                      t.status === 'done' ? 'Overdue · ' : '\0',
+                      '',
                     )}
                   </time>
                 </span>
               )}
-              {t.reminderAt &&
-                !t.reminderDismissedAt &&
-                t.status !== "done" && (
-                  <span
-                    className="task-reminder"
-                    aria-label={"Reminder: " + dateLabel(t.reminderAt)}
-                  >
-                    <Icon name="bell" />
-                    {!t.dueDate && (
-                      <time dateTime={t.reminderAt}>
-                        {dateLabel(t.reminderAt)}
-                      </time>
-                    )}
-                  </span>
-                )}
+              {t.reminderAt && !t.reminderDismissedAt && t.status !== 'done' && (
+                <span className="task-reminder" aria-label={'Reminder: ' + dateLabel(t.reminderAt)}>
+                  <Icon name="bell" />
+                  {!t.dueDate && <time dateTime={t.reminderAt}>{dateLabel(t.reminderAt)}</time>}
+                </span>
+              )}
             </div>
           )}
         {!!t.tags.length && (
@@ -293,7 +258,7 @@ export function Board({
               <button
                 key={tag}
                 className="tag-chip"
-                aria-label={"Filter by tag " + tag}
+                aria-label={'Filter by tag ' + tag}
                 onClick={() => navigate({ tag }, true)}
               >
                 {tag}
@@ -310,15 +275,13 @@ export function Board({
             )}
           </div>
         )}
-        <div className={archived ? "archive-actions" : "task-bottom"}>
+        <div className={archived ? 'archive-actions' : 'task-bottom'}>
           <div className="task-actions">
             {archived ? (
               <button
                 className="secondary-button"
-                aria-label={"Restore " + t.title}
-                onClick={() =>
-                  run(() => mutate(`/api/tasks/${t.id}/unarchive`, "POST"))
-                }
+                aria-label={'Restore ' + t.title}
+                onClick={() => run(() => mutate(`/api/tasks/${t.id}/unarchive`, 'POST'))}
               >
                 Restore
               </button>
@@ -339,10 +302,10 @@ export function Board({
                 </span>
                 <button
                   className="icon-button drag-handle"
-                  aria-label={"Drag " + t.title}
+                  aria-label={'Drag ' + t.title}
                   tabIndex={-1}
                   onPointerDown={(e) => {
-                    if (e.pointerType === "mouse") return;
+                    if (e.pointerType === 'mouse') return;
                     e.currentTarget.setPointerCapture(e.pointerId);
                     dragId.current = t.id;
                     touch.current = {
@@ -368,39 +331,53 @@ export function Board({
               </>
             )}
             <TaskMenu title={t.title}>
-                <button type="button" role="menuitem" onClick={() => actions.edit(t)}>
-                  <Icon name={archived ? "info" : "edit"} />
-                  {archived ? "View details" : "Edit task"}
-                </button>
-                {!archived && (
-                  <>
-                    <button type="button" role="menuitem" onClick={() => actions.duplicate(t)}><Icon name="copy" />Duplicate task</button>
-                    <button
-                      type="button" role="menuitem"
-                      disabled={index === 0}
-                      onClick={() => reordered(t, -1)}
-                    >
-                      <Icon name="up" />Move up
-                    </button>
-                    <button
-                      type="button" role="menuitem"
-                      disabled={index === total - 1}
-                      onClick={() => reordered(t, 1)}
-                    >
-                      <Icon name="down" />Move down
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => run(() => actions.archive(t))}>
-                      <Icon name="archive" />Archive task
-                    </button>
-                  </>
-                )}
-                <button
-                      type="button" role="menuitem"
-                  className="danger"
-                  onClick={() => run(() => actions.remove(t))}
-                >
-                  <Icon name="trash" />Delete task
-                </button>
+              <button type="button" role="menuitem" onClick={() => actions.edit(t)}>
+                <Icon name={archived ? 'info' : 'edit'} />
+                {archived ? 'View details' : 'Edit task'}
+              </button>
+              {!archived && (
+                <>
+                  <button type="button" role="menuitem" onClick={() => actions.duplicate(t)}>
+                    <Icon name="copy" />
+                    Duplicate task
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={index === 0}
+                    onClick={() => reordered(t, -1)}
+                  >
+                    <Icon name="up" />
+                    Move up
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={index === total - 1}
+                    onClick={() => reordered(t, 1)}
+                  >
+                    <Icon name="down" />
+                    Move down
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => run(() => actions.archive(t))}
+                  >
+                    <Icon name="archive" />
+                    Archive task
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={() => run(() => actions.remove(t))}
+              >
+                <Icon name="trash" />
+                Delete task
+              </button>
             </TaskMenu>
           </div>
         </div>
@@ -411,15 +388,16 @@ export function Board({
     <>
       <section
         id="board"
-        className={"board" + (route.view === "archive" ? " is-archive" : route.focus === "today" ? " is-focused" : "")}
-        tabIndex={-1}
-        aria-label={
-          route.view === "archive" ? "Archived tasks" : "Task planning board"
+        className={
+          'board' +
+          (route.view === 'archive' ? ' is-archive' : route.focus === 'today' ? ' is-focused' : '')
         }
+        tabIndex={-1}
+        aria-label={route.view === 'archive' ? 'Archived tasks' : 'Task planning board'}
         onDragOver={(e: DragEvent) => {
           if (!dragId.current) return;
           e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
+          e.dataTransfer.dropEffect = 'move';
           mark(e.target as Element, e.clientY);
         }}
         onDrop={(e) => {
@@ -429,7 +407,7 @@ export function Board({
           finish();
         }}
       >
-        {route.view === "archive" ? (
+        {route.view === 'archive' ? (
           <>
             <header className="archive-heading">
               <h2>Archive</h2>
@@ -440,58 +418,57 @@ export function Board({
                 filtered
                   .sort(
                     (a, b) =>
-                      b.archivedAt!.localeCompare(a.archivedAt!) ||
-                      a.id.localeCompare(b.id),
+                      b.archivedAt!.localeCompare(a.archivedAt!) || a.id.localeCompare(b.id),
                   )
                   .map((t, i) => card(t, i, filtered.length))
               ) : (
                 <p className="archive-empty">
-                  {route.tag || route.category !== "all"
-                    ? "No matching archived tasks."
-                    : "No archived tasks yet. Archive a task from its menu."}
+                  {route.tag || route.category !== 'all'
+                    ? 'No matching archived tasks.'
+                    : 'No archived tasks yet. Archive a task from its menu.'}
                 </p>
               )}
             </div>
           </>
         ) : (
-          boardOrder.filter((status) => route.focus !== "today" || status === "today").map((status) => {
-            const tasks = filtered.filter((t) => t.status === status);
-            return (
-              <section
-                key={status}
-                className={`column ${status}${target?.status === status ? " drag-over" : ""}`}
-                data-status={status}
-                aria-labelledby={"column-" + status}
-              >
-                <header className="column-header">
-                  <div className="column-title">
-                    <h2 id={"column-" + status}>{columns[status]}</h2>
-                    <span className="column-count">{tasks.length}</span>
-                  </div>
-                </header>
-                <div className="task-list">
-                  {tasks.length ? (
-                    tasks.map((t, i) => card(t, i, tasks.length))
-                  ) : (
-                    <div className="empty-state">
-                      {route.focus === "today"
-                        ? board.tasks.some((t) => !t.archivedAt && t.status === "today")
-                          ? "No Today tasks match your filters."
-                          : "No tasks for Today. Add one below or move a task from the full board."
-                        : route.tag || route.category !== "all"
-                          ? "No matching tasks"
-                          : "Drop tasks here"}
+          boardOrder
+            .filter((status) => route.focus !== 'today' || status === 'today')
+            .map((status) => {
+              const tasks = filtered.filter((t) => t.status === status);
+              return (
+                <section
+                  key={status}
+                  className={`column ${status}${target?.status === status ? ' drag-over' : ''}`}
+                  data-status={status}
+                  aria-labelledby={'column-' + status}
+                >
+                  <header className="column-header">
+                    <div className="column-title">
+                      <h2 id={'column-' + status}>{columns[status]}</h2>
+                      <span className="column-count">{tasks.length}</span>
                     </div>
+                  </header>
+                  <div className="task-list">
+                    {tasks.length ? (
+                      tasks.map((t, i) => card(t, i, tasks.length))
+                    ) : (
+                      <div className="empty-state">
+                        {route.focus === 'today'
+                          ? board.tasks.some((t) => !t.archivedAt && t.status === 'today')
+                            ? 'No Today tasks match your filters.'
+                            : 'No tasks for Today. Add one below or move a task from the full board.'
+                          : route.tag || route.category !== 'all'
+                            ? 'No matching tasks'
+                            : 'Drop tasks here'}
+                      </div>
+                    )}
+                  </div>
+                  {status !== 'done' && (
+                    <QuickAdd status={status} route={route} notify={actions.notify} />
                   )}
-                </div>
-                {status !== "done" && <QuickAdd
-                  status={status}
-                  route={route}
-                  notify={actions.notify}
-                />}
-              </section>
-            );
-          })
+                </section>
+              );
+            })
         )}
       </section>
       {context && (
@@ -500,28 +477,23 @@ export function Board({
           id="task-context-menu"
           className="context-menu"
           role="menu"
-          aria-label={"Actions for " + context.task.title}
+          aria-label={'Actions for ' + context.task.title}
           style={{ left: context.x, top: context.y }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
+            if (e.key === 'Escape') {
               e.preventDefault();
               setContext(null);
-            } else if (
-              ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)
-            ) {
+            } else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
               e.preventDefault();
-              const items = [
-                  ...e.currentTarget.querySelectorAll("button:not(:disabled)"),
-                ],
+              const items = [...e.currentTarget.querySelectorAll('button:not(:disabled)')],
                 i = items.indexOf(document.activeElement as HTMLButtonElement);
               (
                 items[
-                  e.key === "Home"
+                  e.key === 'Home'
                     ? 0
-                    : e.key === "End"
+                    : e.key === 'End'
                       ? items.length - 1
-                      : (i + (e.key === "ArrowDown" ? 1 : -1) + items.length) %
-                        items.length
+                      : (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
                 ] as HTMLElement
               )?.focus();
             }
@@ -529,55 +501,50 @@ export function Board({
         >
           {[
             {
-              icon: context.task.archivedAt ? "info" : "edit",
-              label: context.task.archivedAt ? "View details" : "Edit task",
+              icon: context.task.archivedAt ? 'info' : 'edit',
+              label: context.task.archivedAt ? 'View details' : 'Edit task',
               fn: () => actions.edit(context.task),
             },
             ...(context.task.archivedAt
               ? [
                   {
-                    icon: "restore", label: "Restore task",
-                    fn: () =>
-                      run(() =>
-                        mutate(
-                          `/api/tasks/${context.task.id}/unarchive`,
-                          "POST",
-                        ),
-                      ),
+                    icon: 'restore',
+                    label: 'Restore task',
+                    fn: () => run(() => mutate(`/api/tasks/${context.task.id}/unarchive`, 'POST')),
                   },
                 ]
               : [
-                  { icon: "copy", label: "Duplicate task", fn: () => actions.duplicate(context.task) },
                   {
-                    icon: context.task.status === "done" ? "restore" : "check-circle",
-                    label:
-                      context.task.status === "done"
-                        ? "Reopen in Today"
-                        : "Mark as done",
+                    icon: 'copy',
+                    label: 'Duplicate task',
+                    fn: () => actions.duplicate(context.task),
+                  },
+                  {
+                    icon: context.task.status === 'done' ? 'restore' : 'check-circle',
+                    label: context.task.status === 'done' ? 'Reopen in Today' : 'Mark as done',
                     fn: () =>
                       run(() =>
-                        move(
-                          context.task,
-                          context.task.status === "done" ? "today" : "done",
-                        ),
+                        move(context.task, context.task.status === 'done' ? 'today' : 'done'),
                       ),
                   },
                   ...Object.entries(columns)
-                    .filter(([s]) => s !== context.task.status && s !== "done")
+                    .filter(([s]) => s !== context.task.status && s !== 'done')
                     .map(([s, label]) => ({
-                      icon: s === "today" ? "sun" : s === "week" ? "calendar" : "inbox",
-                      label: "Move to " + label,
+                      icon: s === 'today' ? 'sun' : s === 'week' ? 'calendar' : 'inbox',
+                      label: 'Move to ' + label,
                       fn: () => run(() => move(context.task, s as Status)),
                     })),
-                  { icon: "up", label: "Move up", fn: () => reordered(context.task, -1) },
-                  { icon: "down", label: "Move down", fn: () => reordered(context.task, 1) },
+                  { icon: 'up', label: 'Move up', fn: () => reordered(context.task, -1) },
+                  { icon: 'down', label: 'Move down', fn: () => reordered(context.task, 1) },
                   {
-                    icon: "archive", label: "Archive task",
+                    icon: 'archive',
+                    label: 'Archive task',
                     fn: () => run(() => actions.archive(context.task)),
                   },
                 ]),
             {
-              icon: "trash", label: "Delete task",
+              icon: 'trash',
+              label: 'Delete task',
               fn: () => run(() => actions.remove(context.task)),
             },
           ].map((item) => (
@@ -598,75 +565,108 @@ export function Board({
     </>
   );
 }
-function QuickAdd({ status, route, notify }: {
+function QuickAdd({
+  status,
+  route,
+  notify,
+}: {
   status: Status;
   route: Route;
   notify: (s: string) => void;
 }) {
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState('');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const saving = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
-    return () => { alive.current = false; };
+    return () => {
+      alive.current = false;
+    };
   }, []);
   useEffect(() => {
     if (open && !busy) input.current?.focus();
   }, [open, busy]);
   return (
     <div className="quick-add-container">
-      <button ref={trigger} type="button" className="quick-add-trigger" hidden={open}
-        aria-expanded={open} onClick={() => setOpen(true)}>
+      <button
+        ref={trigger}
+        type="button"
+        className="quick-add-trigger"
+        hidden={open}
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
         <Icon name="plus" /> Add task
       </button>
-      {open && <form className="quick-add" data-status={status}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault();
-          if (e.key === "Escape" && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (saving.current) return;
-            setTitle(""); setError(""); setOpen(false);
-            requestAnimationFrame(() => trigger.current?.focus());
-          }
-        }}
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (saving.current) return;
-          saving.current = true;
-          setBusy(true); setError("");
-          try {
-            const result = await mutate("/api/tasks", "POST", {
-              title, status,
-              category: route.category === "work" ? "work" : "personal",
-              tags: route.tag ? [route.tag] : [],
-            });
-            if (alive.current) {
-              setTitle("");
-              notify(`Task added to ${columns[result.task.status]}.`);
+      {open && (
+        <form
+          className="quick-add"
+          data-status={status}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault();
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (saving.current) return;
+              setTitle('');
+              setError('');
+              setOpen(false);
+              requestAnimationFrame(() => trigger.current?.focus());
             }
-          } catch (e) {
-            if (alive.current) setError(message(e));
-          } finally {
-            saving.current = false;
-            if (alive.current) setBusy(false);
-          }
-        }}>
-        <Icon name="plus" />
-        <input ref={input} aria-label={"Quick add task to " + columns[status]}
-          aria-describedby={error ? `quick-add-error-${status}` : undefined}
-          placeholder="What needs doing?" required maxLength={240} autoComplete="off"
-          value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
-        <button aria-label={"Save task to " + columns[status]} disabled={busy}>
-          <Icon name="arrow-right" />
-        </button>
-      </form>}
-      {error && <p id={`quick-add-error-${status}`} className="form-error" role="alert">{error}</p>}
+          }}
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (saving.current) return;
+            saving.current = true;
+            setBusy(true);
+            setError('');
+            try {
+              const result = await mutate('/api/tasks', 'POST', {
+                title,
+                status,
+                category: route.category === 'work' ? 'work' : 'personal',
+                tags: route.tag ? [route.tag] : [],
+              });
+              if (alive.current) {
+                setTitle('');
+                notify(`Task added to ${columns[result.task.status]}.`);
+              }
+            } catch (e) {
+              if (alive.current) setError(message(e));
+            } finally {
+              saving.current = false;
+              if (alive.current) setBusy(false);
+            }
+          }}
+        >
+          <Icon name="plus" />
+          <input
+            ref={input}
+            aria-label={'Quick add task to ' + columns[status]}
+            aria-describedby={error ? `quick-add-error-${status}` : undefined}
+            placeholder="What needs doing?"
+            required
+            maxLength={240}
+            autoComplete="off"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={busy}
+          />
+          <button aria-label={'Save task to ' + columns[status]} disabled={busy}>
+            <Icon name="arrow-right" />
+          </button>
+        </form>
+      )}
+      {error && (
+        <p id={`quick-add-error-${status}`} className="form-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

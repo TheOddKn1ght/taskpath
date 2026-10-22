@@ -7,18 +7,67 @@ const ASSET_VERSION = sourceRelease().version;
 test('public shells use versioned assets and every service-worker shell resource exists', async () => {
   const store = new Store();
   try {
-    const handle = createHandler(store), get = (path: string) => handle(new Request('http://localhost' + path));
-    const shell = await get('/'), html = await shell!.text();
+    const handle = createHandler(store),
+      get = (path: string) => handle(new Request('http://localhost' + path));
+    const shell = await get('/'),
+      html = await shell!.text();
     expect(html).toContain('vault-locked');
     expect(html).not.toContain('__TASKPATH_RELEASE__');
     expect((await get('/assets/accounts-v18/app.js'))!.status).not.toBe(200);
     expect((await get('/assets/__TASKPATH_RELEASE__/app.js'))!.status).not.toBe(200);
     expect(shell!.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
-    const urls = [...html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)].map(m => m[1]).filter(u => u !== '/login');
-    for (const url of urls) { expect(url).toStartWith(`/assets/${ASSET_VERSION}/`); expect((await get(url))!.status).toBe(200); }
-    for (const file of ['api.js', 'api-client.js', 'crypto.js', 'persistence.js', 'markdown.js', 'vendor/marked.js', 'offline-model.js', 'offline.js', 'tags.js', 'realtime.js']) expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
+    const urls = [...html.matchAll(/(?:src|href)="(\/[^"#]+)"/g)]
+      .map((m) => m[1])
+      .filter((u) => u !== '/login');
+    for (const url of urls) {
+      expect(url).toStartWith(`/assets/${ASSET_VERSION}/`);
+      expect((await get(url))!.status).toBe(200);
+    }
+    for (const file of [
+      'api.js',
+      'api-client.js',
+      'crypto.js',
+      'persistence.js',
+      'markdown.js',
+      'vendor/marked.js',
+      'offline-model.js',
+      'offline.js',
+      'tags.js',
+      'realtime.js',
+    ])
+      expect((await get(`/assets/${ASSET_VERSION}/${file}`))!.status).toBe(200);
     // Missing themed icons must not break the worker's all-or-nothing offline install.
-    for (const theme of ['light', 'dark', 'gruvbox-light', 'gruvbox-dark', 'nord', 'catppuccin', 'rose-pine', 'midnight', 'plum', 'ocean', 'sand', 'lavender', 'ice', 'mint', 'blush', 'paper', 'ember', 'forest', 'graphite', 'apricot', 'matcha', 'periwinkle', 'linen', 'twilight', 'aubergine', 'espresso', 'aurora', 'high-contrast-light', 'high-contrast-dark']) {
+    for (const theme of [
+      'light',
+      'dark',
+      'gruvbox-light',
+      'gruvbox-dark',
+      'nord',
+      'catppuccin',
+      'rose-pine',
+      'midnight',
+      'plum',
+      'ocean',
+      'sand',
+      'lavender',
+      'ice',
+      'mint',
+      'blush',
+      'paper',
+      'ember',
+      'forest',
+      'graphite',
+      'apricot',
+      'matcha',
+      'periwinkle',
+      'linen',
+      'twilight',
+      'aubergine',
+      'espresso',
+      'aurora',
+      'high-contrast-light',
+      'high-contrast-dark',
+    ]) {
       const base = `/assets/${ASSET_VERSION}/themes/${theme}/`;
       const manifest = await (await get(base + 'manifest.webmanifest'))!.json();
       expect(manifest.id).toBe('/'); // Theme changes retain the same installed-app identity.
@@ -32,33 +81,51 @@ test('public shells use versioned assets and every service-worker shell resource
         expect(bytes.readUInt32BE(16)).toBe(Number(icon.sizes.split('x')[0]));
         expect(bytes.readUInt32BE(20)).toBe(Number(icon.sizes.split('x')[1]));
       }
-      expect((await (await get(base + 'apple-touch-icon.png'))!.arrayBuffer()).byteLength).toBeGreaterThan(100);
+      expect(
+        (await (await get(base + 'apple-touch-icon.png'))!.arrayBuffer()).byteLength,
+      ).toBeGreaterThan(100);
       expect(await (await get(base + 'favicon.svg'))!.text()).toContain('<svg');
     }
-    for (const path of ['/app.js', '/app.ts', '/assets/' + ASSET_VERSION + '/app.ts', '/assets/' + ASSET_VERSION + '/types.d.ts', '/src/server.ts']) expect((await get(path))!.status).not.toBe(200);
+    for (const path of [
+      '/app.js',
+      '/app.ts',
+      '/assets/' + ASSET_VERSION + '/app.ts',
+      '/assets/' + ASSET_VERSION + '/types.d.ts',
+      '/src/server.ts',
+    ])
+      expect((await get(path))!.status).not.toBe(200);
     const script = await (await get(`/assets/${ASSET_VERSION}/app.js`))!.text();
     expect(() => new Bun.Transpiler({ loader: 'js' }).scan(script)).not.toThrow();
     expect(script).not.toContain('import type');
     const worker = await (await get('/sw.js'))!.text();
-    expect(new Bun.Transpiler({loader:'js'}).scan(worker).imports).toEqual([]);
+    expect(new Bun.Transpiler({ loader: 'js' }).scan(worker).imports).toEqual([]);
     expect(worker).toContain('taskpath-shell-' + ASSET_VERSION);
     expect(worker).not.toContain('skipWaiting');
     expect(worker).toMatch(/name\.startsWith\(['"]taskpath-shell-accounts-['"]\)/);
     expect(await Bun.file('public/vendor/marked.LICENSE.md').exists()).toBe(true);
     expect(await Bun.file('.dockerignore').text()).toContain('!public/vendor/marked.LICENSE.md');
-  } finally { store.close(); }
+  } finally {
+    store.close();
+  }
 });
 
 test('every client module in public/ has a server route', async () => {
   // Routes are an explicit allowlist in src/server.ts; a new module must be added there.
-  const modules = [...new Bun.Glob('*.ts').scanSync({ cwd: 'public' })].filter(name => !name.endsWith('.d.ts'));
+  const modules = [...new Bun.Glob('*.ts').scanSync({ cwd: 'public' })].filter(
+    (name) => !name.endsWith('.d.ts'),
+  );
   expect(modules).toContain('offline-model.ts');
   const store = new Store();
   try {
     const handle = createHandler(store);
     for (const name of modules) {
-      const path = name === 'sw.ts' ? '/sw.js' : `/assets/${ASSET_VERSION}/${name.replace(/\.ts$/, '.js')}`;
-      expect((await handle(new Request('http://localhost' + path)))!.status, `GET ${path}`).toBe(200);
+      const path =
+        name === 'sw.ts' ? '/sw.js' : `/assets/${ASSET_VERSION}/${name.replace(/\.ts$/, '.js')}`;
+      expect((await handle(new Request('http://localhost' + path)))!.status, `GET ${path}`).toBe(
+        200,
+      );
     }
-  } finally { store.close(); }
+  } finally {
+    store.close();
+  }
 });

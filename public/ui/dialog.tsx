@@ -1,11 +1,11 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { flushSync } from "react-dom";
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 export function Dialog({
   id,
   title,
   children,
   onClose,
-  className = "",
+  className = '',
   busy = false,
   animateClose = true,
 }: {
@@ -25,9 +25,7 @@ export function Dialog({
     const d = ref.current!,
       opener = document.activeElement as HTMLElement | null;
     d.showModal();
-    d.querySelector<HTMLElement>(
-      '[autofocus],input:not([type="hidden"]),textarea',
-    )?.focus();
+    d.querySelector<HTMLElement>('[autofocus],input:not([type="hidden"]),textarea')?.focus();
     return () => {
       d.close();
       if (opener?.isConnected) opener.focus({ preventScroll: true });
@@ -41,14 +39,14 @@ export function Dialog({
     if (!animateClose) return close.current();
     // Start from the current frame in case the enter animation is still running.
     const now = getComputedStyle(d);
-    d.style.setProperty("--exit-opacity", now.opacity);
-    d.style.setProperty("--exit-translate", now.translate === "none" ? "0 0" : now.translate);
-    d.style.setProperty("--exit-backdrop", getComputedStyle(d, "::backdrop").opacity);
-    d.classList.add("closing");
+    d.style.setProperty('--exit-opacity', now.opacity);
+    d.style.setProperty('--exit-translate', now.translate === 'none' ? '0 0' : now.translate);
+    d.style.setProperty('--exit-backdrop', getComputedStyle(d, '::backdrop').opacity);
+    d.classList.add('closing');
     const exit = d.getAnimations();
     // Reduced motion disables the animation, so close synchronously as before.
     if (!exit.length) {
-      d.classList.remove("closing");
+      d.classList.remove('closing');
       return close.current();
     }
     closing.current = true;
@@ -56,7 +54,7 @@ export function Dialog({
     const reset = () => {
       closing.current = false;
       d.inert = false;
-      d.classList.remove("closing");
+      d.classList.remove('closing');
     };
     // Background tabs may never finish the animation; don't leave the dialog stuck.
     const fallback = setTimeout(() => exit.forEach((a) => a.finish()), 400);
@@ -87,18 +85,13 @@ export function Dialog({
         dismiss();
       }}
       onClick={(e) => {
-        if ((e.target as Element).closest("[data-dialog-close]")) {
+        if ((e.target as Element).closest('[data-dialog-close]')) {
           dismiss();
           return;
         }
         if (e.target !== e.currentTarget || busy) return;
         const r = e.currentTarget.getBoundingClientRect();
-        if (
-          e.clientX < r.left ||
-          e.clientX > r.right ||
-          e.clientY < r.top ||
-          e.clientY > r.bottom
-        )
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
           dismiss();
       }}
     >
@@ -107,7 +100,7 @@ export function Dialog({
         <button
           type="button"
           className="icon-button"
-          aria-label={"Close " + title}
+          aria-label={'Close ' + title}
           disabled={busy}
           data-dialog-close
         >

@@ -1,7 +1,7 @@
 /* Workspace navigation and archive share the vault's locked/inert boundary. */
 #main {
   display: grid;
-  grid-template-columns: 184px minmax(0,1fr);
+  grid-template-columns: 184px minmax(0, 1fr);
   gap: 28px;
   max-width: 1700px;
   padding: 0 28px 26px;
@@ -43,14 +43,14 @@
   color: var(--text);
 }
 
-#sidebar [aria-current="page"] {
+#sidebar [aria-current='page'] {
   background: var(--hover);
   color: var(--accent);
   font-weight: 600;
 }
 
 #main.sidebar-collapsed {
-  grid-template-columns: 60px minmax(0,1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
 }
 
 #sidebar .nav-label {
@@ -93,10 +93,11 @@
 
 .archive-heading h2 {
   font-size: 22px;
-  letter-spacing: -.5px;
+  letter-spacing: -0.5px;
 }
 
-.archive-heading p,.archive-empty {
+.archive-heading p,
+.archive-empty {
   color: var(--muted);
   margin-top: 8px;
   line-height: 1.5;
@@ -145,7 +146,11 @@
   flex: none;
 }
 
-.archive-actions button,.archive-actions summary,#archive-task,#archive-restore,#archive-delete {
+.archive-actions button,
+.archive-actions summary,
+#archive-task,
+#archive-restore,
+#archive-delete {
   min-height: 44px;
 }
 
@@ -170,13 +175,15 @@
   font-size: 18px;
 }
 
-#task-dialog .dialog-actions,#task-dialog .dialog-actions-right {
+#task-dialog .dialog-actions,
+#task-dialog .dialog-actions-right {
   flex-wrap: wrap;
   gap: 8px;
 }
 
-@media (max-width:760px) {
-  #main,#main.sidebar-collapsed {
+@media (max-width: 760px) {
+  #main,
+  #main.sidebar-collapsed {
     display: block;
     padding: 0 16px 24px;
   }

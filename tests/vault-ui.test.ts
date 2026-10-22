@@ -1,5 +1,5 @@
-import { test, expect } from "bun:test";
-import { startAuthentication } from "../public/ui/auth-startup";
+import { test, expect } from 'bun:test';
+import { startAuthentication } from '../public/ui/auth-startup';
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: Error) => void;
   const promise = new Promise<T>((yes, no) => {
@@ -39,10 +39,8 @@ function fixture(invitation = false) {
     },
   };
 }
-test("remembered startup does not expose sign-in while storage or keys are pending", async () => {
-  expect(await Bun.file("public/index.html").text()).not.toContain(
-    'id="unlock-screen"',
-  );
+test('remembered startup does not expose sign-in while storage or keys are pending', async () => {
+  expect(await Bun.file('public/index.html').text()).not.toContain('id="unlock-screen"');
   const f = fixture();
   expect(f.phases).toEqual([]);
   f.load.resolve();
@@ -50,38 +48,38 @@ test("remembered startup does not expose sign-in while storage or keys are pendi
   expect(f.phases).toEqual([]);
   f.restore.resolve(true);
   await f.ready;
-  expect(f.phases).toEqual(["unlocked"]);
+  expect(f.phases).toEqual(['unlocked']);
 });
-test("unremembered startup shows sign-in only after checking storage", async () => {
+test('unremembered startup shows sign-in only after checking storage', async () => {
   const f = fixture();
   f.load.resolve();
   await tick();
   expect(f.phases).toEqual([]);
   f.restore.resolve(false);
   await f.ready;
-  expect(f.phases).toEqual(["locked"]);
+  expect(f.phases).toEqual(['locked']);
 });
-test("invitations bypass the previously remembered account", async () => {
+test('invitations bypass the previously remembered account', async () => {
   const f = fixture(true);
   f.load.resolve();
   await f.ready;
   expect(f.calls()).toBe(0);
-  expect(f.phases).toEqual(["locked"]);
+  expect(f.phases).toEqual(['locked']);
 });
-test("storage failures surface a locked error", async () => {
-  for (const phase of ["load", "restore"] as const) {
+test('storage failures surface a locked error', async () => {
+  for (const phase of ['load', 'restore'] as const) {
     const f = fixture();
-    if (phase === "restore") {
+    if (phase === 'restore') {
       f.load.resolve();
       await tick();
     }
-    f[phase].reject(new Error("Storage unavailable"));
+    f[phase].reject(new Error('Storage unavailable'));
     await f.ready;
-    expect(f.errors[0]).toContain("device storage");
+    expect(f.errors[0]).toContain('device storage');
     expect(f.phases).toEqual([]);
   }
 });
-test("late startup cannot reopen a locked or switched workspace", async () => {
+test('late startup cannot reopen a locked or switched workspace', async () => {
   const f = fixture();
   f.load.resolve();
   await tick();

@@ -26,10 +26,13 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.3"
+          bun-version: '1.4.4'
 
       - name: Install locked dependencies
         run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Check formatting
+        run: bun run format:check
 
       - name: Check TypeScript
         run: bun run typecheck
@@ -63,7 +66,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.3"
+          bun-version: '1.4.4'
 
       - name: Install locked dependencies
         run: bun install --frozen-lockfile --ignore-scripts

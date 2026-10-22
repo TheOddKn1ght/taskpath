@@ -22,7 +22,10 @@ export class Realtime {
     const devices = this.userSockets.get(socket.data.userId);
     devices?.delete(socket);
     if (devices?.size === 0) this.userSockets.delete(socket.data.userId);
-    if (!this.sockets.size) { clearInterval(this.timer); this.timer = undefined; }
+    if (!this.sockets.size) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
   }
 
   checkSessions() {
@@ -43,11 +46,11 @@ export class Realtime {
     backpressureLimit: 16384,
     closeOnBackpressureLimit: true,
     idleTimeout: 60,
-    open: socket => {
+    open: (socket) => {
       if (!this.valid(socket)) return;
       this.sockets.add(socket);
       let devices = this.userSockets.get(socket.data.userId);
-      if (!devices) this.userSockets.set(socket.data.userId, devices = new Set());
+      if (!devices) this.userSockets.set(socket.data.userId, (devices = new Set()));
       devices.add(socket);
       socket.send('{"type":"ready"}');
       this.timer ??= setInterval(() => {
@@ -57,8 +60,12 @@ export class Realtime {
       }, this.heartbeatMs);
       this.timer.unref();
     },
-    message: socket => { socket.close(1008, 'Use the HTTP sync API'); },
-    close: socket => { this.remove(socket); },
+    message: (socket) => {
+      socket.close(1008, 'Use the HTTP sync API');
+    },
+    close: (socket) => {
+      this.remove(socket);
+    },
   };
 
   close() {

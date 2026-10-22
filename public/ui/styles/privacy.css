@@ -4,7 +4,8 @@
   margin-top: 8px;
 }
 
-[data-privacy-open],#privacy-close {
+[data-privacy-open],
+#privacy-close {
   min-height: 44px;
   min-width: 44px;
 }

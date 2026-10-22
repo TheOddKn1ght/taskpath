@@ -1,12 +1,6 @@
 import { startAutoLock } from '../auto-lock.js';
-import { fileState } from "../file-persistence.js";
-import type {
-  Board,
-  Route,
-  Task,
-  MutationResult,
-  ArchiveResult,
-} from "../types.js";
+import { fileState } from '../file-persistence.js';
+import type { Board, Route, Task, MutationResult, ArchiveResult } from '../types.js';
 import {
   lock,
   offlineRequest,
@@ -14,18 +8,18 @@ import {
   selectedAccount,
   localState,
   syncAfterCurrent,
-} from "../offline.js";
-import { createRealtime } from "../realtime.js";
-import { emptyRoute, readRoute, routeHash } from "./routes";
+} from '../offline.js';
+import { createRealtime } from '../realtime.js';
+import { emptyRoute, readRoute, routeHash } from './routes';
 export const columns = {
-  later: "Later",
-  week: "This Week",
-  today: "Today",
-  done: "Done",
+  later: 'Later',
+  week: 'This Week',
+  today: 'Today',
+  done: 'Done',
 };
-export const boardOrder = ["today", "week", "later", "done"] as const;
+export const boardOrder = ['today', 'week', 'later', 'done'] as const;
 interface Snapshot {
-  phase: "loading" | "locked" | "unlocked";
+  phase: 'loading' | 'locked' | 'unlocked';
   board: Board | null;
   route: Route;
   epoch: number;
@@ -36,13 +30,13 @@ interface Snapshot {
   syncComplete: boolean;
 }
 let snapshot: Snapshot = {
-  phase: "loading",
+  phase: 'loading',
   board: null,
   route: { ...emptyRoute },
   epoch: 0,
   busy: false,
-  error: "",
-  connection: "Connecting…",
+  error: '',
+  connection: 'Connecting…',
   authRequired: false,
   syncComplete: false,
 };
@@ -60,12 +54,12 @@ export function publish(patch: Partial<Snapshot>) {
 }
 export function navigate(patch: Partial<Route>, replace = false) {
   const route = { ...snapshot.route, ...patch };
-  if (route.view !== "board") delete route.focus;
+  if (route.view !== 'board') delete route.focus;
   const hash = routeHash(route);
   if (location.hash !== hash)
-    history[replace ? "replaceState" : "pushState"](
+    history[replace ? 'replaceState' : 'pushState'](
       null,
-      "",
+      '',
       location.pathname + location.search + hash,
     );
   publish({ route });
@@ -82,17 +76,12 @@ export async function refresh() {
   const epoch = snapshot.epoch,
     account = selectedAccount();
   try {
-    const board = await offlineRequest("/api/board");
+    const board = await offlineRequest('/api/board');
     const local = await localState();
-    if (
-      !isUnlocked() ||
-      epoch !== snapshot.epoch ||
-      account !== selectedAccount()
-    )
-      return;
+    if (!isUnlocked() || epoch !== snapshot.epoch || account !== selectedAccount()) return;
     publish({
       board,
-      error: local.error || "",
+      error: local.error || '',
       authRequired: !!local.authRequired,
       syncComplete: !!local.syncComplete,
       connection: local.authRequired
@@ -102,14 +91,13 @@ export async function refresh() {
           : local.pending.length
             ? `${local.pending.length} changes saved on this device`
             : local.online && !local.syncComplete
-              ? "Syncing tasks…"
+              ? 'Syncing tasks…'
               : local.online
-              ? "All changes synced"
-              : "Offline · Saved on this device",
+                ? 'All changes synced'
+                : 'Offline · Saved on this device',
     });
   } catch (e) {
-    if (epoch === snapshot.epoch && isUnlocked())
-      publish({ error: message(e) });
+    if (epoch === snapshot.epoch && isUnlocked()) publish({ error: message(e) });
   } finally {
     refreshing = false;
     if (refreshAgain) {
@@ -118,48 +106,34 @@ export async function refresh() {
     }
   }
 }
-export const message = (e: unknown) =>
-  e instanceof Error ? e.message : String(e);
+export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function mutate(
-  path: "/api/import/markdown",
+  path: '/api/import/markdown',
   method: string,
   body?: unknown,
 ): Promise<{ imported: number; skipped: number }>;
 export function mutate(
-  path: "/api/tasks/archive-undo" | "/api/tasks/archive-completed",
+  path: '/api/tasks/archive-undo' | '/api/tasks/archive-completed',
   method: string,
   body?: unknown,
 ): Promise<ArchiveResult>;
-export function mutate(
-  path: string,
-  method: string,
-  body?: unknown,
-): Promise<MutationResult>;
-export async function mutate(
-  path: string,
-  method: string,
-  body?: unknown,
-): Promise<unknown> {
-  if (snapshot.busy)
-    throw new Error("A change is being saved. Try again in a moment.");
+export function mutate(path: string, method: string, body?: unknown): Promise<MutationResult>;
+export async function mutate(path: string, method: string, body?: unknown): Promise<unknown> {
+  if (snapshot.busy) throw new Error('A change is being saved. Try again in a moment.');
   const epoch = snapshot.epoch;
   publish({ busy: true });
   try {
     const result = await offlineRequest(path, method, body);
     await refresh();
     if (epoch !== snapshot.epoch || !isUnlocked())
-      throw new Error("Workspace locked. Encrypted changes remain saved.");
+      throw new Error('Workspace locked. Encrypted changes remain saved.');
     return result;
   } finally {
     if (epoch === snapshot.epoch) publish({ busy: false });
   }
 }
-export async function move(
-  task: Task,
-  status: Task["status"],
-  beforeId?: string | null,
-) {
-  return mutate(`/api/tasks/${task.id}`, "PATCH", {
+export async function move(task: Task, status: Task['status'], beforeId?: string | null) {
+  return mutate(`/api/tasks/${task.id}`, 'PATCH', {
     status,
     ...(beforeId !== undefined ? { beforeId } : {}),
   });
@@ -172,7 +146,11 @@ export function startRuntime(immediate: (fn: () => void) => void) {
     sync: syncAfterCurrent,
     needsRetry: async () => {
       const files = await fileState();
-      return !!files.error || !!files.deletions.length || Object.values(files.files).some(file => !!file.pending || !!file.error);
+      return (
+        !!files.error ||
+        !!files.deletions.length ||
+        Object.values(files.files).some((file) => !!file.pending || !!file.error)
+      );
     },
     localState,
     url: location.href,
@@ -181,20 +159,20 @@ export function startRuntime(immediate: (fn: () => void) => void) {
     realtime.pause();
     immediate(() =>
       publish({
-        phase: "locked",
+        phase: 'locked',
         board: null,
         route: { ...emptyRoute },
         epoch: snapshot.epoch + 1,
         busy: false,
-        error: "",
-        connection: "",
+        error: '',
+        connection: '',
         authRequired: false,
         syncComplete: false,
       }),
     );
   };
   const opened = () => {
-    publish({ phase: "unlocked", route: readRoute(location.hash) });
+    publish({ phase: 'unlocked', route: readRoute(location.hash) });
     void refresh();
     void realtime.resume();
   };
@@ -204,28 +182,28 @@ export function startRuntime(immediate: (fn: () => void) => void) {
       void realtime.resume();
     }
   };
-  window.addEventListener("taskpath-locked", locked, options);
-  window.addEventListener("taskpath-unlocked", opened, options);
+  window.addEventListener('taskpath-locked', locked, options);
+  window.addEventListener('taskpath-unlocked', opened, options);
   window.addEventListener(
-    "taskpath-storage",
+    'taskpath-storage',
     () => {
       void refresh();
       void realtime.reconcile();
     },
     options,
   );
-  window.addEventListener("focus", foreground, options);
-  window.addEventListener("online", foreground, options);
-  window.addEventListener("pagehide", () => realtime.pause(), options);
+  window.addEventListener('focus', foreground, options);
+  window.addEventListener('online', foreground, options);
+  window.addEventListener('pagehide', () => realtime.pause(), options);
   document.addEventListener(
-    "visibilitychange",
+    'visibilitychange',
     () => {
       if (!document.hidden) foreground();
     },
     options,
   );
   window.addEventListener(
-    "hashchange",
+    'hashchange',
     () => {
       if (!location.hash || /^#(board|calendar|stats|archive|files)(\?|$)/.test(location.hash))
         publish({ route: readRoute(location.hash) });
