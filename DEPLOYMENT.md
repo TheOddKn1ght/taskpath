@@ -474,3 +474,97 @@ The existing SQLite backup now contains file ciphertext, wrapped file keys, meta
 Asset URLs and PWA caches now receive an automatic content fingerprint. Do not edit release numbers. Docker generates the fingerprint during its normal build; for a direct installation, run `bun run build` and restart the server. Keep the generated `dist/public/.taskpath-build.json` together with the complete `dist/public` directory when copying a build. The manifest is internal and is not served over HTTP. Production validates file checksums and serves one fixed release until restart.
 
 Open the update online, then close every Taskpath tab and PWA window and reopen. This activation rule also applies when upgrading from `accounts-v18` or earlier. Do not clear browser storage, replace database volumes or recreate accounts. Backend-only changes do not inherently require a new client cache. No Nginx changes are needed for fingerprinted URLs.
+
+## Managed updates for an existing Docker installation
+
+The updater provides the same manual update command and optional hourly timer as `lll`.
+It adopts the running multi-user Compose service without changing host Nginx,
+certificates, the old source directory, or its `.env`. No Bun installation is
+needed on the host. Install Python 3, Git and util-linux if absent; Docker Compose
+must support `up --wait`. Run on the existing Ubuntu/Debian VPS with systemd.
+
+First upload this release's `scripts/` and `deploy/` directories using the rsync
+exclusions above. Identify the existing service from its original directory:
+
+```sh
+cd /opt/taskpath
+sudo docker compose ps -q taskpath
+```
+
+Use that container ID explicitly, so the updater cannot choose another instance:
+
+```sh
+sudo bash scripts/vps.sh install --container CONTAINER_ID
+sudo taskpath update
+sudo taskpath status
+```
+
+The installer only registers the updater; the old service keeps running until
+`update`. The default source is `https://github.com/TheOddKn1ght/taskpath.git`,
+branch `main`. Override with `--repo URL --branch BRANCH` at installation. Private
+repositories need root's read-only SSH key and known_hosts. The updater refuses
+rewritten branch history. Write access to this branch grants deployment authority:
+the Docker build executes that repository's code.
+
+Before updating, let every device finish syncing. Each update builds while the
+old service runs, then stops its writer, archives the **whole actual data volume**,
+and extracts it into a new named volume. That copy must contain a valid multi-user
+SQLite database. The candidate runs its migrations and health check on the copy
+with no network and no public ports. This prevents preflight push delivery. A
+failure before the switch restarts the previous service with its untouched data.
+The switch commits the new volume before publishing the existing loopback port.
+Once committed, recovery always resumes that deployment; it never restores an
+older snapshot over potential new writes. There is brief downtime during the
+snapshot, migration test, and switch.
+
+The original container stays stopped after the first successful update. Old
+volumes and private archives in `/opt/taskpath-updater/backups/` are retained;
+copy backups off the host and monitor disk space. Archives include SQLite WAL,
+accounts, encrypted files, sessions, wrapped keys, push signing keys and schedules.
+There is no automatic backup/volume pruning. A failed candidate's copy is retained
+for diagnosis. The updater refuses bind mounts, extra mounts, custom database
+paths, exposed public application ports, and legacy plaintext/single-owner data;
+it reports the incompatibility before stopping the running instance.
+
+After adoption, use the managed commands instead of the old directory's Compose
+commands, which still refer to the original volume and could restart stale data:
+
+```sh
+sudo taskpath update
+sudo taskpath backup
+sudo taskpath logs
+sudo taskpath recover
+sudo taskpath start
+sudo taskpath enable-auto-updates
+sudo taskpath disable-auto-updates
+```
+
+Updates remain manual until enabled. Inspect scheduled runs with
+`journalctl -u taskpath-update.service`. Following an interrupted operation, use
+`recover`; if startup still fails, inspect logs and correct the failure before
+retrying. No automatic database downgrade is attempted after the switch.
+
+The root-only `/opt/taskpath-updater/settings.json` captures the running
+container's environment (including secrets), startup command, user and port.
+Keep it private. Editing the old `.env` no longer configures managed releases.
+For future releases, edit `settings.json`; for an immediate environment change,
+edit the deployment JSON named in `/opt/taskpath-updater/current` as well, then
+run `sudo taskpath start`. Keep the database path, named-volume mapping, and
+loopback binding intact. The effective deployment is inspectable with:
+
+```sh
+sudo docker compose --project-name taskpath-managed \
+  --project-directory /opt/taskpath-updater --env-file /dev/null \
+  -f "$(sudo cat /opt/taskpath-updater/current)" ps
+```
+
+The same Compose prefix supports `exec taskpath bun run admin ...`. Settings are
+captured from the existing container, so preserve its public origin and timezone.
+The updater does not modify Nginx; apply the encrypted-file upload location from
+the file-vault section separately if upgrading from a version without it.
+After updating, open each device online, close all Taskpath tabs/PWA windows,
+then reopen. Keep browser storage intact, including unsynced edits and files.
+
+Verification covers configuration adoption, update/recovery failures and SQLite
+archive restoration in unit tests. A real remote VPS rollout still needs to be
+verified on the deployment host.

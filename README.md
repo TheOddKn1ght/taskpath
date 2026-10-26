@@ -45,7 +45,7 @@ Admin commands must use the server's `DATABASE_PATH` and `TASKPATH_ORIGIN`. Send
 
 ## Deployment and development
 
-See the [deployment guide](DEPLOYMENT.md) for Docker, HTTPS, backups, updates, migration requirements, and [background reminders](DEPLOYMENT.md#enable-background-reminders). After updating, open online, close all Taskpath tabs/app windows, and reopen without clearing site data.
+See the [deployment guide](DEPLOYMENT.md) for Docker, HTTPS, backups, updates, migration requirements, and [background reminders](DEPLOYMENT.md#enable-background-reminders). For an existing Docker instance, see [managed updates](DEPLOYMENT.md#managed-updates-for-an-existing-docker-installation) for `sudo taskpath update`, backups and an optional hourly timer. After updating, open online, close all Taskpath tabs/app windows, and reopen without clearing site data.
 
 ```sh
 bun run typecheck
