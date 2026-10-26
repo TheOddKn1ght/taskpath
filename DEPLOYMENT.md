@@ -568,3 +568,22 @@ then reopen. Keep browser storage intact, including unsynced edits and files.
 Verification covers configuration adoption, update/recovery failures and SQLite
 archive restoration in unit tests. A real remote VPS rollout still needs to be
 verified on the deployment host.
+
+### Refresh an already installed updater
+
+Application updates do not replace `/usr/local/bin/taskpath`. After uploading a
+new version of `scripts/vps.sh`, replace the installed command from that checkout:
+
+```sh
+sudo install -m 0755 scripts/vps.sh /usr/local/bin/taskpath.new
+sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
+sudo taskpath recover
+sudo taskpath update
+```
+
+This keeps the saved deployment settings, existing volumes and backups. The
+original updater could report `SQLITE_CANTOPEN` at `PRAGMA quick_check` when a
+copied WAL database needed to recreate its shared-memory index on a read-only
+mount. The fixed validator permits sidecar creation only on the disposable copy;
+the original backup source remains mounted read-only. Keep the failed attempt's
+archive and original volume; no database restore or deletion is needed to retry.

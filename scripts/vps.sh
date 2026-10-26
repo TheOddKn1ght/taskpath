@@ -118,8 +118,10 @@ clone_volume() {
   docker run --rm -i --network none --user 0 --entrypoint tar \
     --mount "type=volume,src=$VOLUME,dst=/data" "$IMAGE" -xpf - -C /data < "$BACKUP"
   # Reject empty/legacy data BEFORE starting an app that could create a fresh DB.
+  # Only the disposable clone is writable: SQLite may need to recreate its WAL
+  # shared-memory index even with a read-only database connection.
   docker run --rm --network none --entrypoint bun \
-    --mount "type=volume,src=$VOLUME,dst=/app/data,readonly" "$IMAGE" -e '
+    --mount "type=volume,src=$VOLUME,dst=/app/data" "$IMAGE" -e '
 import { Database } from "bun:sqlite";
 const db = new Database("/app/data/taskpath-accounts.sqlite", { readonly: true });
 if (db.query("PRAGMA quick_check").get().quick_check !== "ok" ||

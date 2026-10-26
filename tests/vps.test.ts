@@ -1,6 +1,15 @@
 import { expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/store';
@@ -320,6 +329,61 @@ test('cloned-data gate accepts old multiuser schema and rejects empty, corrupt a
     plaintext.close();
     expect(run().exitCode).not.toBe(0);
   } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('clone validation recreates a missing WAL index without changing the original database', () => {
+  const source = readFileSync(installer, 'utf8');
+  const validation = source.split('"$IMAGE" -e \'\n')[1]!.split("'\n}")[0]!;
+  const directory = mkdtempSync(join(tmpdir(), 'taskpath-wal-clone-'));
+  const original = join(directory, 'original.sqlite');
+  const cloneDirectory = join(directory, 'clone');
+  const clone = join(cloneDirectory, 'taskpath-accounts.sqlite');
+  const db = new Database(original);
+  try {
+    db.exec(`PRAGMA journal_mode=WAL;
+      CREATE TABLE encrypted_format(version INTEGER);
+      INSERT INTO encrypted_format VALUES(2);
+      CREATE TABLE accounts(userId TEXT);
+      INSERT INTO accounts VALUES ('preserved-in-wal');`);
+    const originalBytes = readFileSync(original);
+    const walBytes = readFileSync(original + '-wal');
+    mkdirSync(cloneDirectory);
+    copyFileSync(original, clone);
+    copyFileSync(original + '-wal', clone + '-wal');
+    expect(existsSync(clone + '-shm')).toBe(false);
+    const run = () =>
+      Bun.spawnSync([
+        process.execPath,
+        '-e',
+        validation.replace('/app/data/taskpath-accounts.sqlite', clone),
+      ]);
+    // Reproduce a read-only volume: SQLite cannot create its missing WAL index.
+    chmodSync(cloneDirectory, 0o555);
+    const blocked = run();
+    expect(blocked.exitCode).not.toBe(0);
+    expect(blocked.stderr.toString()).toContain('SQLITE_CANTOPEN');
+    chmodSync(cloneDirectory, 0o700);
+    const validated = run();
+    expect(validated.exitCode, validated.stderr.toString()).toBe(0);
+    expect(existsSync(clone + '-shm')).toBe(true);
+    const restored = new Database(clone, { readonly: true });
+    try {
+      expect(restored.query('SELECT userId FROM accounts').get()).toEqual({
+        userId: 'preserved-in-wal',
+      });
+    } finally {
+      restored.close();
+    }
+    expect(readFileSync(original)).toEqual(originalBytes);
+    expect(readFileSync(original + '-wal')).toEqual(walBytes);
+    // The validator must receive a writable clone, while snapshots stay read-only.
+    expect(source).toContain('--mount "type=volume,src=$VOLUME,dst=/app/data"');
+    expect(source).toContain('--mount "type=volume,src=$volume,dst=/data,readonly"');
+  } finally {
+    chmodSync(cloneDirectory, 0o700);
+    db.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
