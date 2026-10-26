@@ -428,3 +428,172 @@ test('stopped-volume archive preserves every database table, binary files and si
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('preflight removes Telegram credentials without mutating saved settings', () => {
+  const settings = JSON.parse(python('capture', [existing()]).output);
+  settings.environment.TASKPATH_TELEGRAM_BOT_TOKEN = '123:private';
+  settings.environment.TASKPATH_TELEGRAM_ADMIN_ID = '42';
+  const probe = JSON.parse(python('compose', settings, ['image', 'copy', 'private']).output);
+  expect(probe.services.taskpath.environment.TASKPATH_TELEGRAM_BOT_TOKEN).toBeUndefined();
+  expect(probe.services.taskpath.environment.TASKPATH_TELEGRAM_ADMIN_ID).toBeUndefined();
+  const live = JSON.parse(python('compose', settings, ['image', 'same-volume']).output);
+  expect(live.services.taskpath.environment.TASKPATH_TELEGRAM_BOT_TOKEN).toBe('123:private');
+});
+
+test('Telegram settings validate API and webhook before returning a modified copy', () => {
+  const result = Bun.spawnSync([
+    'python3',
+    '-c',
+    `
+import runpy
+m = runpy.run_path(${JSON.stringify(config)})
+f = m['telegram_settings']
+s = {'environment': {'TASKPATH_ORIGIN': 'https://tasks.example.com', 'KEEP': '$unchanged'}}
+calls = []
+def api(method):
+    calls.append(method)
+    return {'id': 123} if method == 'getMe' else {'url': ''}
+r = f(s, '123:secret', '42', api)
+assert calls == ['getMe', 'getWebhookInfo']
+assert 'TASKPATH_TELEGRAM_BOT_TOKEN' not in s['environment']
+assert r['environment']['TASKPATH_TELEGRAM_ADMIN_ID'] == '42'
+assert r['environment']['KEEP'] == '$unchanged'
+assert f(r) == s
+for token, user in [('bad', '42'), ('123:secret', '-1'), ('123:secret', '9007199254740992')]:
+    try:
+        f(s, token, user, api)
+        raise AssertionError('Accepted invalid config')
+    except ValueError:
+        pass
+try:
+    f(s, '123:secret', '42', lambda method: {'url': 'https://existing'})
+    raise AssertionError('Accepted webhook')
+except ValueError as e:
+    assert 'deleteWebhook' in str(e)
+assert 'TASKPATH_TELEGRAM_BOT_TOKEN' not in s['environment']
+`,
+  ]);
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
+});
+
+function telegramShell(body: string, setup = false) {
+  return shell(`
+helper() { python3 '${config}' "$@"; }
+cat > "$ROOT/settings.json" <<'JSON'
+{"environment":{"TASKPATH_ORIGIN":"https://tasks.example.com","KEEP":"preserved","TASKPATH_TELEGRAM_BOT_TOKEN":"123:old","TASKPATH_TELEGRAM_ADMIN_ID":"42"},"port":"3123","entrypoint":null,"command":["bun","run","start:smol"],"user":"bun"}
+JSON
+printf '%s\\n' "$ROOT/original.json" > "$ROOT/current"
+helper compose "$ROOT/settings.json" existing-image same-volume > "$ROOT/original.json"
+docker() { record capability; }
+compose() {
+  if [[ $2 == stop ]]; then record rollback-stop; else record validate; fi
+}
+start_current() { record start; }
+${
+  setup
+    ? `
+telegram_credentials() { token='123:private'; admin_id=42; }
+helper() {
+  if [[ $1 == telegram-setup ]]; then
+    [[ $# == 2 ]] || die 'Secrets passed as arguments.'
+    python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); s["environment"]["TASKPATH_TELEGRAM_BOT_TOKEN"]=sys.stdin.readline().strip(); s["environment"]["TASKPATH_TELEGRAM_ADMIN_ID"]=sys.stdin.readline().strip(); print(json.dumps(s))' "$2"
+  else python3 '${config}' "$@"; fi
+}
+`
+    : ''
+}
+${body}
+`);
+}
+
+for (const mode of ['telegram-setup', 'telegram-disable']) {
+  test(`${mode} updates saved and current configuration using existing image and volume`, () => {
+    const result = telegramShell(
+      `
+telegram_configure ${mode}
+[[ ! -f "$ROOT/telegram-pending" ]]
+python3 - "$ROOT/settings.json" "$(current)" <<'PY'
+import json,sys
+s=json.load(open(sys.argv[1])); d=json.load(open(sys.argv[2])); e=s['environment']
+assert e['KEEP'] == 'preserved'
+assert d['services']['taskpath']['image'] == 'existing-image'
+assert d['volumes']['data']['name'] == 'same-volume'
+assert d['services']['taskpath']['command'] == ['bun','run','start:smol']
+${mode === 'telegram-setup' ? "assert e['TASKPATH_TELEGRAM_BOT_TOKEN'] == '123:private'\nassert e['TASKPATH_TELEGRAM_ADMIN_ID'] == '42'" : "assert 'TASKPATH_TELEGRAM_BOT_TOKEN' not in e\nassert 'TASKPATH_TELEGRAM_ADMIN_ID' not in e"}
+PY
+`,
+      mode === 'telegram-setup',
+    );
+    expect(result.code, result.output).toBe(0);
+    expect(result.events).toEqual(['capability', 'validate', 'stop', 'start']);
+    expect(result.output).not.toContain('123:private');
+    expect(result.events.join()).not.toContain('123:private');
+  });
+}
+
+test('Telegram validation failure leaves deployment and saved settings unchanged', () => {
+  const result = telegramShell(
+    `
+helper() { if [[ $1 == telegram-setup ]]; then return 1; else python3 '${config}' "$@"; fi; }
+trap '[[ $(current) == "$ROOT/original.json" ]] && record unchanged' EXIT
+telegram_configure telegram-setup
+`,
+    true,
+  );
+  expect(result.code).toBe(1);
+  expect(result.events).toEqual(['capability', 'unchanged']);
+});
+
+test('Telegram restart failure automatically restores configuration on the same volume', () => {
+  const result = telegramShell(`
+attempt=0
+start_current() {
+  attempt=$((attempt + 1)); record start
+  if [[ $attempt == 1 ]]; then return 1; fi
+  [[ $(current) == "$ROOT/original.json" ]] || die 'Pointer was not restored.'
+  [[ $(get "$ROOT/settings.json" environment.TASKPATH_TELEGRAM_BOT_TOKEN) == '123:old' ]] || die 'Settings were not restored.'
+}
+telegram_configure telegram-disable
+`);
+  expect(result.code, result.output).toBe(1);
+  expect(result.events).toEqual([
+    'capability',
+    'validate',
+    'stop',
+    'start',
+    'rollback-stop',
+    'start',
+    'start',
+  ]);
+  expect(result.output).toContain('Previous Telegram configuration restored');
+});
+
+test('interrupted Telegram configuration can recover and keeps journal if restart fails', () => {
+  const result = telegramShell(`
+start_current() { record failed-start; return 1; }
+trap - EXIT
+# Simulate interruption after publishing candidate configuration.
+if telegram_configure telegram-disable; then die 'Unexpected successful restart.'; fi
+[[ -f "$ROOT/telegram-pending" ]]
+if recover; then die 'Unexpected successful recovery.'; fi
+[[ -f "$ROOT/telegram-pending" ]]
+start_current() { record recovered; }
+recover
+[[ ! -f "$ROOT/telegram-pending" ]]
+[[ $(current) == "$ROOT/original.json" ]]
+`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toContain('recovered');
+});
+
+test('Telegram configuration requires a managed capable deployment and hidden terminal input', () => {
+  const missing = telegramShell('rm "$ROOT/current"\ntelegram_configure telegram-setup');
+  expect(missing.code).toBe(1);
+  expect(missing.events).toEqual([]);
+  const unsupported = telegramShell('docker() { return 1; }\ntelegram_configure telegram-disable');
+  expect(unsupported.code).toBe(1);
+  expect(unsupported.events).toEqual([]);
+  const source = readFileSync(installer, 'utf8');
+  expect(source).toContain('read -r -s token < /dev/tty');
+  expect(source).toContain('unset token admin_id');
+});

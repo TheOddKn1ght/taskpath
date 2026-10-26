@@ -572,9 +572,11 @@ verified on the deployment host.
 ### Refresh an already installed updater
 
 Application updates do not replace `/usr/local/bin/taskpath`. After uploading a
-new version of `scripts/vps.sh`, replace the installed command from that checkout:
+new version of the updater scripts, replace both installed files from that checkout:
 
 ```sh
+sudo install -m 0600 scripts/vps-config.py /opt/taskpath-updater/vps-config.py.new
+sudo mv /opt/taskpath-updater/vps-config.py.new /opt/taskpath-updater/vps-config.py
 sudo install -m 0755 scripts/vps.sh /usr/local/bin/taskpath.new
 sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
 sudo taskpath recover
@@ -587,3 +589,89 @@ copied WAL database needed to recreate its shared-memory index on a read-only
 mount. The fixed validator permits sidecar creation only on the disposable copy;
 the original backup source remains mounted read-only. Keep the failed attempt's
 archive and original volume; no database restore or deletion is needed to retry.
+
+## Telegram admin bot
+
+The optional bot manages invitations and accounts in a private Telegram chat.
+Only the configured numeric Telegram user ID can use it. Invitation links pass
+through Telegram; passwords and decrypted tasks/files never enter the bot.
+Use a dedicated bot with only one running Taskpath instance polling it.
+
+1. Open the verified **@BotFather** in Telegram, send `/newbot`, and follow its
+   prompts. Save the bot token privately.
+2. Obtain your numeric Telegram user ID. In Telegram Desktop, open **Settings →
+   Advanced → Export Telegram data**, export your account information as JSON,
+   and read `personal_information.user_id` in `result.json`. Use the numeric ID,
+   not your username, phone number, or the bot's ID.
+3. Set Taskpath's existing `TASKPATH_ORIGIN` to its public HTTPS origin. For a
+   managed installation this is the `environment` entry in the root-only
+   `/opt/taskpath-updater/settings.json`.
+4. If the updater is already installed, refresh **both** updater files from this
+   checkout before deploying the release:
+
+   ```sh
+   sudo install -m 0600 scripts/vps-config.py /opt/taskpath-updater/vps-config.py.new
+   sudo mv /opt/taskpath-updater/vps-config.py.new /opt/taskpath-updater/vps-config.py
+   sudo install -m 0755 scripts/vps.sh /usr/local/bin/taskpath.new
+   sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
+   sudo taskpath recover
+   sudo taskpath update
+   ```
+
+5. Configure the bot interactively on the VPS:
+
+   ```sh
+   sudo taskpath telegram-setup
+   # Equivalent from the uploaded checkout:
+   sudo bash scripts/vps.sh telegram-setup
+   ```
+
+   Enter the BotFather token at the hidden prompt, then your numeric user ID.
+   The command checks the token and rejects existing webhooks before changing
+   settings. Remove a webhook using `deleteWebhook` in its current integration,
+   or create a separate BotFather bot for Taskpath.
+6. Open your bot's private chat and send `/start`. Choose **Invite** or
+   **Accounts**, or use `/invite`, `/list`, `/reinvite USER_ID`, `/revoke USER_ID`,
+   and `/disable USER_ID`. Disabling requires a confirmation button within five
+   minutes, revokes sessions, and retains encrypted data. A restart invalidates
+   outstanding confirmation buttons.
+
+Setup requires an installed updater and a managed deployment with bot support.
+It saves the configuration, reuses the current image and data volume, and
+briefly restarts Taskpath without fetching or building a release. Settings are
+preserved by future updates; isolated update probes receive no bot credentials.
+A failed restart restores the previous configuration on the same data volume.
+If interrupted, run `sudo taskpath recover` before trying again.
+
+Disable the bot with:
+
+```sh
+sudo taskpath telegram-disable
+# Or: sudo bash scripts/vps.sh telegram-disable
+```
+
+The updater keeps settings and recovery copies under the root-only
+`/opt/taskpath-updater/telegram.*` directories. These can include previous bot
+tokens; keep them private. Rotate an exposed token with BotFather and rerun
+setup. Commands never take the token as a shell argument.
+
+For an installation without the updater, add both values to the private `.env`:
+
+```dotenv
+TASKPATH_TELEGRAM_BOT_TOKEN=your-bot-token
+TASKPATH_TELEGRAM_ADMIN_ID=your-numeric-user-id
+```
+
+Set `TASKPATH_ORIGIN=https://your-public-host`, deploy the image containing bot
+support, and recreate the Compose service using the normal deployment procedure.
+For direct Bun runs, provide the same environment variables. Both bot settings
+absent means disabled; incomplete or invalid configuration disables the bot and
+logs a diagnostic while the web service remains available. Outbound HTTPS to
+`api.telegram.org` is required; no inbound Telegram endpoint is needed.
+
+Check `sudo taskpath logs` for bot diagnostics. Authentication failures, a
+webhook, or another polling instance stop the bot without stopping Taskpath;
+correct the cause and restart the service. Temporary network failures and rate
+limits retry automatically. If delivery of an invitation reply fails, `/list`
+and `/reinvite USER_ID` can issue a replacement; the command itself is not
+replayed after a restart.

@@ -7,6 +7,7 @@ import { SOURCE_DIRECTORY, sourceRelease, releaseForDirectory } from './client-r
 import { AuthManager } from './auth';
 import { InputError, Store, object } from './store';
 import { PushService } from './push';
+import { TelegramAdmin, telegramConfig } from './telegram';
 import { FileRepository } from './db/files';
 import {
   decodeFile,
@@ -496,6 +497,18 @@ if (import.meta.main) {
     websocket: realtime.websocket,
   });
   push.start();
+  let telegram: TelegramAdmin | undefined;
+  try {
+    const config = telegramConfig(process.env);
+    if (config) {
+      telegram = new TelegramAdmin(store.db, auth, config);
+      telegram.start();
+    }
+  } catch {
+    console.error(
+      'Telegram admin disabled: configure a valid bot token, numeric admin ID, and public HTTPS TASKPATH_ORIGIN.',
+    );
+  }
   const launchURL = new URL('/', process.env.TASKPATH_ORIGIN || server.url);
   if (!process.env.TASKPATH_ORIGIN && ['0.0.0.0', '[::]'].includes(launchURL.hostname))
     launchURL.hostname = 'localhost';
@@ -503,6 +516,7 @@ if (import.meta.main) {
   console.log('Create an invitation with: bun run admin invite');
   const shutdown = async () => {
     realtime.close();
+    await telegram?.stop();
     await push.stop();
     await server.stop();
     store.close();

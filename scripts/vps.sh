@@ -18,6 +18,8 @@ Adopt an existing multi-user Docker Compose installation (Ubuntu/Debian):
   sudo taskpath start                  Resume the committed deployment
   sudo taskpath recover                Resume after an interrupted update
   sudo taskpath backup                 Back up the stopped data volume
+  sudo taskpath telegram-setup         Configure the private admin bot interactively
+  sudo taskpath telegram-disable       Disable the bot
   sudo taskpath status
   sudo taskpath logs
   sudo taskpath enable-auto-updates    Opt into hourly updates
@@ -144,6 +146,7 @@ remove_probe() {
     -f "$ROOT/probe.json" down
 }
 recover() {
+  if [[ -f "$ROOT/telegram-pending" ]]; then telegram_recover || return $?; fi
   # current is the durable commit boundary, written BEFORE publishing any ports.
   # Never restore older data after a new deployment could have accepted writes.
   if [[ -f "$ROOT/pending" ]]; then
@@ -155,14 +158,14 @@ recover() {
 on_exit() {
   local status=$?
   trap - EXIT
-  if [[ $status != 0 && -f "$ROOT/pending" ]]; then
+  if [[ $status != 0 && ( -f "$ROOT/pending" || -f "$ROOT/telegram-pending" ) ]]; then
     log 'Operation failed; resuming the committed deployment. All volumes and backups are retained.'
     recover || log 'Recovery needs attention. Run sudo taskpath recover.'
   fi
   exit "$status"
 }
 update() {
-  [[ ! -f "$ROOT/pending" ]] || die 'Run sudo taskpath recover first.'
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
   fetch_release
   if [[ -f "$ROOT/current" && $(current_revision) == "$SHA" ]]; then log 'Already up to date.'; return; fi
   build_release
@@ -186,6 +189,62 @@ update() {
   rm "$ROOT/pending"
   log "Updated to $SHA. Previous volumes and $BACKUP are retained."
 }
+# Configuration-only changes keep the live data volume. A separate durable
+# journal restores both settings and the deployment pointer after interruption.
+telegram_recover() {
+  local directory
+  directory=$(cat "$ROOT/telegram-pending")
+  compose "$directory/deployment.json" stop taskpath || return $?
+  cp "$directory/settings.previous.json" "$ROOT/settings.recover.tmp" || return $?
+  mv "$ROOT/settings.recover.tmp" "$ROOT/settings.json" || return $?
+  write_current "$(cat "$directory/current.previous")" || return $?
+  start_current || return $?
+  rm "$ROOT/telegram-pending"
+  log 'Previous Telegram configuration restored. Data volume retained.'
+}
+telegram_credentials() {
+  [[ -r /dev/tty && -w /dev/tty ]] || die 'Run Telegram setup in an interactive terminal.'
+  printf 'BotFather token (hidden): ' > /dev/tty
+  IFS= read -r -s token < /dev/tty || die 'Could not read bot token.'
+  printf '\nYour numeric Telegram user ID: ' > /dev/tty
+  IFS= read -r admin_id < /dev/tty || die 'Could not read admin ID.'
+}
+telegram_configure() {
+  # Never trace interactive secrets, even when invoked with bash -x.
+  set +x
+  local mode=$1 directory image volume token admin_id
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+  [[ -f "$ROOT/current" ]] || die 'Run sudo taskpath update to create a managed deployment first.'
+  image=$(get "$(current)" services.taskpath.image)
+  volume=$(get "$(current)" volumes.data.name)
+  # Check only image code, with no network, secrets, or data volume attached.
+  docker run --rm --network none --entrypoint bun "$image" -e \
+    'const m = await import("/app/src/telegram.ts"); if (m.TELEGRAM_ADMIN_VERSION !== 1) process.exit(1);' \
+    >/dev/null 2>&1 || die 'Deploy a release with Telegram support using sudo taskpath update, then retry.'
+  directory=$(mktemp -d "$ROOT/telegram.XXXXXX") || return $?
+  chmod 700 "$directory" || return $?
+  cp "$ROOT/settings.json" "$directory/settings.previous.json" || return $?
+  cp "$ROOT/current" "$directory/current.previous" || return $?
+  if [[ "$mode" == telegram-setup ]]; then
+    telegram_credentials || return $?
+    printf '%s\n%s\n' "$token" "$admin_id" | helper telegram-setup "$ROOT/settings.json" > "$directory/settings.json" || return $?
+    unset token admin_id
+  else
+    helper telegram-disable "$ROOT/settings.json" > "$directory/settings.json" || return $?
+  fi
+  helper compose "$directory/settings.json" "$image" "$volume" > "$directory/deployment.json" || return $?
+  compose "$directory/deployment.json" config --quiet || return $?
+  printf '%s\n' "$directory" > "$ROOT/telegram-pending.tmp" || return $?
+  mv "$ROOT/telegram-pending.tmp" "$ROOT/telegram-pending" || return $?
+  stop_current || return $?
+  cp "$directory/settings.json" "$ROOT/settings.telegram.tmp" || return $?
+  mv "$ROOT/settings.telegram.tmp" "$ROOT/settings.json" || return $?
+  write_current "$directory/deployment.json" || return $?
+  start_current || return $?
+  rm "$ROOT/telegram-pending" || return $?
+  log 'Telegram configuration applied. Existing image and data volume retained.'
+}
+
 install_updater() {
   local container=''
   while (($#)); do
@@ -214,7 +273,7 @@ install_updater() {
 main() {
   local command=${1:---help}; (($# == 0)) || shift
   case "$command" in --help|-h|help) usage; return ;; esac
-  case "$command" in install|update|start|recover|backup|status|logs|enable-auto-updates|disable-auto-updates) ;; *) die "Unknown command: $command" ;; esac
+  case "$command" in install|update|start|recover|backup|status|logs|enable-auto-updates|disable-auto-updates|telegram-setup|telegram-disable) ;; *) die "Unknown command: $command" ;; esac
   [[ "$command" == install || $# == 0 ]] || die 'Unexpected arguments.'
   host
   lock
@@ -223,11 +282,12 @@ main() {
   [[ -f "$ROOT/settings.json" ]] || die 'Install the updater first.'
   case "$command" in
     update) update ;;
+    telegram-setup|telegram-disable) telegram_configure "$command" ;;
     start|recover) recover ;;
     status) if [[ -f "$ROOT/current" ]]; then compose "$(current)" ps; else docker ps --filter "id=$(get "$ROOT/settings.json" container)"; fi ;;
     logs) flock -u 9; if [[ -f "$ROOT/current" ]]; then compose "$(current)" logs --tail 100 -f; else docker logs --tail 100 -f "$(get "$ROOT/settings.json" container)"; fi ;;
     backup)
-      [[ ! -f "$ROOT/pending" ]] || die 'Run sudo taskpath recover first.'
+      [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
       if [[ -f "$ROOT/current" ]]; then IMAGE="taskpath-managed:$(current_revision)"
       else IMAGE=$(docker inspect --format '{{.Image}}' "$(get "$ROOT/settings.json" container)"); fi
       touch "$ROOT/pending"

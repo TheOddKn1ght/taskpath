@@ -2,6 +2,9 @@
 """Capture an existing Docker deployment without guessing its storage or settings."""
 import json
 import sys
+import re
+import urllib.request
+import urllib.parse
 
 
 def capture(container):
@@ -31,7 +34,11 @@ def capture(container):
 
 
 def compose(settings, image, volume, private=False):
-    service = {'image': image, 'environment': settings['environment'],
+    environment = dict(settings['environment'])
+    if private:
+        environment.pop('TASKPATH_TELEGRAM_BOT_TOKEN', None)
+        environment.pop('TASKPATH_TELEGRAM_ADMIN_ID', None)
+    service = {'image': image, 'environment': environment,
                'entrypoint': settings['entrypoint'], 'command': settings['command'],
                'user': settings['user'], 'volumes': ['data:/app/data'],
                'init': True, 'restart': 'unless-stopped'}
@@ -52,6 +59,44 @@ def compose(settings, image, volume, private=False):
                     'volumes': {'data': {'external': True, 'name': volume}}})
 
 
+def telegram_settings(settings, token=None, admin_id=None, api=None):
+    """Return a copy; validate everything before the caller persists it."""
+    environment = dict(settings['environment'])
+    if token is None:
+        environment.pop('TASKPATH_TELEGRAM_BOT_TOKEN', None)
+        environment.pop('TASKPATH_TELEGRAM_ADMIN_ID', None)
+    else:
+        if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token):
+            raise ValueError('Invalid Telegram bot token.')
+        if not re.fullmatch(r'[1-9][0-9]*', admin_id or '') or int(admin_id) > 9007199254740991:
+            raise ValueError('Use your positive numeric Telegram user ID.')
+        origin = urllib.parse.urlsplit(environment.get('TASKPATH_ORIGIN', ''))
+        if (origin.scheme != 'https' or not origin.hostname or origin.username is not None
+                or origin.password is not None or origin.path not in ('', '/') or origin.query or origin.fragment):
+            raise ValueError('Set a public HTTPS TASKPATH_ORIGIN before Telegram setup.')
+        # Validate ports too, before making any network requests.
+        _ = origin.port
+        def request(method):
+            try:
+                req = urllib.request.Request('https://api.telegram.org/bot' + token + '/' + method,
+                                             data=b'{}', headers={'Content-Type': 'application/json'})
+                with urllib.request.urlopen(req, timeout=20) as response:
+                    result = json.load(response)
+                if not result.get('ok'):
+                    raise ValueError()
+                return result['result']
+            except Exception:
+                # urllib errors can contain the credential-bearing request URL.
+                raise ValueError('Telegram validation failed. Check the token and outbound HTTPS access.') from None
+        request_api = api or request
+        request_api('getMe')
+        if request_api('getWebhookInfo').get('url'):
+            raise ValueError('Bot has a webhook. Remove it with Telegram deleteWebhook in the existing integration, or create a dedicated bot with BotFather.')
+        environment['TASKPATH_TELEGRAM_BOT_TOKEN'] = token
+        environment['TASKPATH_TELEGRAM_ADMIN_ID'] = admin_id
+    return {**settings, 'environment': environment}
+
+
 if __name__ == '__main__':
     try:
         mode = sys.argv[1]
@@ -63,6 +108,10 @@ if __name__ == '__main__':
                 raise ValueError('Select exactly one existing container.')
         elif mode == 'compose':
             result = compose(data, sys.argv[3], sys.argv[4], len(sys.argv) > 5 and sys.argv[5] == 'private')
+        elif mode == 'telegram-setup':
+            result = telegram_settings(data, sys.stdin.readline().rstrip('\n'), sys.stdin.readline().rstrip('\n'))
+        elif mode == 'telegram-disable':
+            result = telegram_settings(data)
         elif mode == 'get':
             value = data
             for key in sys.argv[3].split('.'):
