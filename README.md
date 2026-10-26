@@ -46,11 +46,12 @@ Admin commands must use the server's `DATABASE_PATH` and `TASKPATH_ORIGIN`. Send
 An optional [Telegram admin bot](DEPLOYMENT.md#telegram-admin-bot) provides the same
 account actions through buttons and commands, restricted to your private chat.
 On a managed VPS, configure it with `sudo taskpath telegram-setup` and disable it
-with `sudo taskpath telegram-disable`.
+with `sudo taskpath telegram-disable`. Use `/backup` in the bot to download a full
+database snapshot, including all accounts and authentication metadata.
 
 ## Deployment and development
 
-See the [deployment guide](DEPLOYMENT.md) for Docker, HTTPS, backups, updates, migration requirements, and [background reminders](DEPLOYMENT.md#enable-background-reminders). For an existing Docker instance, see [managed updates](DEPLOYMENT.md#managed-updates-for-an-existing-docker-installation) for `sudo taskpath update`, backups and an optional hourly timer. After updating, open online, close all Taskpath tabs/app windows, and reopen without clearing site data.
+See the [deployment guide](DEPLOYMENT.md) for Docker, HTTPS, backups, updates, migration requirements, and [background reminders](DEPLOYMENT.md#enable-background-reminders). For an existing Docker instance, see [managed updates](DEPLOYMENT.md#managed-updates-for-an-existing-docker-installation) for `sudo taskpath update`, updater refreshes with `sudo taskpath self-update`, backups and an optional hourly timer. After updating, open online, close all Taskpath tabs/app windows, and reopen without clearing site data.
 
 ```sh
 bun run typecheck

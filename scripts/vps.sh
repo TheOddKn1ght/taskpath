@@ -4,7 +4,7 @@ set -Eeuo pipefail
 umask 077
 ROOT=/opt/taskpath-updater
 PROGRAM=/usr/local/bin/taskpath
-SCRIPT_DIRECTORY=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIRECTORY=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 REPO=https://github.com/TheOddKn1ght/taskpath.git
 BRANCH=main
 
@@ -15,6 +15,7 @@ usage() {
 Adopt an existing multi-user Docker Compose installation (Ubuntu/Debian):
   sudo bash scripts/vps.sh install --container EXISTING_CONTAINER [--repo URL] [--branch main]
   sudo taskpath update                 Deploy the configured branch
+  sudo taskpath self-update            Update this command and its helper
   sudo taskpath start                  Resume the committed deployment
   sudo taskpath recover                Resume after an interrupted update
   sudo taskpath backup                 Back up the stopped data volume
@@ -43,7 +44,13 @@ lock() {
   exec 9>"$ROOT/lock"
   flock -w 1800 9 || die 'Another operation is running.'
 }
-helper() { python3 "$ROOT/vps-config.py" "$@"; }
+helper() {
+  # Versioned updater bundles always use their matching helper. Legacy installs
+  # keep using ROOT until their first self-update.
+  local script="$ROOT/vps-config.py"
+  [[ ! -f "$SCRIPT_DIRECTORY/vps-config.py" ]] || script="$SCRIPT_DIRECTORY/vps-config.py"
+  python3 "$script" "$@"
+}
 get() { helper get "$1" "$2"; }
 compose() {
   COMPOSE_DISABLE_ENV_FILE=true docker compose --project-name taskpath-managed \
@@ -59,8 +66,9 @@ validate_repository() {
   [[ "$BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$BRANCH" != *..* && "$BRANCH" != *//* && "$BRANCH" != *.lock && "$BRANCH" != */ ]] || die 'Invalid branch.'
 }
 fetch_release() {
-  REPO=$(cat "$ROOT/repo") BRANCH=$(cat "$ROOT/branch")
-  validate_repository
+  REPO=$(cat "$ROOT/repo") || return $?
+  BRANCH=$(cat "$ROOT/branch") || return $?
+  validate_repository || return $?
   local directory=$ROOT
   while :; do
     [[ ! -f "$directory/.arcconfig" ]] || die 'Updater directory is inside Arcadia.'
@@ -68,26 +76,64 @@ fetch_release() {
     directory=$(dirname "$directory")
   done
   if [[ ! -d "$ROOT/repository.git" ]]; then
-    git init --bare "$ROOT/repository.git" >&2
-    git --git-dir="$ROOT/repository.git" remote add origin "$REPO"
+    git init --bare "$ROOT/repository.git" >&2 || return $?
+    git --git-dir="$ROOT/repository.git" remote add origin "$REPO" || return $?
   fi
   GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes' \
-    git --git-dir="$ROOT/repository.git" fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >&2
-  SHA=$(git --git-dir="$ROOT/repository.git" rev-parse "refs/remotes/origin/$BRANCH^{commit}")
+    git --git-dir="$ROOT/repository.git" fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >&2 || return $?
+  SHA=$(git --git-dir="$ROOT/repository.git" rev-parse "refs/remotes/origin/$BRANCH^{commit}") || return $?
   [[ "$SHA" =~ ^[a-f0-9]{40,64}$ ]] || die 'Invalid revision.'
   if [[ -f "$ROOT/current" ]]; then
     git --git-dir="$ROOT/repository.git" merge-base --is-ancestor "$(current_revision)" "$SHA" || die 'Refusing rewritten branch history.'
   fi
   RELEASE="$ROOT/releases/$SHA"
-  mkdir -p "$ROOT/releases"
+  mkdir -p "$ROOT/releases" || return $?
   if [[ ! -d "$RELEASE" ]]; then
     local staging
-    staging=$(mktemp -d "$ROOT/releases/.staging.XXXXXX")
-    git --git-dir="$ROOT/repository.git" archive "$SHA" | tar -x -C "$staging"
+    staging=$(mktemp -d "$ROOT/releases/.staging.XXXXXX") || return $?
+    git --git-dir="$ROOT/repository.git" archive "$SHA" | tar -x -C "$staging" || return $?
     [[ -f "$staging/Dockerfile" && -f "$staging/bun.lock" ]] || die 'Incomplete release.'
-    mv "$staging" "$RELEASE"
+    mv "$staging" "$RELEASE" || return $?
   fi
 }
+self_update() {
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+  fetch_release || return $?
+  local staging bundle launcher backup help
+  mkdir -p "$ROOT/updaters" "$ROOT/updater-backups" || return $?
+  staging=$(mktemp -d "$ROOT/updaters/.staging.XXXXXX") || return $?
+  install -m 0755 "$RELEASE/scripts/vps.sh" "$staging/vps.sh" || return $?
+  install -m 0600 "$RELEASE/scripts/vps-config.py" "$staging/vps-config.py" || return $?
+  bash -n "$staging/vps.sh" || return $?
+  python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); compile(p.read_bytes(), str(p), "exec")' \
+    "$staging/vps-config.py" || return $?
+  help=$(bash "$staging/vps.sh" --help) || return $?
+  [[ "$help" == *'sudo taskpath self-update'* ]] || die 'Release does not support self-update; installed command retained.'
+  # Publish an immutable pair, then atomically replace the small launcher. A
+  # running command keeps its original bundle even if another version is installed.
+  bundle="$ROOT/updaters/$SHA"
+  if [[ -e "$bundle" ]]; then
+    cmp -s "$staging/vps.sh" "$bundle/vps.sh" && \
+      cmp -s "$staging/vps-config.py" "$bundle/vps-config.py" || die 'Existing updater bundle differs; no files were replaced.'
+    rm -r "$staging" || return $?
+  else
+    mv "$staging" "$bundle" || return $?
+  fi
+  launcher=$(mktemp "${PROGRAM}.new.XXXXXX") || return $?
+  printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "$bundle/vps.sh" > "$launcher" || return $?
+  chmod 755 "$launcher" || return $?
+  bash -n "$launcher" || return $?
+  if cmp -s "$launcher" "$PROGRAM"; then
+    rm "$launcher" || return $?
+    log "Updater is already at $SHA."
+    return
+  fi
+  backup="$ROOT/updater-backups/$(date -u +%Y%m%dT%H%M%S)-$$.sh"
+  cp -p "$PROGRAM" "$backup" || return $?
+  mv -f "$launcher" "$PROGRAM" || return $?
+  log "Updater refreshed to $SHA. Application and settings are unchanged."
+}
+
 build_release() { docker build --pull -t "taskpath-managed:$SHA" "$RELEASE"; }
 stop_current() {
   if [[ -f "$ROOT/current" ]]; then compose "$(current)" stop taskpath
@@ -273,7 +319,7 @@ install_updater() {
 main() {
   local command=${1:---help}; (($# == 0)) || shift
   case "$command" in --help|-h|help) usage; return ;; esac
-  case "$command" in install|update|start|recover|backup|status|logs|enable-auto-updates|disable-auto-updates|telegram-setup|telegram-disable) ;; *) die "Unknown command: $command" ;; esac
+  case "$command" in install|update|self-update|start|recover|backup|status|logs|enable-auto-updates|disable-auto-updates|telegram-setup|telegram-disable) ;; *) die "Unknown command: $command" ;; esac
   [[ "$command" == install || $# == 0 ]] || die 'Unexpected arguments.'
   host
   lock
@@ -282,6 +328,7 @@ main() {
   [[ -f "$ROOT/settings.json" ]] || die 'Install the updater first.'
   case "$command" in
     update) update ;;
+    self-update) self_update ;;
     telegram-setup|telegram-disable) telegram_configure "$command" ;;
     start|recover) recover ;;
     status) if [[ -f "$ROOT/current" ]]; then compose "$(current)" ps; else docker ps --filter "id=$(get "$ROOT/settings.json" container)"; fi ;;

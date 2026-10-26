@@ -28,6 +28,7 @@ function shell(body: string) {
         `source "$1"
 ROOT=$2
 REAL_SNAPSHOT=$(declare -f snapshot)
+REAL_FETCH_RELEASE=$(declare -f fetch_release)
 record() { printf '%s\\n' "$*" >> "$ROOT/events"; }
 docker() { die 'Unexpected Docker operation.'; }
 git() { die 'Unexpected Git operation.'; }
@@ -596,4 +597,101 @@ test('Telegram configuration requires a managed capable deployment and hidden te
   const source = readFileSync(installer, 'utf8');
   expect(source).toContain('read -r -s token < /dev/tty');
   expect(source).toContain('unset token admin_id');
+});
+
+function selfUpdateShell(body: string) {
+  return shell(`
+PROGRAM="$ROOT/taskpath"
+cp '${installer}' "$PROGRAM"
+mkdir -p "$ROOT/release/scripts"
+cp '${installer}' "$ROOT/release/scripts/vps.sh"
+cp '${config}' "$ROOT/release/scripts/vps-config.py"
+fetch_release() { record fetch; SHA=${sha}; RELEASE="$ROOT/release"; }
+printf '%s\\n' private-settings > "$ROOT/settings.json"
+printf '%s\\n' original-deployment > "$ROOT/current"
+current_revision() { printf '${sha}'; }
+${body}
+`);
+}
+
+test('self-update atomically installs a matching script/helper pair without touching the deployment', () => {
+  const result = selfUpdateShell(`
+self_update
+bash "$PROGRAM" --help > "$ROOT/help"
+[[ $(cat "$ROOT/settings.json") == private-settings ]]
+[[ $(cat "$ROOT/current") == original-deployment ]]
+[[ -f "$ROOT/updaters/${sha}/vps.sh" && -f "$ROOT/updaters/${sha}/vps-config.py" ]]
+python3 -c 'import os,stat,sys; assert stat.S_IMODE(os.stat(sys.argv[1]).st_mode) == 0o700' "$ROOT/updaters/${sha}"
+# The installed launcher selects its bundle, not a stale legacy helper.
+printf 'raise Exception("stale helper")\\n' > "$ROOT/vps-config.py"
+bash -c 'source "$1"; helper get "$2" mode' test "$ROOT/updaters/${sha}/vps.sh" <(printf '{"mode":"paired"}') > "$ROOT/paired"
+[[ $(cat "$ROOT/paired") == paired ]]
+self_update
+`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toEqual(['fetch', 'fetch']);
+  expect(result.output).toContain('Updater refreshed');
+});
+
+for (const kind of ['shell', 'python', 'missing', 'fetch']) {
+  test(`self-update ${kind} failure preserves the installed command`, () => {
+    const result = selfUpdateShell(`
+cp "$PROGRAM" "$ROOT/original-command"
+${kind === 'shell' ? 'printf \'if broken\\n\' > "$ROOT/release/scripts/vps.sh"' : ''}
+${kind === 'python' ? 'printf \'def broken(\\n\' > "$ROOT/release/scripts/vps-config.py"' : ''}
+${kind === 'missing' ? 'rm "$ROOT/release/scripts/vps-config.py"' : ''}
+${kind === 'fetch' ? 'fetch_release() { record fetch; return 1; }' : ''}
+if self_update; then die 'Invalid update succeeded.'; fi
+cmp "$PROGRAM" "$ROOT/original-command"
+[[ $(cat "$ROOT/settings.json") == private-settings ]]
+record preserved
+`);
+    expect(result.code, result.output).toBe(0);
+    expect(result.events).toEqual(['fetch', 'preserved']);
+  });
+}
+
+test('self-update failure publishing launcher leaves old command usable', () => {
+  const result = selfUpdateShell(`
+cp "$PROGRAM" "$ROOT/original-command"
+mv() { if [[ $* == *"$PROGRAM" ]]; then return 1; else command mv "$@"; fi; }
+if self_update; then die 'Publication unexpectedly succeeded.'; fi
+cmp "$PROGRAM" "$ROOT/original-command"
+bash "$PROGRAM" --help >/dev/null
+record preserved
+`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toEqual(['fetch', 'preserved']);
+});
+
+test('self-update refuses to run during pending deployment recovery', () => {
+  const result = selfUpdateShell('touch "$ROOT/pending"\ntrap - EXIT\nself_update');
+  expect(result.code).toBe(1);
+  expect(result.events).toEqual([]);
+});
+
+test('self-update never publishes a cached release when the actual fetch fails', () => {
+  const result = selfUpdateShell(`
+eval "$REAL_FETCH_RELEASE"
+printf '%s\\n' https://github.com/TheOddKn1ght/taskpath.git > "$ROOT/repo"
+printf '%s\\n' main > "$ROOT/branch"
+mkdir "$ROOT/repository.git"
+cp "$PROGRAM" "$ROOT/original-command"
+git() { if [[ $2 == fetch ]]; then record fetch-failed; return 1; fi; die 'Used a stale cached revision.'; }
+if self_update; then die 'Failed fetch was ignored.'; fi
+cmp "$PROGRAM" "$ROOT/original-command"
+record preserved
+`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toEqual(['fetch-failed', 'preserved']);
+});
+
+test('self-update refuses releases without bundle-aware updater support', () => {
+  const result = selfUpdateShell(`
+printf '#!/usr/bin/env bash\\necho legacy-updater\\n' > "$ROOT/release/scripts/vps.sh"
+trap 'cmp "$PROGRAM" "${installer}" && record preserved' EXIT
+self_update
+`);
+  expect(result.code).toBe(1);
+  expect(result.events).toEqual(['fetch', 'preserved']);
 });

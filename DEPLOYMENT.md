@@ -571,8 +571,22 @@ verified on the deployment host.
 
 ### Refresh an already installed updater
 
-Application updates do not replace `/usr/local/bin/taskpath`. After uploading a
-new version of the updater scripts, replace both installed files from that checkout:
+Application updates and updater updates are separate commands:
+
+```sh
+sudo taskpath self-update
+sudo taskpath update
+```
+
+`self-update` fetches the configured repository and branch, validates the shell
+script and Python helper, and installs them together in a versioned directory.
+It atomically switches `/usr/local/bin/taskpath` to a launcher for that pair.
+It does not build or restart Taskpath, change saved settings, or touch database
+volumes. A failed validation or replacement leaves the installed command intact.
+Existing systemd services continue using `/usr/local/bin/taskpath`.
+
+If your installed command reports `Unknown command: self-update`, bootstrap this
+feature **once** from the latest uploaded Taskpath source directory:
 
 ```sh
 sudo install -m 0600 scripts/vps-config.py /opt/taskpath-updater/vps-config.py.new
@@ -580,15 +594,26 @@ sudo mv /opt/taskpath-updater/vps-config.py.new /opt/taskpath-updater/vps-config
 sudo install -m 0755 scripts/vps.sh /usr/local/bin/taskpath.new
 sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
 sudo taskpath recover
-sudo taskpath update
+sudo taskpath self-update
 ```
 
-This keeps the saved deployment settings, existing volumes and backups. The
-original updater could report `SQLITE_CANTOPEN` at `PRAGMA quick_check` when a
-copied WAL database needed to recreate its shared-memory index on a read-only
-mount. The fixed validator permits sidecar creation only on the disposable copy;
-the original backup source remains mounted read-only. Keep the failed attempt's
-archive and original volume; no database restore or deletion is needed to retry.
+Run `sudo taskpath update` separately to deploy the application release. Future
+updater refreshes only need `sudo taskpath self-update`.
+
+Previous commands are retained under `/opt/taskpath-updater/updater-backups/`,
+and their matching bundles under `/opt/taskpath-updater/updaters/`. To undo an
+updater refresh, select the appropriate previous command and restore it:
+
+```sh
+sudo install -m 0755 /opt/taskpath-updater/updater-backups/PREVIOUS.sh /usr/local/bin/taskpath.new
+sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
+```
+
+Keep the matching bundle directories and the legacy
+`/opt/taskpath-updater/vps-config.py` when restoring older commands. Failed
+staging directories can be removed after diagnosis. No automatic pruning is
+performed. Saved deployment settings, accounts, volumes and backups survive
+updater replacement.
 
 ## Telegram admin bot
 
@@ -606,17 +631,8 @@ Use a dedicated bot with only one running Taskpath instance polling it.
 3. Set Taskpath's existing `TASKPATH_ORIGIN` to its public HTTPS origin. For a
    managed installation this is the `environment` entry in the root-only
    `/opt/taskpath-updater/settings.json`.
-4. If the updater is already installed, refresh **both** updater files from this
-   checkout before deploying the release:
-
-   ```sh
-   sudo install -m 0600 scripts/vps-config.py /opt/taskpath-updater/vps-config.py.new
-   sudo mv /opt/taskpath-updater/vps-config.py.new /opt/taskpath-updater/vps-config.py
-   sudo install -m 0755 scripts/vps.sh /usr/local/bin/taskpath.new
-   sudo mv /usr/local/bin/taskpath.new /usr/local/bin/taskpath
-   sudo taskpath recover
-   sudo taskpath update
-   ```
+4. Refresh the installed updater using [the instructions above](#refresh-an-already-installed-updater),
+   then run `sudo taskpath update` to deploy the application release.
 
 5. Configure the bot interactively on the VPS:
 
@@ -632,7 +648,8 @@ Use a dedicated bot with only one running Taskpath instance polling it.
    or create a separate BotFather bot for Taskpath.
 6. Open your bot's private chat and send `/start`. Choose **Invite** or
    **Accounts**, or use `/invite`, `/list`, `/reinvite USER_ID`, `/revoke USER_ID`,
-   and `/disable USER_ID`. Disabling requires a confirmation button within five
+   and `/disable USER_ID`. Choose **Database backup** or send `/backup` to download
+   a consistent SQLite snapshot. Disabling requires a confirmation button within five
    minutes, revokes sessions, and retains encrypted data. A restart invalidates
    outstanding confirmation buttons.
 
@@ -675,3 +692,25 @@ correct the cause and restart the service. Temporary network failures and rate
 limits retry automatically. If delivery of an invitation reply fails, `/list`
 and `/reinvite USER_ID` can issue a replacement; the command itself is not
 replayed after a restart.
+
+### Database backups through Telegram
+
+Send `/backup` or choose **Database backup** in the bot menu. Taskpath creates a
+validated SQLite snapshot, including committed WAL data, while the service stays
+running. It uploads the `.sqlite` file only to the configured admin's private
+chat and removes the temporary file after success or failure. Replayed Telegram
+updates do not repeat the export; if delivery fails, send `/backup` again.
+
+The snapshot contains **every account**, encrypted tasks and files, account and
+session metadata, and push state including signing keys. The database file is
+not encrypted as a whole; vault contents remain encrypted and still need their
+passwords. Telegram stores the uploaded document. Keep it private and download a
+copy to your own backup storage. It does not include the bot token or VPS updater
+settings, which are outside the database.
+
+Telegram's standard Bot API accepts document uploads up to 50 MB. Taskpath caps
+snapshots at 50,000,000 bytes and reports larger files without uploading them;
+use `sudo taskpath backup` on the VPS for larger backups. The bot never sends
+partial snapshots or replaces the running database. Restore a downloaded snapshot
+using `bun run admin import BACKUP.sqlite` with a **new** `DATABASE_PATH` and the
+server stopped, following the CLI's backup/restore instructions.

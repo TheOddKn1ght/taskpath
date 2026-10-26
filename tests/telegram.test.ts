@@ -1,7 +1,15 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Store } from '../src/store';
 import { AuthManager } from '../src/auth';
-import { TelegramAdmin, telegramConfig, type TelegramUpdate } from '../src/telegram';
+import {
+  TelegramAdmin,
+  telegramConfig,
+  TELEGRAM_BACKUP_MAX_BYTES,
+  type TelegramUpdate,
+} from '../src/telegram';
 import { fixture, testUserId, testVault } from './auth-helpers';
 
 const config = { token: '123:test_token', adminId: 42, origin: 'https://tasks.example.com' };
@@ -295,3 +303,183 @@ for (const kind of ['webhook', 'credentials', 'conflict', 'network', 'rate-limit
     }
   });
 }
+
+function backupFixture() {
+  const directory = mkdtempSync(join(tmpdir(), 'taskpath-telegram-test-'));
+  const store = new Store(join(directory, 'source.sqlite'), undefined, 'UTC');
+  const auth = new AuthManager(store.db);
+  const calls: { method: string; body: any }[] = [];
+  let uploadError: unknown;
+  let upload: (form: FormData) => Promise<void> = async () => {};
+  const logs: string[] = [];
+  const bot = new TelegramAdmin(
+    store.db,
+    auth,
+    config,
+    (async (url: any, init: any) => {
+      const method = String(url).split('/').at(-1)!;
+      const body = init.body instanceof FormData ? init.body : JSON.parse(init.body);
+      calls.push({ method, body });
+      if (method === 'sendDocument') {
+        expect(init.headers).toBeUndefined();
+        try {
+          await upload(body);
+        } catch (error) {
+          uploadError = error;
+          throw error;
+        }
+      }
+      return Response.json({ ok: true, result: { message_id: 101 } });
+    }) as typeof fetch,
+    Date.now,
+    (text) => logs.push(text),
+  );
+  return {
+    directory,
+    store,
+    auth,
+    bot,
+    calls,
+    logs,
+    get uploadError() {
+      return uploadError;
+    },
+    upload: (work: typeof upload) => {
+      upload = work;
+    },
+    close: () => {
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+test('backup sends a consistent restorable SQLite snapshot with all private state and cleans up', async () => {
+  const f = backupFixture();
+  const before = new Set(
+    readdirSync(tmpdir()).filter((name) => name.startsWith('taskpath-telegram-backup-')),
+  );
+  let uploaded = false;
+  try {
+    const account = f.auth.createInvitation();
+    f.store.db.exec(
+      "INSERT INTO settings VALUES ('push-key','private-key'); INSERT INTO encrypted_files VALUES ('user','file',4,'encrypted-envelope',X'0001FF80',0)",
+    );
+    f.upload(async (form) => {
+      expect(form.get('chat_id')).toBe('42');
+      expect(form.get('caption')).toContain('sessions');
+      const file = form.get('document') as File;
+      expect(file.name).toMatch(/^taskpath-.*\.sqlite$/);
+      const path = join(f.directory, 'downloaded.sqlite');
+      await Bun.write(path, file);
+      const restored = new Store(path, undefined, 'UTC');
+      try {
+        expect(new AuthManager(restored.db).list()[0]!.userId).toBe(account.userId);
+        expect(restored.db.query("SELECT value FROM settings WHERE key='push-key'").get()).toEqual({
+          value: 'private-key',
+        });
+        expect(restored.db.query('SELECT ciphertext FROM encrypted_files').get()).toEqual({
+          ciphertext: Buffer.from([0, 1, 255, 128]),
+        });
+        expect(
+          restored.db.query("SELECT value FROM settings WHERE key='telegram-offset:123'").get(),
+        ).toEqual({ value: '2' });
+      } finally {
+        restored.close();
+      }
+      uploaded = true;
+    });
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.uploadError).toBeUndefined();
+    expect(uploaded).toBe(true);
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(1);
+    expect(f.logs).toEqual([]);
+    const after = readdirSync(tmpdir()).filter((name) =>
+      name.startsWith('taskpath-telegram-backup-'),
+    );
+    expect(after.every((name) => before.has(name))).toBe(true);
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(1);
+    // The live database remains writable after snapshot delivery.
+    f.auth.createInvitation();
+    expect(f.auth.list()).toHaveLength(2);
+  } finally {
+    f.close();
+  }
+});
+
+test('backup command/button share authorization and reject command arguments', async () => {
+  const f = backupFixture();
+  try {
+    await f.bot.handle(message(1, '/backup', 43));
+    await f.bot.handle(callback(2, 'backup', 101, 42, 'group'));
+    expect(f.calls).toHaveLength(0);
+    await f.bot.handle(message(3, '/backup extra'));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Usage: /backup');
+    await f.bot.handle(callback(4, 'backup', 101));
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(1);
+    await f.bot.handle(message(5, '/start'));
+    expect(replies(f.calls).at(-1)!.body.reply_markup.inline_keyboard[1][0]).toEqual({
+      text: 'Database backup',
+      callback_data: 'backup',
+    });
+  } finally {
+    f.close();
+  }
+});
+
+test('backup rejects oversize snapshots before uploading and explains the VPS fallback', async () => {
+  const f = backupFixture();
+  try {
+    f.store.db
+      .query(
+        "INSERT INTO encrypted_files VALUES ('user','large',?,'encrypted-envelope',zeroblob(?),0)",
+      )
+      .run(TELEGRAM_BACKUP_MAX_BYTES, TELEGRAM_BACKUP_MAX_BYTES);
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(0);
+    expect(replies(f.calls).at(-1)!.body.text).toContain('50 MB');
+    expect(replies(f.calls).at(-1)!.body.text).toContain('sudo taskpath backup');
+  } finally {
+    f.close();
+  }
+});
+
+test('failed upload cleans temporary backup and never logs paths, payloads, or tokens', async () => {
+  const f = backupFixture();
+  const before = new Set(
+    readdirSync(tmpdir()).filter((name) => name.startsWith('taskpath-telegram-backup-')),
+  );
+  try {
+    f.upload(async () => {
+      throw new Error('secret database and bot token');
+    });
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.logs).toEqual(['Telegram database backup failed.']);
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Could not create or deliver');
+    expect(
+      readdirSync(tmpdir())
+        .filter((name) => name.startsWith('taskpath-telegram-backup-'))
+        .every((name) => before.has(name)),
+    ).toBe(true);
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(1);
+  } finally {
+    f.close();
+  }
+});
+
+test('snapshot failure reports a generic error and leaves the bot usable', async () => {
+  const f = backupFixture();
+  try {
+    f.store.db.exec('DROP TABLE push_deliveries');
+    await f.bot.handle(message(1, '/backup'));
+    expect(f.calls.filter((c) => c.method === 'sendDocument')).toHaveLength(0);
+    expect(f.logs).toEqual(['Telegram database backup failed.']);
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Could not create or deliver');
+    await f.bot.handle(message(2, '/help'));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Taskpath admin');
+  } finally {
+    f.close();
+  }
+});

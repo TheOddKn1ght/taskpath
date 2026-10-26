@@ -1,14 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { snapshotDatabase } from './db/backup';
 import { AuthManager } from './auth';
 import { invitationURL } from './admin';
 import { InputError } from './store';
 import { validUserId } from '../public/crypto';
 
 export const TELEGRAM_ADMIN_VERSION = 1;
+export const TELEGRAM_BACKUP_MAX_BYTES = 50_000_000;
 export type TelegramConfig = { token: string; adminId: number; origin: string };
 type Button = { text: string; callback_data: string };
-type Reply = { text: string; buttons?: Button[][]; confirmation?: string };
+type Reply = { text: string; buttons?: Button[][]; confirmation?: string; backup?: boolean };
 type Message = {
   message_id: number;
   chat: { id: number; type: string };
@@ -71,14 +76,17 @@ export class TelegramAdmin {
         .get(this.key)?.value || 0,
     );
   }
-  private async api(method: string, body: object): Promise<any> {
+  private async api(method: string, body: object | FormData): Promise<any> {
     let response: Response;
     try {
       response = await this.request(`https://api.telegram.org/bot${this.config.token}/${method}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(45_000)]),
+        headers: body instanceof FormData ? undefined : { 'content-type': 'application/json' },
+        body: body instanceof FormData ? body : JSON.stringify(body),
+        signal: AbortSignal.any([
+          this.controller.signal,
+          AbortSignal.timeout(method === 'sendDocument' ? 120_000 : 45_000),
+        ]),
       });
     } catch {
       throw new TelegramError(false);
@@ -100,12 +108,13 @@ export class TelegramAdmin {
   }
   private menu(): Reply {
     return {
-      text: 'Taskpath admin\n/invite — create invitation\n/list — accounts\n/reinvite USER_ID\n/revoke USER_ID\n/disable USER_ID',
+      text: 'Taskpath admin\n/invite — create invitation\n/list — accounts\n/reinvite USER_ID\n/revoke USER_ID\n/disable USER_ID\n/backup — download database backup',
       buttons: [
         [
           { text: 'Invite', callback_data: 'invite' },
           { text: 'Accounts', callback_data: 'list:0' },
         ],
+        [{ text: 'Database backup', callback_data: 'backup' }],
       ],
     };
   }
@@ -144,6 +153,10 @@ export class TelegramAdmin {
   }
   private command(action: string, arg: string | undefined, messageId?: number): Reply {
     if (action === 'start' || action === 'help') return this.menu();
+    if (action === 'backup') {
+      if (arg !== undefined) throw new InputError('Usage: /backup');
+      return { text: '', backup: true };
+    }
     if (action === 'list') {
       if (arg !== undefined && !/^\d{1,8}$/.test(arg)) throw new InputError('Invalid page.');
       return this.accounts(Number(arg || 0));
@@ -217,13 +230,13 @@ export class TelegramAdmin {
         try {
           if (callback) {
             const match =
-              /^(invite|list|reinvite|revoke|disable|confirm|cancel)(?::([^:]+))?$/.exec(
+              /^(invite|list|reinvite|revoke|disable|confirm|cancel|backup)(?::([^:]+))?$/.exec(
                 callback.data || '',
               );
             if (match) reply = this.command(match[1]!, match[2], message!.message_id);
           } else {
             const match =
-              /^\/(start|help|invite|list|reinvite|revoke|disable)(?:\s+(\S+))?\s*$/.exec(
+              /^\/(start|help|invite|list|reinvite|revoke|disable|backup)(?:\s+(\S+))?\s*$/.exec(
                 message?.text || '',
               );
             reply = match ? this.command(match[1]!, match[2]) : this.menu();
@@ -247,6 +260,10 @@ export class TelegramAdmin {
         /* A stale callback acknowledgement must not hide the result. */
       }
     }
+    if (reply?.backup) {
+      await this.sendBackup();
+      return;
+    }
     if (reply) {
       const result = await this.api('sendMessage', {
         chat_id: this.config.adminId,
@@ -260,6 +277,43 @@ export class TelegramAdmin {
       }
     }
   }
+  private async sendBackup() {
+    let directory: string | undefined;
+    try {
+      directory = mkdtempSync(join(tmpdir(), 'taskpath-telegram-backup-'));
+      const filename = `taskpath-${new Date(this.now()).toISOString().replace(/[:.]/g, '-')}.sqlite`;
+      const path = snapshotDatabase(this.db.filename, join(directory, filename));
+      if (statSync(path).size > TELEGRAM_BACKUP_MAX_BYTES) {
+        await this.api('sendMessage', {
+          chat_id: this.config.adminId,
+          text: 'Database backup exceeds the 50 MB Telegram upload limit. Use sudo taskpath backup on the VPS instead.',
+        });
+        return;
+      }
+      const form = new FormData();
+      form.set('chat_id', String(this.config.adminId));
+      form.set(
+        'document',
+        new File([Bun.file(path)], filename, { type: 'application/vnd.sqlite3' }),
+      );
+      form.set(
+        'caption',
+        'Full Taskpath database backup. Contains all accounts, encrypted tasks and files, sessions, and push state. Keep private. Vault passwords are still required.',
+      );
+      await this.api('sendDocument', form);
+    } catch {
+      if (!this.controller.signal.aborted) {
+        this.report('Telegram database backup failed.');
+        await this.api('sendMessage', {
+          chat_id: this.config.adminId,
+          text: 'Could not create or deliver the database backup. Retry /backup, or use sudo taskpath backup on the VPS.',
+        });
+      }
+    } finally {
+      if (directory) rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
   start() {
     if (!this.running)
       this.running = this.run().catch(() =>
