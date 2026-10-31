@@ -2,7 +2,42 @@ name: Tests
 
 on:
   push:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'deploy/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'bunfig.toml'
+      - 'tsconfig*.json'
+      - 'playwright.config.*'
+      - 'Dockerfile'
+      - 'compose*.yaml'
+      - '.dockerignore'
+      - '.env.example'
+      - '!**/*.md'
   pull_request:
+    # Keep these paths in sync with push. Markdown includes src/md intent notes.
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'deploy/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'bunfig.toml'
+      - 'tsconfig*.json'
+      - 'playwright.config.*'
+      - 'Dockerfile'
+      - 'compose*.yaml'
+      - '.dockerignore'
+      - '.env.example'
+      - '!**/*.md'
   workflow_dispatch:
 
 permissions:

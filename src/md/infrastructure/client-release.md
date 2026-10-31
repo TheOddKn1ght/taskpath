@@ -9,3 +9,5 @@ The production app and service worker each bundle their runtime. Avoid duplicate
 Worker updates must protect active sessions and pending offline work. The worker does not use `skipWaiting`. Cache cleanup completes during activation; a ready worker alone does not prove that old caches are gone.
 
 Key sources: `scripts/build.ts`, `src/client-release.ts`, `src/client-assets.ts`, and `public/sw.ts`. See `tests/client-release.test.ts`, `tests/build.test.ts`, and the [release regression record](../../../docs/client-release-regression.md).
+
+CI runs automatically for changes to application code, assets, tests, scripts, deployment inputs, dependencies, or build and test configuration. Intent notes and other Markdown-only changes do not need the test suite. Keep manual workflow dispatch available for an explicit full run. Update the workflow path filters when introducing a new source or configuration location.
