@@ -30,6 +30,7 @@ class TelegramError extends Error {
   constructor(
     public fatal: boolean,
     public delay = 0,
+    public unchanged = false,
   ) {
     super('Telegram request failed.');
   }
@@ -102,13 +103,14 @@ export class TelegramAdmin {
       throw new TelegramError(
         [400, 401, 403, 404, 409].includes(code),
         Math.min(3600, Math.max(0, Number(data.parameters?.retry_after) || 0)) * 1000,
+        code === 400 && /message is not modified/i.test(data.description || ''),
       );
     }
     return data.result;
   }
   private menu(): Reply {
     return {
-      text: 'Taskpath admin\n/invite — create invitation\n/list — accounts\n/reinvite USER_ID\n/revoke USER_ID\n/disable USER_ID\n/backup — download database backup',
+      text: 'Taskpath admin\nChoose an action below. Open Accounts to manage an invitation or disable an account.\n\nCommands: /invite, /list, /reinvite USER_ID, /revoke USER_ID, /disable USER_ID, /backup',
       buttons: [
         [
           { text: 'Invite', callback_data: 'invite' },
@@ -118,6 +120,31 @@ export class TelegramAdmin {
       ],
     };
   }
+  private navigation(): Button[][] {
+    return [
+      [
+        { text: 'Accounts', callback_data: 'list:0' },
+        { text: 'Main menu', callback_data: 'home' },
+      ],
+    ];
+  }
+  private account(userId: string): Reply {
+    const row = this.auth.list().find((account) => account.userId === userId);
+    if (!row) throw new InputError('Account not found.');
+    const buttons: Button[][] = [];
+    if (row.status === 'pending')
+      buttons.push([
+        { text: 'New setup link', callback_data: `reinvite:${userId}` },
+        { text: 'Revoke invite', callback_data: `revoke:${userId}` },
+      ]);
+    if (row.status !== 'disabled')
+      buttons.push([{ text: 'Disable account', callback_data: `disable:${userId}` }]);
+    buttons.push(...this.navigation());
+    return {
+      text: `Account: ${userId}\nStatus: ${row.status}\nCreated: ${new Date(row.createdAt).toISOString()}${row.expiresAt ? `\nInvite expires: ${new Date(row.expiresAt).toISOString()}` : ''}`,
+      buttons,
+    };
+  }
   private accounts(page: number): Reply {
     const rows = this.auth.list();
     const pages = Math.max(1, Math.ceil(rows.length / 10));
@@ -125,34 +152,31 @@ export class TelegramAdmin {
     const selected = rows.slice(page * 10, page * 10 + 10);
     const buttons: Button[][] = [];
     for (const row of selected) {
-      const actions: Button[] = [];
-      if (row.status === 'pending')
-        actions.push(
-          { text: `Reinvite ${row.userId}`, callback_data: `reinvite:${row.userId}` },
-          { text: 'Revoke invite', callback_data: `revoke:${row.userId}` },
-        );
-      if (row.status !== 'disabled')
-        actions.push({ text: `Disable ${row.userId}`, callback_data: `disable:${row.userId}` });
-      if (actions.length) buttons.push(actions);
+      buttons.push([
+        { text: `${row.status} · ${row.userId}`, callback_data: `account:${row.userId}` },
+      ]);
     }
     const nav: Button[] = [];
     if (page > 0) nav.push({ text: 'Previous', callback_data: `list:${page - 1}` });
     if (page + 1 < pages) nav.push({ text: 'Next', callback_data: `list:${page + 1}` });
     if (nav.length) buttons.push(nav);
+    buttons.push([
+      { text: 'Invite', callback_data: 'invite' },
+      { text: 'Main menu', callback_data: 'home' },
+    ]);
     return {
       text:
         `Accounts (${page + 1}/${pages})\n` +
-        (selected
-          .map(
-            (row) =>
-              `${row.userId}\n${row.status} · created ${new Date(row.createdAt).toISOString()}${row.expiresAt ? ` · invite expires ${new Date(row.expiresAt).toISOString()}` : ''}`,
-          )
-          .join('\n\n') || 'No accounts.'),
+        (selected.length ? 'Choose an account to view details and actions.' : 'No accounts.'),
       buttons,
     };
   }
   private command(action: string, arg: string | undefined, messageId?: number): Reply {
-    if (action === 'start' || action === 'help') return this.menu();
+    if (action === 'start' || action === 'help' || action === 'home') return this.menu();
+    if (action === 'account') {
+      if (!validUserId(arg)) throw new InputError('Provide a valid USER_ID.');
+      return this.account(arg);
+    }
     if (action === 'backup') {
       if (arg !== undefined) throw new InputError('Usage: /backup');
       return { text: '', backup: true };
@@ -230,7 +254,7 @@ export class TelegramAdmin {
         try {
           if (callback) {
             const match =
-              /^(invite|list|reinvite|revoke|disable|confirm|cancel|backup)(?::([^:]+))?$/.exec(
+              /^(home|account|invite|list|reinvite|revoke|disable|confirm|cancel|backup)(?::([^:]+))?$/.exec(
                 callback.data || '',
               );
             if (match) reply = this.command(match[1]!, match[2], message!.message_id);
@@ -265,12 +289,25 @@ export class TelegramAdmin {
       return;
     }
     if (reply) {
-      const result = await this.api('sendMessage', {
+      const body = {
         chat_id: this.config.adminId,
         text: reply.text,
         link_preview_options: { is_disabled: true },
-        ...(reply.buttons?.length ? { reply_markup: { inline_keyboard: reply.buttons } } : {}),
-      });
+        reply_markup: {
+          inline_keyboard: reply.buttons?.length ? reply.buttons : this.navigation(),
+        },
+      };
+      if (callback && /^(home|list|account)(:|$)/.test(callback.data || '')) {
+        try {
+          await this.api('editMessageText', { ...body, message_id: message!.message_id });
+          return;
+        } catch (error) {
+          if (!(error instanceof TelegramError)) throw error;
+          if (error.unchanged) return;
+          if (!error.fatal) throw error;
+        }
+      }
+      const result = await this.api('sendMessage', body);
       if (reply.confirmation) {
         const pending = this.confirmations.get(reply.confirmation);
         if (pending) pending.messageId = result.message_id;

@@ -137,21 +137,41 @@ test('menu, invitation, renew and revoke use existing account rules', async () =
   }
 });
 
-test('accounts paginate ten per page and expose applicable actions', async () => {
+test('accounts paginate with one button per account and edit navigation in place', async () => {
   const f = setup();
   try {
     for (let i = 0; i < 11; i++) f.auth.createInvitation();
     await f.bot.handle(message(1, '/list'));
     const first = replies(f.calls).at(-1)!.body;
     expect(first.text).toContain('Accounts (1/2)');
-    expect(first.text.match(/pending/g)).toHaveLength(10);
-    expect(first.reply_markup.inline_keyboard.at(-1)).toEqual([
+    expect(
+      first.reply_markup.inline_keyboard.filter((row: any[]) =>
+        row[0].callback_data.startsWith('account:'),
+      ),
+    ).toHaveLength(10);
+    expect(first.reply_markup.inline_keyboard.at(-2)).toEqual([
       { text: 'Next', callback_data: 'list:1' },
     ]);
     await f.bot.handle(callback(2, 'list:1', 101));
-    const next = replies(f.calls).at(-1)!.body;
+    const next = f.calls.filter((call) => call.method === 'editMessageText').at(-1)!.body;
     expect(next.text).toContain('Accounts (2/2)');
-    expect(next.text.match(/pending/g)).toHaveLength(1);
+    expect(next.message_id).toBe(101);
+    expect(
+      next.reply_markup.inline_keyboard.filter((row: any[]) =>
+        row[0].callback_data.startsWith('account:'),
+      ),
+    ).toHaveLength(1);
+    const id = f.auth.list()[0]!.userId;
+    await f.bot.handle(callback(3, `account:${id}`, 101));
+    const detail = f.calls.at(-1)!.body;
+    expect(detail.text).toContain(id);
+    expect(detail.reply_markup.inline_keyboard[0]).toEqual([
+      { text: 'New setup link', callback_data: `reinvite:${id}` },
+      { text: 'Revoke invite', callback_data: `revoke:${id}` },
+    ]);
+    await f.bot.handle(callback(4, 'home', 101));
+    expect(f.calls.at(-1)!.body.text).toContain('Taskpath admin');
+    expect(replies(f.calls)).toHaveLength(1);
   } finally {
     f.store.close();
   }
@@ -481,5 +501,51 @@ test('snapshot failure reports a generic error and leaves the bot usable', async
     expect(replies(f.calls).at(-1)!.body.text).toContain('Taskpath admin');
   } finally {
     f.close();
+  }
+});
+
+test('unchanged navigation is harmless and unavailable messages fall back to a new reply', async () => {
+  for (const description of [
+    'Bad Request: message is not modified',
+    'Bad Request: message to edit not found',
+  ]) {
+    const f = setup();
+    const calls: { method: string; body: any }[] = [];
+    const bot = new TelegramAdmin(f.store.db, f.auth, config, (async (url: any, init: any) => {
+      const method = String(url).split('/').at(-1)!;
+      calls.push({ method, body: JSON.parse(init.body) });
+      return method === 'editMessageText'
+        ? Response.json({ ok: false, error_code: 400, description })
+        : Response.json({ ok: true, result: { message_id: 102 } });
+    }) as typeof fetch);
+    try {
+      await bot.handle(callback(1, 'home', 101));
+      expect(calls.filter((call) => call.method === 'sendMessage')).toHaveLength(
+        description.includes('not modified') ? 0 : 1,
+      );
+      expect(f.auth.list()).toHaveLength(0);
+    } finally {
+      f.store.close();
+    }
+  }
+});
+
+test('empty lists, action results, and errors provide menu navigation', async () => {
+  const f = setup();
+  try {
+    await f.bot.handle(message(1, '/list'));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('No accounts.');
+    for (const [id, text] of [
+      [2, '/invite'],
+      [3, '/disable invalid'],
+    ] as const) {
+      await f.bot.handle(message(id, text));
+      expect(replies(f.calls).at(-1)!.body.reply_markup.inline_keyboard.flat()).toContainEqual({
+        text: 'Main menu',
+        callback_data: 'home',
+      });
+    }
+  } finally {
+    f.store.close();
   }
 });

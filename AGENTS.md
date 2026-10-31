@@ -8,6 +8,7 @@ Read [src/md/README.md](src/md/README.md) first, then the intent files relevant 
 - For a bug fix, use the existing intent where it is clear. Update it when the fix reveals a missing rule or subtle constraint. Do not create a document for every small edit.
 - Record reasons and constraints, not a transcript of prompts or a description of every function. Use short, direct technical English. Distinguish proposed behavior from behavior already implemented; do not invent historical reasons.
 - Keep `src/md/README.md` as the entry point. Its `## File Index` must link every other Markdown file under `src/md/`, using paths relative to that directory and one link plus a brief description per line.
+- Modify a `README.md` only when necessary to keep its content accurate or maintain required links and indexes, or when the user explicitly requests it. Do not update READMEs for routine implementation changes or progress reports.
 - Keep setup, deployment instructions, regression reports, and work plans outside `src/md/`. Link to them when useful. Use the ignored root `tmp/` directory for temporary plans.
 
 ## Repository map
