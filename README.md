@@ -14,3 +14,5 @@ In another terminal, run `bun run admin invite`. Open the setup link within 24 h
 **There is no password reset or recovery key.** Encryption is custom and unaudited. Use HTTPS outside localhost, sync before clearing browser data, and keep file originals until uploads finish.
 
 [Deployment, backups, and updates](DEPLOYMENT.md) · [Telegram admin bot](DEPLOYMENT.md#telegram-admin-bot)
+
+For development, start with [technical intent](src/md/README.md) and [agent instructions](AGENTS.md).
