@@ -262,7 +262,7 @@ test('file adapter returns bounded ciphertext and rejects oversized or incomplet
   );
   await expect(files.download('file', 1)).rejects.toThrow('Invalid encrypted file length.');
   expect(cancelled).toBe(true);
-  await expect(files.download('file', 10_000_001)).rejects.toThrow(
+  await expect(files.download('file', 1_000_000_001)).rejects.toThrow(
     'Invalid encrypted file length.',
   );
   expect(fetchMock).toHaveBeenCalledTimes(3);

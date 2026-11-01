@@ -1,5 +1,6 @@
 import { exact, validId, validUserId, unbase64 } from './crypto.js';
 export const FILE_MAX = 10_000_000,
+  FILE_TRANSFER_MAX = 1_000_000_000,
   FILE_HEADER_MAX = 8192,
   FILE_COUNT_MAX = 1000;
 export interface FileMetadata {
@@ -122,7 +123,7 @@ export function encodeFile(
   if (
     header.length > FILE_HEADER_MAX ||
     ciphertext.length < 16 ||
-    ciphertext.length > FILE_MAX + 16
+    ciphertext.length > FILE_TRANSFER_MAX + 16
   )
     throw new Error('File is too large.');
   const output = new Uint8Array(4 + header.length + ciphertext.length);
@@ -137,7 +138,7 @@ export function decodeFile(data: Uint8Array<ArrayBuffer>, userId: string, vaultI
   if (
     length > FILE_HEADER_MAX ||
     data.length < 4 + length + 16 ||
-    data.length > 4 + length + FILE_MAX + 16
+    data.length > 4 + length + FILE_TRANSFER_MAX + 16
   )
     throw new Error('Invalid file length.');
   const envelope = fileEnvelope(
@@ -154,7 +155,7 @@ export function fileManifest(raw: unknown, userId: string, vaultId: string): Fil
     ![raw.quotaBytes, raw.usedBytes, raw.maxFileBytes].every(
       (n) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0,
     ) ||
-    raw.maxFileBytes !== Math.min(FILE_MAX, raw.quotaBytes as number) ||
+    (raw.maxFileBytes as number) > Math.min(FILE_TRANSFER_MAX, raw.quotaBytes as number) ||
     !Array.isArray(raw.files) ||
     raw.files.length > FILE_COUNT_MAX ||
     !Array.isArray(raw.deleted) ||
@@ -168,7 +169,7 @@ export function fileManifest(raw: unknown, userId: string, vaultId: string): Fil
       typeof entry.bytes !== 'number' ||
       !Number.isSafeInteger(entry.bytes) ||
       entry.bytes < 0 ||
-      entry.bytes > FILE_MAX
+      entry.bytes > FILE_TRANSFER_MAX
     )
       throw new Error('Invalid file size.');
   }

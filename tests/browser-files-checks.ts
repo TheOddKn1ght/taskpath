@@ -69,6 +69,35 @@ export async function fileChecks(assert: (value: unknown, message: string) => vo
     manifestReads = 0;
     await syncFiles();
     assert(manifestReads === 1, 'unchanged file sync reads its manifest only once');
+    // The last synchronized allowance also controls offline file additions.
+    const previousQuota = (await fileState(secondUserId)).quota;
+    offline = true;
+    await writeFiles(secondUserId, epoch, (s) => {
+      s.quota = { quotaBytes: 50_000_000, usedBytes: 0, maxFileBytes: 20_000_000 };
+    });
+    await addFile(new File([new Uint8Array(10_000_001)], 'large.bin'));
+    const large = Object.values((await fileState(secondUserId)).files).find(
+      (f) => f.bytes === 10_000_001,
+    )!;
+    assert(
+      large && (await readStoredFile(large.envelope.fileId)).bytes.length === 10_000_001,
+      'custom per-file allowance accepts and decrypts files larger than 10 MB offline',
+    );
+    await deleteStoredFile(large.envelope.fileId);
+    await writeFiles(secondUserId, epoch, (s) => {
+      s.quota = { quotaBytes: 50_000_000, usedBytes: 0, maxFileBytes: 1_000_000 };
+    });
+    let limitError = '';
+    try {
+      await addFile(new File([new Uint8Array(1_000_001)], 'too-large.bin'));
+    } catch (error) {
+      limitError = (error as Error).message;
+    }
+    assert(limitError.includes('1 MB'), 'file-size error reports the synchronized per-file limit');
+    await writeFiles(secondUserId, epoch, (s) => {
+      s.quota = previousQuota;
+    });
+    offline = false;
     const marker = 'FILE_VAULT_PRIVATE_CONTENT_2026',
       name = 'FILE_PRIVATE_NAME_2026.txt';
     offline = true;

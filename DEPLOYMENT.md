@@ -450,15 +450,17 @@ There is no reset or recovery mechanism. The server cannot decrypt your tasks. A
 ## Enable the encrypted file vault (accounts-v17)
 
 1. Back up the existing SQLite database using the normal backup procedure. Keep the existing volume and account configuration.
-2. Add `TASKPATH_FILE_QUOTA_MB=10` to `.env`. This is a per-user allowance shared by all accounts, in decimal MB (1 MB = 1,000,000 bytes). Use a nonnegative whole number; `0` blocks new uploads. Each individual file remains limited to 10 MB, or the allowance when lower. Invalid settings prevent startup.
+2. Add `TASKPATH_FILE_QUOTA_MB=10` to `.env`. This is the default per-user total allowance, in decimal MB (1 MB = 1,000,000 bytes). Use a nonnegative whole number; `0` blocks new uploads. Invalid settings prevent startup. Administrators can override the total allowance with `bun run admin quota USER_ID MB` and separately set the per-file limit with `bun run admin filelimit USER_ID MB`; use `default` to reset either override. Telegram provides the same `/quota` and `/filelimit` commands and account buttons. The per-file default is 10 MB, with a maximum of 1,000 MB; the total allowance still applies. Lowering either setting retains existing files.
 3. Update the host Nginx configuration from `deploy/nginx/taskpath.conf.example`. Its HTTPS server now includes this exception; leave existing sync and small-request limits in place:
 
    ```nginx
    location = /api/files {
-       client_max_body_size 11m;
+       client_max_body_size 15g;
        proxy_pass http://127.0.0.1:3000;
    }
    ```
+
+The Nginx `15g` ceiling allows request bodies up to 15 GiB; Taskpath still enforces its separate per-user quota and per-file limits. This does not enable 15 GB individual files: the current single-blob SQLite storage and in-memory encryption path require a chunked implementation for that size. Managed `taskpath update` leaves host Nginx unchanged, so apply and reload this configuration manually.
 
 4. Validate and reload Nginx using your usual `nginx -t` / service reload procedure. Rebuild and recreate Taskpath using the existing update instructions so Compose passes the new quota setting. The server adds file tables transactionally. No reset, new account or new volume is needed.
 5. Open Taskpath online on each device, close all tabs and PWA windows, then reopen. The browser storage upgrade may ask you to close another tab. Never clear site data to resolve an update.

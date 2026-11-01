@@ -147,7 +147,7 @@ export function Files() {
           <h2>Files</h2>
           <p className="files-usage">
             {data?.quota
-              ? `${size(data.files.reduce((n, f) => n + f.bytes, 0))} on this device · ${size(data.quota.usedBytes)} / ${size(data.quota.quotaBytes)} synced${data.quota.usedBytes > data.quota.quotaBytes ? ' · Over quota' : ''}`
+              ? `${size(data.files.reduce((n, f) => n + f.bytes, 0))} on this device · ${size(data.quota.usedBytes)} / ${size(data.quota.quotaBytes)} synced · ${size(data.quota.maxFileBytes)} per file${data.quota.usedBytes > data.quota.quotaBytes ? ' · Over quota' : ''}`
               : 'Connect once to refresh the storage allowance. Default: 10 MB.'}
           </p>
         </div>

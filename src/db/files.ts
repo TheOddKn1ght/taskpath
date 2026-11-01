@@ -5,6 +5,7 @@ import {
   fileQuota,
   FILE_COUNT_MAX,
   FILE_MAX,
+  FILE_TRANSFER_MAX,
   type FileEnvelope,
   sameFile,
   newerFile,
@@ -27,7 +28,34 @@ export class FileRepository {
       usedBytes: this.usage(userId).used,
     };
   }
-  setQuota(userId: string, value: string) {
+  fileLimitInfo(userId: string) {
+    const value = this.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, `file-limit:${userId}`))
+      .get()?.value;
+    return {
+      fileLimitBytes: value === undefined ? FILE_MAX : Number(value),
+      inherited: value === undefined,
+    };
+  }
+  transferLimit(userId: string) {
+    // Retained files may be larger than a newly lowered allowance. Allow their
+    // immutable retries while bounding request reads before buffering the body.
+    const retained = this.db
+      .select({ bytes: sql<number>`coalesce(max(${encryptedFiles.bytes}),0)` })
+      .from(encryptedFiles)
+      .where(eq(encryptedFiles.userId, userId))
+      .get()!.bytes;
+    return Math.min(
+      FILE_TRANSFER_MAX,
+      Math.max(this.fileLimitInfo(userId).fileLimitBytes, retained),
+    );
+  }
+  setFileLimit(userId: string, value: string) {
+    return this.setQuota(userId, value, true);
+  }
+  setQuota(userId: string, value: string, perFile = false) {
     if (
       !this.db
         .select({ userId: accounts.userId })
@@ -36,7 +64,7 @@ export class FileRepository {
         .get()
     )
       throw new InputError('Account not found.');
-    const key = `file-quota:${userId}`;
+    const key = `${perFile ? 'file-limit' : 'file-quota'}:${userId}`;
     if (value === 'default') this.db.delete(settings).where(eq(settings.key, key)).run();
     else {
       let bytes: number;
@@ -45,13 +73,15 @@ export class FileRepository {
       } catch {
         throw new InputError('Quota must be a nonnegative whole number of MB or default.');
       }
+      if (perFile && bytes > FILE_TRANSFER_MAX)
+        throw new InputError('File size limit must be 1,000 MB or smaller.');
       this.db
         .insert(settings)
         .values({ key, value: String(bytes) })
         .onConflictDoUpdate({ target: settings.key, set: { value: String(bytes) } })
         .run();
     }
-    return this.quotaInfo(userId);
+    return { ...this.quotaInfo(userId), fileLimitBytes: this.fileLimitInfo(userId).fileLimitBytes };
   }
   private where(userId: string, fileId: string) {
     return and(eq(encryptedFiles.userId, userId), eq(encryptedFiles.fileId, fileId));
@@ -82,7 +112,7 @@ export class FileRepository {
       vaultId,
       quotaBytes: quota,
       usedBytes: rows.reduce((n, r) => n + (r.deleted ? 0 : r.bytes), 0),
-      maxFileBytes: Math.min(FILE_MAX, quota),
+      maxFileBytes: Math.min(this.fileLimitInfo(userId).fileLimitBytes, quota),
       files: rows
         .filter((r) => !r.deleted)
         .map((r) => ({ envelope: JSON.parse(r.envelope!) as FileEnvelope, bytes: r.bytes })),
@@ -109,9 +139,10 @@ export class FileRepository {
       }
       const bytes = ciphertext.length - 16,
         usage = this.usage(e.userId),
-        quota = this.quotaInfo(e.userId).quotaBytes;
-      if (bytes < 0 || bytes > FILE_MAX)
-        throw new InputError('File exceeds the 10 MB file limit.', 413);
+        quota = this.quotaInfo(e.userId).quotaBytes,
+        fileLimit = this.fileLimitInfo(e.userId).fileLimitBytes;
+      if (bytes < 0 || fileLimit === 0 || bytes > fileLimit)
+        throw new InputError(`File exceeds the ${fileLimit / 1_000_000} MB file limit.`, 413);
       if (
         quota === 0 ||
         bytes > quota ||

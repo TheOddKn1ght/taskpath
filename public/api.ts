@@ -1,7 +1,7 @@
 import { RequestError } from './errors.js';
 import { apiRequest, fileRequest } from './api-client.js';
 import { validateConfig } from './crypto.js';
-import { encodeFile, fileManifest, FILE_MAX, type FileEnvelope } from './file-format.js';
+import { encodeFile, fileManifest, FILE_TRANSFER_MAX, type FileEnvelope } from './file-format.js';
 import type { Envelope, ReminderMetadata, PushStatus, VaultConfig } from './types.js';
 
 interface Login {
@@ -145,7 +145,11 @@ export function accountApi(userId: string | null) {
         await fileRequest('/' + encodeURIComponent(fileId), 'DELETE', '{}', id);
       },
       async download(fileId: string, originalBytes: number): Promise<Uint8Array<ArrayBuffer>> {
-        if (!Number.isSafeInteger(originalBytes) || originalBytes < 0 || originalBytes > FILE_MAX)
+        if (
+          !Number.isSafeInteger(originalBytes) ||
+          originalBytes < 0 ||
+          originalBytes > FILE_TRANSFER_MAX
+        )
           throw new Error('Invalid encrypted file length.');
         const response = await fileRequest('/' + encodeURIComponent(fileId), 'GET', undefined, id);
         const reader = response.body?.getReader(),

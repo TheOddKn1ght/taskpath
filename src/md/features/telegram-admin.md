@@ -9,3 +9,5 @@ Disabling still requires a short-lived, single-use confirmation bound to its mes
 Key sources: `src/telegram.ts` and `tests/telegram.test.ts`.
 
 Account details show file usage, effective quota, and whether it inherits the server default. A quota screen offers common MB values, zero, and reset; `/quota USER_ID [MB|default]` supports inspection and custom whole-MB values. Quota mutations use the same private-chat authorization and durable update consumption as other admin actions.
+
+The separate File size limit screen and `/filelimit USER_ID [MB|default]` manage each account’s per-file allowance, defaulting to 10 MB with a 1,000 MB ceiling. Account details show both total quota and per-file allowance.

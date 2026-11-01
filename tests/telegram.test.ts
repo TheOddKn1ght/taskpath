@@ -576,3 +576,21 @@ test('quota commands and account buttons manage isolated overrides with authoriz
     f.store.close();
   }
 });
+
+test('file limit commands and buttons manage an independent per-file setting', async () => {
+  const f = setup();
+  try {
+    const userId = f.auth.createInvitation().userId;
+    await f.bot.handle(message(1, `/filelimit ${userId} 50`, 43));
+    await f.bot.handle(message(2, `/filelimit ${userId}`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Per file: 10 MB (default)');
+    await f.bot.handle(message(3, `/filelimit ${userId} 50`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('Per file: 50 MB (custom limit)');
+    await f.bot.handle(callback(4, `filelimit:${userId}:default`, 100));
+    expect(f.calls.at(-1)!.body.text).toContain('Per file: 10 MB (default)');
+    await f.bot.handle(message(5, `/filelimit ${userId} 1001`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('1,000 MB');
+  } finally {
+    f.store.close();
+  }
+});

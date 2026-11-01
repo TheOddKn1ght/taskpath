@@ -6,7 +6,7 @@ import { validUserId } from '../public/crypto.js';
 import { snapshotDatabase } from './db/backup';
 
 const usage = `Usage: bun run admin invite | list | reinvite USER_ID | revoke USER_ID | disable USER_ID
-       bun run admin quota USER_ID [MB|default]
+       bun run admin quota|filelimit USER_ID [MB|default]
        bun run admin export BACKUP.sqlite
        bun run admin import BACKUP.sqlite
 
@@ -48,9 +48,11 @@ if (import.meta.main) {
       console.log(`${command === 'export' ? 'Database exported' : 'Database imported'}: ${path}`);
     } else {
       if (
-        (command === 'quota' ? extra.length > 1 : extra.length > 0) ||
-        !['invite', 'reinvite', 'revoke', 'list', 'disable', 'quota'].includes(command) ||
-        (['reinvite', 'revoke', 'disable', 'quota'].includes(command)
+        (['quota', 'filelimit'].includes(command) ? extra.length > 1 : extra.length > 0) ||
+        !['invite', 'reinvite', 'revoke', 'list', 'disable', 'quota', 'filelimit'].includes(
+          command,
+        ) ||
+        (['reinvite', 'revoke', 'disable', 'quota', 'filelimit'].includes(command)
           ? !validUserId(userId)
           : userId !== undefined)
       )
@@ -65,7 +67,7 @@ if (import.meta.main) {
       );
       try {
         const auth = new AuthManager(store.db);
-        if (command === 'quota') {
+        if (['quota', 'filelimit'].includes(command)) {
           if (!auth.list().some((row) => row.userId === userId))
             throw new Error('Account not found.');
           const files = new FileRepository(
@@ -73,7 +75,14 @@ if (import.meta.main) {
             fileQuota(process.env.TASKPATH_FILE_QUOTA_MB),
           );
           console.table(
-            extra[0] === undefined ? files.quotaInfo(userId) : files.setQuota(userId, extra[0]),
+            extra[0] === undefined
+              ? {
+                  ...files.quotaInfo(userId),
+                  fileLimitBytes: files.fileLimitInfo(userId).fileLimitBytes,
+                }
+              : command === 'filelimit'
+                ? files.setFileLimit(userId, extra[0])
+                : files.setQuota(userId, extra[0]),
           );
         } else if (command === 'list') console.table(auth.list());
         else if (command === 'disable') {

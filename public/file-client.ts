@@ -29,8 +29,11 @@ export async function listFiles() {
   });
 }
 export async function addFile(file: File) {
-  if (file.size > FILE_MAX) throw new Error('Each file must be 10 MB or smaller.');
   await withFileKey(async (key, userId, vaultId, epoch) => {
+    const allowance = (await fileState(userId)).quota;
+    const limit = allowance?.maxFileBytes ?? FILE_MAX;
+    if (limit === 0 || file.size > limit)
+      throw new Error(`Each file must be ${limit / 1_000_000} MB or smaller.`);
     const raw = new Uint8Array(await file.arrayBuffer());
     try {
       const encrypted = await encryptFile(key, userId, vaultId, raw, {
@@ -42,7 +45,8 @@ export async function addFile(file: File) {
         const quota = s.quota?.quotaBytes ?? FILE_MAX;
         if (
           quota === 0 ||
-          file.size > Math.min(FILE_MAX, quota) ||
+          s.quota?.maxFileBytes === 0 ||
+          file.size > (s.quota?.maxFileBytes ?? FILE_MAX) ||
           Object.values(s.files).reduce((sum, e) => sum + e.bytes, 0) + file.size > quota ||
           Object.keys(s.files).length >= FILE_COUNT_MAX
         )

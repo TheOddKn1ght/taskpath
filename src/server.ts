@@ -14,7 +14,7 @@ import {
   decodeFile,
   fileEnvelope,
   fileQuota,
-  FILE_MAX,
+  FILE_TRANSFER_MAX,
   FILE_HEADER_MAX,
 } from '../public/file-format';
 import { validId } from '../public/crypto';
@@ -302,7 +302,7 @@ export function createHandler(
         if (route?.name === 'files' && request.method === 'GET')
           return json(files.manifest(userId, vaultId));
         if (fileUpload) {
-          const limit = FILE_MAX + FILE_HEADER_MAX + 20;
+          const limit = files.transferLimit(userId) + FILE_HEADER_MAX + 20;
           if (Number(request.headers.get('content-length')) > limit)
             throw new InputError('File is too large.', 413);
           const chunks: Uint8Array[] = [];
@@ -488,7 +488,7 @@ if (import.meta.main) {
   const server = Bun.serve({
     hostname: process.env.HOST || '127.0.0.1',
     port: Number(process.env.PORT || 3000),
-    maxRequestBodySize: 11_000_000,
+    maxRequestBodySize: FILE_TRANSFER_MAX + FILE_HEADER_MAX + 20,
     fetch: createHandler(
       store,
       auth,

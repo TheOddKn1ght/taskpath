@@ -10,7 +10,7 @@ import {
   renameFile,
   imageType,
 } from '../public/file-crypto';
-import { encodeFile, decodeFile, fileQuota, FILE_MAX } from '../public/file-format';
+import { encodeFile, decodeFile, fileQuota, fileManifest, FILE_MAX } from '../public/file-format';
 import { FileRepository } from '../src/db/files';
 import { Store } from '../src/store';
 import { createHandler } from '../src/server';
@@ -253,6 +253,51 @@ test('per-account quotas apply live, retain existing files, and reset to default
     files.upload(b.envelope, b.ciphertext);
     files.setQuota(testUserId, '25');
     expect(new FileRepository(store.orm, 0).quotaInfo(testUserId).quotaBytes).toBe(25_000_000);
+  } finally {
+    store.close();
+  }
+});
+
+test('separate file-size settings allow larger transfers and preserve files after lowering', async () => {
+  const { store, auth } = await fixture();
+  try {
+    const files = new FileRepository(store.orm, 50_000_000);
+    files.setFileLimit(testUserId, '20');
+    const a = await encryptFile(
+      testVault.key,
+      testUserId,
+      testVault.config.vaultId,
+      new Uint8Array(10_000_001),
+      metadata,
+    );
+    const handle = createHandler(store, auth, origin, undefined, undefined, undefined, 50_000_000);
+    const { cookie } = await login(handle);
+    const response = await handle(
+      new Request(`${origin}/api/files`, {
+        method: 'PUT',
+        headers: {
+          origin,
+          cookie,
+          'x-taskpath-user': testUserId,
+          'x-taskpath-sync': '2',
+          'content-type': 'application/octet-stream',
+        },
+        body: encodeFile(a.envelope, a.ciphertext),
+      }),
+    );
+    expect(response!.status).toBe(200);
+    files.setFileLimit(testUserId, '1');
+    expect(files.manifest(testUserId, a.envelope.vaultId).maxFileBytes).toBe(1_000_000);
+    files.upload(a.envelope, a.ciphertext);
+    expect(files.content(testUserId, a.envelope.fileId)).toEqual(a.ciphertext);
+    expect(() =>
+      files.upload({ ...a.envelope, fileId: crypto.randomUUID() }, a.ciphertext),
+    ).toThrow('1 MB');
+    expect(files.fileLimitInfo('u_' + '2'.repeat(32)).fileLimitBytes).toBe(FILE_MAX);
+    for (const value of ['1001', '-1', '1.5'])
+      expect(() => files.setFileLimit(testUserId, value)).toThrow();
+    files.setFileLimit(testUserId, 'default');
+    expect(files.fileLimitInfo(testUserId).inherited).toBe(true);
   } finally {
     store.close();
   }
