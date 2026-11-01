@@ -1,9 +1,12 @@
+import { FileRepository } from './db/files';
+import { fileQuota } from '../public/file-format';
 import { Store } from './store';
 import { AuthManager } from './auth';
 import { validUserId } from '../public/crypto.js';
 import { snapshotDatabase } from './db/backup';
 
 const usage = `Usage: bun run admin invite | list | reinvite USER_ID | revoke USER_ID | disable USER_ID
+       bun run admin quota USER_ID [MB|default]
        bun run admin export BACKUP.sqlite
        bun run admin import BACKUP.sqlite
 
@@ -45,9 +48,9 @@ if (import.meta.main) {
       console.log(`${command === 'export' ? 'Database exported' : 'Database imported'}: ${path}`);
     } else {
       if (
-        extra.length ||
-        !['invite', 'reinvite', 'revoke', 'list', 'disable'].includes(command) ||
-        (['reinvite', 'revoke', 'disable'].includes(command)
+        (command === 'quota' ? extra.length > 1 : extra.length > 0) ||
+        !['invite', 'reinvite', 'revoke', 'list', 'disable', 'quota'].includes(command) ||
+        (['reinvite', 'revoke', 'disable', 'quota'].includes(command)
           ? !validUserId(userId)
           : userId !== undefined)
       )
@@ -62,7 +65,17 @@ if (import.meta.main) {
       );
       try {
         const auth = new AuthManager(store.db);
-        if (command === 'list') console.table(auth.list());
+        if (command === 'quota') {
+          if (!auth.list().some((row) => row.userId === userId))
+            throw new Error('Account not found.');
+          const files = new FileRepository(
+            store.orm,
+            fileQuota(process.env.TASKPATH_FILE_QUOTA_MB),
+          );
+          console.table(
+            extra[0] === undefined ? files.quotaInfo(userId) : files.setQuota(userId, extra[0]),
+          );
+        } else if (command === 'list') console.table(auth.list());
         else if (command === 'disable') {
           auth.disable(userId);
           console.log('Account disabled. Its encrypted data was retained.');

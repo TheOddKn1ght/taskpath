@@ -505,7 +505,7 @@ if (import.meta.main) {
   try {
     const config = telegramConfig(process.env);
     if (config) {
-      telegram = new TelegramAdmin(store.db, auth, config);
+      telegram = new TelegramAdmin(store.db, auth, config, undefined, undefined, undefined, quota);
       telegram.start();
     }
   } catch {

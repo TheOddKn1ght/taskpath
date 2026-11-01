@@ -232,3 +232,28 @@ test('file table migration preserves existing encrypted records and refuses lega
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('per-account quotas apply live, retain existing files, and reset to default', async () => {
+  const { store } = await fixture();
+  try {
+    const files = new FileRepository(store.orm, 50_000_000);
+    const a = await make();
+    files.upload(a.envelope, a.ciphertext);
+    files.setQuota(testUserId, '0');
+    expect(files.manifest(testUserId, a.envelope.vaultId).quotaBytes).toBe(0);
+    files.upload(a.envelope, a.ciphertext);
+    expect(files.content(testUserId, a.envelope.fileId)).toEqual(a.ciphertext);
+    const b = await make();
+    expect(() => files.upload(b.envelope, b.ciphertext)).toThrow('Waiting for space');
+    expect(files.quotaInfo('u_' + '2'.repeat(32)).quotaBytes).toBe(50_000_000);
+    for (const value of ['-1', '1.5', '', '9007199255'])
+      expect(() => files.setQuota(testUserId, value)).toThrow();
+    expect(() => files.setQuota('u_' + '2'.repeat(32), '10')).toThrow('Account not found');
+    expect(files.setQuota(testUserId, 'default').inherited).toBe(true);
+    files.upload(b.envelope, b.ciphertext);
+    files.setQuota(testUserId, '25');
+    expect(new FileRepository(store.orm, 0).quotaInfo(testUserId).quotaBytes).toBe(25_000_000);
+  } finally {
+    store.close();
+  }
+});

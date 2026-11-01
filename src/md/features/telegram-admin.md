@@ -7,3 +7,5 @@ Menu, account list, and detail navigation update the current message to avoid fl
 Disabling still requires a short-lived, single-use confirmation bound to its message. Navigation must not bypass authorization or replay account changes after a delivery failure. If a navigation edit is rejected because the message is unchanged, treat it as successful; other rejected edits can fall back to a new message.
 
 Key sources: `src/telegram.ts` and `tests/telegram.test.ts`.
+
+Account details show file usage, effective quota, and whether it inherits the server default. A quota screen offers common MB values, zero, and reset; `/quota USER_ID [MB|default]` supports inspection and custom whole-MB values. Quota mutations use the same private-chat authorization and durable update consumption as other admin actions.

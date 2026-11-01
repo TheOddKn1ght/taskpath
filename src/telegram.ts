@@ -1,3 +1,6 @@
+import { FileRepository } from './db/files';
+import { connect } from './db/connection';
+import { fileQuota } from '../public/file-format';
 import { randomBytes } from 'node:crypto';
 import type { Database } from 'bun:sqlite';
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
@@ -67,6 +70,7 @@ export class TelegramAdmin {
     private request: typeof fetch = fetch,
     private now = () => Date.now(),
     private report = (message: string) => console.error(message),
+    private defaultQuota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB),
   ) {
     this.key = `telegram-offset:${config.token.split(':')[0]}`;
   }
@@ -110,7 +114,7 @@ export class TelegramAdmin {
   }
   private menu(): Reply {
     return {
-      text: 'Taskpath admin\nChoose an action below. Open Accounts to manage an invitation or disable an account.\n\nCommands: /invite, /list, /reinvite USER_ID, /revoke USER_ID, /disable USER_ID, /backup',
+      text: 'Taskpath admin\nChoose an action below. Open Accounts to manage an invitation or disable an account.\n\nCommands: /invite, /list, /reinvite USER_ID, /revoke USER_ID, /disable USER_ID, /quota USER_ID [MB|default], /backup',
       buttons: [
         [
           { text: 'Invite', callback_data: 'invite' },
@@ -139,10 +143,35 @@ export class TelegramAdmin {
       ]);
     if (row.status !== 'disabled')
       buttons.push([{ text: 'Disable account', callback_data: `disable:${userId}` }]);
+    buttons.push([{ text: 'File quota', callback_data: `quota:${userId}` }]);
     buttons.push(...this.navigation());
     return {
-      text: `Account: ${userId}\nStatus: ${row.status}\nCreated: ${new Date(row.createdAt).toISOString()}${row.expiresAt ? `\nInvite expires: ${new Date(row.expiresAt).toISOString()}` : ''}`,
+      text: `Account: ${userId}\nStatus: ${row.status}\n${this.quotaText(userId)}\nCreated: ${new Date(row.createdAt).toISOString()}${row.expiresAt ? `\nInvite expires: ${new Date(row.expiresAt).toISOString()}` : ''}`,
       buttons,
+    };
+  }
+  private fileRepository() {
+    return new FileRepository(connect(this.db), this.defaultQuota);
+  }
+  private quotaText(userId: string) {
+    const info = this.fileRepository().quotaInfo(userId);
+    return `Files: ${info.usedBytes / 1_000_000} / ${info.quotaBytes / 1_000_000} MB (${info.inherited ? 'server default' : 'custom quota'})`;
+  }
+  private quotaScreen(userId: string): Reply {
+    if (!validUserId(userId) || !this.auth.list().some((row) => row.userId === userId))
+      throw new InputError('Account not found.');
+    return {
+      text: `Account: ${userId}\n${this.quotaText(userId)}\nChoose a quota, or send /quota ${userId} MB (whole decimal MB). Zero blocks new uploads. Existing files are retained.`,
+      buttons: [
+        ...['0', '10', '50', '100', '500', '1000', 'default'].map((value) => [
+          {
+            text: value === 'default' ? 'Use server default' : `${value} MB`,
+            callback_data: `quota:${userId}:${value}`,
+          },
+        ]),
+        [{ text: 'Account details', callback_data: `account:${userId}` }],
+        ...this.navigation(),
+      ],
     };
   }
   private accounts(page: number): Reply {
@@ -176,6 +205,13 @@ export class TelegramAdmin {
     if (action === 'account') {
       if (!validUserId(arg)) throw new InputError('Provide a valid USER_ID.');
       return this.account(arg);
+    }
+    if (action === 'quota') {
+      const [userId, value, ...extra] = (arg || '').split(/[:\s]+/);
+      if (!validUserId(userId) || extra.length)
+        throw new InputError('Usage: /quota USER_ID [MB|default]');
+      if (value !== undefined) this.fileRepository().setQuota(userId, value);
+      return this.quotaScreen(userId);
     }
     if (action === 'backup') {
       if (arg !== undefined) throw new InputError('Usage: /backup');
@@ -254,13 +290,13 @@ export class TelegramAdmin {
         try {
           if (callback) {
             const match =
-              /^(home|account|invite|list|reinvite|revoke|disable|confirm|cancel|backup)(?::([^:]+))?$/.exec(
+              /^(home|account|invite|list|reinvite|revoke|disable|confirm|cancel|backup|quota)(?::(.+))?$/.exec(
                 callback.data || '',
               );
             if (match) reply = this.command(match[1]!, match[2], message!.message_id);
           } else {
             const match =
-              /^\/(start|help|invite|list|reinvite|revoke|disable|backup)(?:\s+(\S+))?\s*$/.exec(
+              /^\/(start|help|invite|list|reinvite|revoke|disable|backup|quota)(?:\s+(.+?))?\s*$/.exec(
                 message?.text || '',
               );
             reply = match ? this.command(match[1]!, match[2]) : this.menu();
@@ -297,7 +333,7 @@ export class TelegramAdmin {
           inline_keyboard: reply.buttons?.length ? reply.buttons : this.navigation(),
         },
       };
-      if (callback && /^(home|list|account)(:|$)/.test(callback.data || '')) {
+      if (callback && /^(home|list|account|quota)(:|$)/.test(callback.data || '')) {
         try {
           await this.api('editMessageText', { ...body, message_id: message!.message_id });
           return;

@@ -549,3 +549,30 @@ test('empty lists, action results, and errors provide menu navigation', async ()
     f.store.close();
   }
 });
+
+test('quota commands and account buttons manage isolated overrides with authorization', async () => {
+  const f = setup();
+  try {
+    const userId = f.auth.createInvitation().userId;
+    await f.bot.handle(message(1, `/quota ${userId} 50`, 43));
+    await f.bot.handle(message(2, `/quota ${userId}`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('server default');
+    await f.bot.handle(message(3, `/quota ${userId} 50`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('50 MB (custom quota)');
+    await f.bot.handle(callback(4, `quota:${userId}:0`, 100));
+    expect(f.calls.at(-1)!.body.text).toContain('0 MB (custom quota)');
+    await f.bot.handle(callback(5, `quota:${userId}:default`, 100));
+    expect(f.calls.at(-1)!.body.text).toContain('server default');
+    await f.bot.handle(message(6, `/quota ${userId} -1`));
+    expect(replies(f.calls).at(-1)!.body.text).toContain('nonnegative');
+    await f.bot.handle(callback(7, `account:${userId}`, 100));
+    expect(
+      f.calls
+        .at(-1)!
+        .body.reply_markup.inline_keyboard.flat()
+        .some((b: any) => b.text === 'File quota'),
+    ).toBe(true);
+  } finally {
+    f.store.close();
+  }
+});

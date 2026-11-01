@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { AppDatabase } from './connection';
-import { encryptedFiles } from './schema';
+import { accounts, settings, encryptedFiles } from './schema';
 import {
+  fileQuota,
   FILE_COUNT_MAX,
   FILE_MAX,
   type FileEnvelope,
@@ -14,6 +15,44 @@ export class FileRepository {
     private db: AppDatabase,
     readonly quota: number,
   ) {}
+  quotaInfo(userId: string) {
+    const value = this.db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, `file-quota:${userId}`))
+      .get()?.value;
+    return {
+      quotaBytes: value === undefined ? this.quota : Number(value),
+      inherited: value === undefined,
+      usedBytes: this.usage(userId).used,
+    };
+  }
+  setQuota(userId: string, value: string) {
+    if (
+      !this.db
+        .select({ userId: accounts.userId })
+        .from(accounts)
+        .where(eq(accounts.userId, userId))
+        .get()
+    )
+      throw new InputError('Account not found.');
+    const key = `file-quota:${userId}`;
+    if (value === 'default') this.db.delete(settings).where(eq(settings.key, key)).run();
+    else {
+      let bytes: number;
+      try {
+        bytes = fileQuota(value);
+      } catch {
+        throw new InputError('Quota must be a nonnegative whole number of MB or default.');
+      }
+      this.db
+        .insert(settings)
+        .values({ key, value: String(bytes) })
+        .onConflictDoUpdate({ target: settings.key, set: { value: String(bytes) } })
+        .run();
+    }
+    return this.quotaInfo(userId);
+  }
   private where(userId: string, fileId: string) {
     return and(eq(encryptedFiles.userId, userId), eq(encryptedFiles.fileId, fileId));
   }
@@ -38,11 +77,12 @@ export class FileRepository {
       .from(encryptedFiles)
       .where(eq(encryptedFiles.userId, userId))
       .all();
+    const quota = this.quotaInfo(userId).quotaBytes;
     return {
       vaultId,
-      quotaBytes: this.quota,
+      quotaBytes: quota,
       usedBytes: rows.reduce((n, r) => n + (r.deleted ? 0 : r.bytes), 0),
-      maxFileBytes: Math.min(FILE_MAX, this.quota),
+      maxFileBytes: Math.min(FILE_MAX, quota),
       files: rows
         .filter((r) => !r.deleted)
         .map((r) => ({ envelope: JSON.parse(r.envelope!) as FileEnvelope, bytes: r.bytes })),
@@ -68,13 +108,14 @@ export class FileRepository {
         return;
       }
       const bytes = ciphertext.length - 16,
-        usage = this.usage(e.userId);
+        usage = this.usage(e.userId),
+        quota = this.quotaInfo(e.userId).quotaBytes;
       if (bytes < 0 || bytes > FILE_MAX)
         throw new InputError('File exceeds the 10 MB file limit.', 413);
       if (
-        this.quota === 0 ||
-        bytes > this.quota ||
-        usage.used + bytes > this.quota ||
+        quota === 0 ||
+        bytes > quota ||
+        usage.used + bytes > quota ||
         usage.count >= FILE_COUNT_MAX
       )
         throw new InputError('Waiting for space. Free storage or increase the file quota.', 507);
