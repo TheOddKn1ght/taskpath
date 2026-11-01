@@ -1,3 +1,4 @@
+import { offlineRoutes } from './router.js';
 import { rememberedLockExpired } from './auto-lock-settings.js';
 import { retainVersions } from './task-history.js';
 import { accountApi } from './api.js';
@@ -602,12 +603,16 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
   if (input != null && (typeof input !== 'object' || Array.isArray(input)))
     throw new Error('Invalid task input.');
   const body = (input || {}) as Record<string, unknown>;
-  if (path === '/api/board' && method === 'GET') return readBoard();
-  if (path.startsWith('/api/export')) {
+  const queryAt = path.indexOf('?');
+  const pathname = queryAt < 0 ? path : path.slice(0, queryAt);
+  const query = new URLSearchParams(queryAt < 0 ? '' : path.slice(queryAt + 1));
+  const route = offlineRoutes.match(pathname);
+  if (route?.name === 'board' && method === 'GET') return readBoard();
+  if (route?.name === 'export') {
     if (!(await localState()).syncComplete)
       throw new Error('Syncing tasks… Wait for the initial download before exporting.');
     const board = await readBoard();
-    return path.includes('format=markdown')
+    return query.get('format') === 'markdown'
       ? exportMarkdown(board.tasks)
       : {
           version: 2,
@@ -616,12 +621,12 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
           tasks: board.tasks,
         };
   }
-  if (path === '/api/import/preview') {
+  if (route?.name === 'importPreview') {
     const parsed = parseMarkdown(body.markdown),
       record = await plaintext(await localState(), token);
     return { ...previewImport(parsed.tasks, record), ignoredBlocks: parsed.ignoredBlocks };
   }
-  if (path === '/api/reminders/claim') {
+  if (route?.name === 'claimReminders') {
     const current = await localState();
     if (current.pending.length || current.pushEnabled) return { tasks: [] };
     const board = await readBoard();
@@ -643,7 +648,7 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
   }
   if (method === 'GET') throw new Error('Unsupported task operation.');
   return write((record, profiles) => {
-    if (path === '/api/profile') {
+    if (route?.name === 'profile') {
       const nickname = normalizeNickname(body.nickname);
       const editedAt = new Date(
         Math.max(Date.now() + (record.offset || 0), (record.lastEdit || 0) + 1),
@@ -656,14 +661,14 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
       });
       return { nickname };
     }
-    if (path === '/api/import/markdown') {
+    if (route?.name === 'importMarkdown') {
       const preview = previewImport(body.tasks, record);
       for (const task of preview.tasks) queueChange(record, '/api/tasks', 'POST', { ...task });
       return { imported: preview.tasks.length, skipped: preview.skipped };
     }
-    if (path === '/api/tasks/archive-completed' && method === 'POST')
+    if (route?.name === 'archiveCompleted' && method === 'POST')
       return queueArchiveBatch(record, 'completed');
-    if (path === '/api/tasks/archive-undo' && method === 'POST')
+    if (route?.name === 'archiveUndo' && method === 'POST')
       return queueArchiveBatch(record, 'undo', body);
     return queueChange(record, path, method, body);
   });

@@ -1,3 +1,4 @@
+import { serverRoutes } from './router';
 import { assetEncoding, compressAsset } from './asset-encoding';
 import { clientAsset } from './client-assets';
 import type { Server } from 'bun';
@@ -32,6 +33,8 @@ const assets = new Map<string, [string, string]>([
   ['/picker-model.js', ['picker-model.js', 'text/javascript; charset=utf-8']],
   ['/calendar-model.js', ['calendar-model.js', 'text/javascript; charset=utf-8']],
   ['/stats.js', ['stats.js', 'text/javascript; charset=utf-8']],
+  ['/router.js', ['router.js', 'text/javascript; charset=utf-8']],
+  ['/time-tracking.js', ['time-tracking.js', 'text/javascript; charset=utf-8']],
   ['/errors.js', ['errors.js', 'text/javascript; charset=utf-8']],
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/login', ['index.html', 'text/html; charset=utf-8']],
@@ -141,6 +144,7 @@ export function createHandler(
     try {
       const url = new URL(request.url),
         path = url.pathname;
+      const route = serverRoutes.match(path);
       const origin = trustedOrigin?.origin || url.origin;
       const secure = origin.startsWith('https:');
       const read = ['GET', 'HEAD'].includes(request.method);
@@ -150,7 +154,7 @@ export function createHandler(
           request.headers.get('sec-fetch-site') === 'cross-site')
       )
         throw new InputError('Cross-origin requests are not allowed.', 403);
-      const fileUpload = path === '/api/files' && request.method === 'PUT';
+      const fileUpload = route?.name === 'files' && request.method === 'PUT';
       if (
         !read &&
         request.headers.get('content-type')?.split(';')[0] !==
@@ -161,7 +165,7 @@ export function createHandler(
           415,
         );
       const body = async () => {
-        const limit = path === '/api/sync' ? 2 * 1024 * 1024 : 32768;
+        const limit = route?.name === 'sync' ? 2 * 1024 * 1024 : 32768;
         if (Number(request.headers.get('content-length')) > limit)
           throw new InputError('Request is too large.', 413);
         const chunks: Uint8Array[] = [];
@@ -188,16 +192,16 @@ export function createHandler(
       const client = trustedOrigin
         ? (request.headers.get('x-real-ip') || 'direct-client').slice(0, 100)
         : 'direct-client';
-      if (path === '/healthz' && read) return json({ ok: true });
-      if (path === '/api/auth/config' && read)
+      if (route?.name === 'health' && read) return json({ ok: true });
+      if (route?.name === 'authConfig' && read)
         return json({ config: auth.configuration(url.searchParams.get('userId') || '') });
-      if (path === '/api/auth/status' && read)
+      if (route?.name === 'authStatus' && read)
         return json({
           enabled: true,
           authenticated: auth.isAuthenticated(request),
           userId: auth.identity(request),
         });
-      if (path === '/api/auth/setup' && request.method === 'POST') {
+      if (route?.name === 'authSetup' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some((k) => !['userId', 'token', 'config', 'credential'].includes(k)))
           throw new InputError('Unsupported setup payload.');
@@ -209,7 +213,7 @@ export function createHandler(
           'Set-Cookie': auth.cookie(session.token, session.maxAge, secure),
         });
       }
-      if (path === '/api/auth/login' && request.method === 'POST') {
+      if (route?.name === 'authLogin' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some((k) => !['userId', 'credential', 'revision'].includes(k)))
           throw new InputError('Use the encrypted login protocol.');
@@ -225,8 +229,8 @@ export function createHandler(
         });
       }
       // Every shell is public and contains no task data. Unlock happens in the page.
-      const shell = ['/', '/login', '/offline-shell', '/login-shell'].includes(path);
-      if (read && (shell || path === '/sw.js' || path.startsWith('/assets/'))) {
+      const shell = ['home', 'login', 'offlineShell', 'loginShell'].includes(route?.name || '');
+      if (read && (shell || route?.name === 'worker' || route?.name === 'asset')) {
         const release = fixedRelease || sourceRelease(),
           assetVersion = release.version;
         const assetPath = path.startsWith(`/assets/${assetVersion}/`)
@@ -234,7 +238,7 @@ export function createHandler(
           : path;
         if (
           assets.has(assetPath) &&
-          (shell || path === '/sw.js' || path.startsWith(`/assets/${assetVersion}/`))
+          (shell || route?.name === 'worker' || path.startsWith(`/assets/${assetVersion}/`))
         ) {
           const [file, type] = assets.get(assetPath)!;
           const socketOrigin = origin.replace(/^http/, 'ws');
@@ -291,11 +295,11 @@ export function createHandler(
         request.headers.get('x-taskpath-user') !== userId
       )
         return json({ error: 'Another account is signed in. Unlock this account to sync.' }, 401);
-      if (path === '/api/files' || path.startsWith('/api/files/')) {
+      if (route?.name === 'files' || route?.name === 'file') {
         if (request.headers.get('x-taskpath-user') !== userId)
           throw new InputError('File requests require the active account.', 401);
         const vaultId = store.config(userId)!.vaultId;
-        if (path === '/api/files' && request.method === 'GET')
+        if (route?.name === 'files' && request.method === 'GET')
           return json(files.manifest(userId, vaultId));
         if (fileUpload) {
           const limit = FILE_MAX + FILE_HEADER_MAX + 20;
@@ -325,7 +329,7 @@ export function createHandler(
           realtime?.notify(userId);
           return json({ ok: true });
         }
-        const id = path.slice('/api/files/'.length);
+        const id = route.params.fileId || '';
         if (!validId(id)) throw new InputError('Invalid file ID.');
         if (request.method === 'GET')
           return new Response(files.content(userId, id), {
@@ -353,12 +357,12 @@ export function createHandler(
           return json({ ok: true });
         }
       }
-      if (path === '/api/auth/logout' && request.method === 'POST') {
+      if (route?.name === 'authLogout' && request.method === 'POST') {
         auth.logout(request);
         realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
       }
-      if (path === '/api/auth/password' && request.method === 'POST') {
+      if (route?.name === 'authPassword' && request.method === 'POST') {
         const data = await body();
         if (
           Object.keys(data).some(
@@ -383,7 +387,7 @@ export function createHandler(
         realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
       }
-      if (path === '/api/events' && request.method === 'GET') {
+      if (route?.name === 'events' && request.method === 'GET') {
         if (
           request.headers.get('origin') !== origin ||
           request.headers.get('sec-fetch-site') === 'cross-site'
@@ -401,7 +405,7 @@ export function createHandler(
           return;
         return json({ error: 'WebSocket upgrade failed.' }, 400);
       }
-      if (path === '/api/sync' && request.headers.get('x-taskpath-sync') !== '2')
+      if (route?.name === 'sync' && request.headers.get('x-taskpath-sync') !== '2')
         return json(
           {
             error:
@@ -409,28 +413,28 @@ export function createHandler(
           },
           426,
         );
-      if (path === '/api/sync' && request.method === 'GET')
+      if (route?.name === 'sync' && request.method === 'GET')
         return json(store.syncBoard(userId, url.searchParams.get('cursor')));
-      if (path === '/api/sync' && request.method === 'POST') {
+      if (route?.name === 'sync' && request.method === 'POST') {
         const result = store.sync(userId, await body());
         if (result.changed) realtime?.notify(userId);
         const { changed, ...response } = result;
         return json(response);
       }
-      if (path === '/api/reminders/claim' && request.method === 'POST') {
+      if (route?.name === 'reminders' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some((k) => k !== 'tokens'))
           throw new InputError('Use opaque reminder tokens.');
         return json(store.claim(userId, data.tokens));
       }
-      if (path === '/api/push' && request.method === 'GET') return json(push.status(userId));
-      if (path === '/api/push' && request.method === 'POST') {
+      if (route?.name === 'push' && request.method === 'GET') return json(push.status(userId));
+      if (route?.name === 'push' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some((k) => k !== 'subscription'))
           throw new InputError('Use a browser push subscription.');
         return json(push.subscribe(userId, data.subscription));
       }
-      if (path === '/api/push' && request.method === 'DELETE') {
+      if (route?.name === 'push' && request.method === 'DELETE') {
         const data = await body();
         if (Object.keys(data).some((k) => k !== 'id'))
           throw new InputError('Use a subscription ID.');

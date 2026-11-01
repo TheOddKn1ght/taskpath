@@ -8,6 +8,9 @@ import type {
   ArchiveResult,
 } from './types.js';
 import { normalizeTags } from './tags.js';
+import { offlineRoutes } from './router.js';
+import { validId } from './crypto.js';
+import { pauseTracking } from './time-tracking.js';
 // Pure projections shared by the page and service worker. Pending edits stay immutable.
 // Constructing a formatter is far costlier than formatting; boards call this per task on every projection.
 const calendarFormats = new Map<string, Intl.DateTimeFormat>();
@@ -209,6 +212,29 @@ export function validate(task: unknown): asserts task is Task {
   if (value.reminderDismissedAt && !value.reminderAt)
     throw new Error('A dismissed reminder needs a reminder time.');
   value.archivedAt ??= null;
+  if (value.timeTracking !== undefined) {
+    const tracking = value.timeTracking;
+    if (!tracking || typeof tracking !== 'object' || Array.isArray(tracking))
+      throw new Error('Invalid time tracking.');
+    const fields = tracking as Record<string, unknown>;
+    if (
+      Object.keys(fields).some((key) => !['elapsedMs', 'startedAt'].includes(key)) ||
+      !Number.isSafeInteger(fields.elapsedMs) ||
+      Number(fields.elapsedMs) < 0 ||
+      !(fields.startedAt === null || typeof fields.startedAt === 'string')
+    )
+      throw new Error('Invalid time tracking.');
+    value.timeTracking = {
+      elapsedMs: fields.elapsedMs,
+      startedAt: fields.startedAt === null ? null : timestamp(fields.startedAt),
+    };
+    if (
+      fields.startedAt !== null &&
+      (value.status === 'done' || value.archivedAt || value.deletedAt)
+    )
+      // Older clients preserve unknown fields when completing or archiving a task.
+      pauseTracking(task as Task, Date.parse(timestamp(value.updatedAt)));
+  }
   value.tags = normalizeTags(value.tags ?? []);
   value.title = value.title.trim();
   value.notes = value.notes.trim();
@@ -230,8 +256,9 @@ export function queueChange(
   const time = Math.max(now + record.offset, (record.lastEdit || 0) + 1);
   const editedAt = new Date(time).toISOString();
   const board = project(record, time)!;
-  const match = path.match(/^\/api\/tasks\/([\w-]+)(?:\/(restore|reminder|archive|unarchive))?$/);
-  const creating = path === '/api/tasks' && method === 'POST';
+  const route = offlineRoutes.match(path);
+  const taskId = route?.params.taskId;
+  const creating = route?.name === 'tasks' && method === 'POST';
   let task: Task | undefined = creating
     ? {
         id: crypto.randomUUID(),
@@ -253,12 +280,16 @@ export function queueChange(
         reminderDismissedAt: null,
         reminderNotifiedAt: null,
       }
-    : board.rows.find((t) => t.id === match?.[1]);
+    : validId(taskId)
+      ? board.rows.find((t) => t.id === taskId)
+      : undefined;
   if (!task) throw new Error('That task no longer exists.');
   task = { ...task };
   const oldStatus = task.status,
     oldReminder = task.reminderAt;
-  const action = match?.[2];
+  const action = route?.name === 'task' ? undefined : route?.name;
+  if (action === 'timer' && method !== 'POST')
+    throw new Error('Use POST to control time tracking.');
   if (['archive', 'unarchive'].includes(action || '') && method !== 'POST')
     throw new Error('Use POST to archive or restore.');
   if (task.deletedAt && action !== 'restore') throw new Error('That task was deleted.');
@@ -282,7 +313,17 @@ export function queueChange(
         task.plannedDay = null;
       }
     }
-  } else if (match?.[2] === 'reminder') {
+  } else if (action === 'timer') {
+    if (input.action === 'add') {
+      if (task.status === 'done') throw new Error('Reopen this task before adding it to tracking.');
+      task.timeTracking ??= { elapsedMs: 0, startedAt: null };
+    } else if (input.action === 'start') {
+      if (task.status === 'done') throw new Error('Reopen this task before starting its timer.');
+      if (!task.timeTracking?.startedAt)
+        task.timeTracking = { elapsedMs: task.timeTracking?.elapsedMs || 0, startedAt: editedAt };
+    } else if (input.action === 'pause') pauseTracking(task, time);
+    else throw new Error('Choose Add, Start or Pause.');
+  } else if (action === 'reminder') {
     if (task.reminderAt !== input.reminderAt || task.reminderDismissedAt || task.status === 'done')
       throw new Error('This reminder has changed.');
     if (input.action === 'dismiss') task.reminderDismissedAt = editedAt;
@@ -309,6 +350,7 @@ export function queueChange(
     task.plannedWeek = ['week', 'today'].includes(task.status) ? board.week : null;
     task.completedAt = task.status === 'done' ? task.completedAt || editedAt : null;
   }
+  if (task.status === 'done' || task.archivedAt || task.deletedAt) pauseTracking(task, time);
   validate(task);
   if (reminderIsToday(task, board.day, board.timezone)) {
     if (

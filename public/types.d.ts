@@ -1,4 +1,5 @@
 // Compile-time contracts only. Persisted/wire formats are unchanged.
+import type { WorkspaceView } from './router.js';
 export type Status = 'later' | 'week' | 'today' | 'done';
 export type Category = 'work' | 'personal';
 export interface Task {
@@ -21,6 +22,7 @@ export interface Task {
   reminderDismissedAt: string | null;
   reminderNotifiedAt: string | null;
   reminderToken?: string | null;
+  timeTracking?: { elapsedMs: number; startedAt: string | null };
 }
 export interface Profile {
   id: '_profile';
@@ -162,7 +164,7 @@ export type TaskInput = Partial<Task> & { beforeId?: string | null; action?: str
 export type TaskDraft = Pick<Task, 'title' | 'notes' | 'tags' | 'category'>;
 export interface Route {
   focus?: 'today';
-  view: 'board' | 'calendar' | 'stats' | 'archive' | 'files';
+  view: WorkspaceView;
   query: string;
   category: 'all' | Category;
   tag: string;

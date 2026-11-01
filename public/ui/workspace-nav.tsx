@@ -1,13 +1,7 @@
+import { workspaceViews as views } from '../router.js';
 import type { Route } from '../types.js';
 import { Icon } from './icons';
 import { navigate } from './store';
-const views = {
-  board: 'Board',
-  calendar: 'Calendar',
-  stats: 'Stats',
-  archive: 'Archive',
-  files: 'Files',
-} as const;
 export function WorkspaceNav({
   collapsed,
   view,
@@ -41,8 +35,17 @@ export function WorkspaceNav({
                 window.scrollTo({ top: 0, behavior: 'instant' });
             }}
           >
-            <Icon name={target} />
-            <span className="nav-label">{views[target]}</span>
+            <Icon name={target === 'time' ? 'clock' : target} />
+            <span className="nav-label">
+              {target === 'time' ? (
+                <>
+                  <span className="time-label-desktop">Time tracking</span>
+                  <span className="time-label-mobile">Time</span>
+                </>
+              ) : (
+                views[target]
+              )}
+            </span>
           </button>
         ))}
       </nav>

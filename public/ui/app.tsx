@@ -19,6 +19,7 @@ import { Editor } from './editor';
 import { Dialog } from './dialog';
 import { CalendarView } from './calendar';
 import { StatsView } from './stats';
+import { TimeTrackingView } from './time-tracking';
 import { weekStart } from '../calendar-model.js';
 import { ThemeDialog } from './theme';
 import { PrivacyCopy, GuideCopy } from './copy';
@@ -309,7 +310,10 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
   useLayoutEffect(() => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const view = document.getElementById(
-      route.view === 'files' || route.view === 'calendar' || route.view === 'stats'
+      route.view === 'files' ||
+        route.view === 'calendar' ||
+        route.view === 'stats' ||
+        route.view === 'time'
         ? `${route.view}-view`
         : 'board',
     );
@@ -622,6 +626,8 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
             />
           ) : board && route.view === 'stats' ? (
             <StatsView board={board} route={route} />
+          ) : board && route.view === 'time' ? (
+            <TimeTrackingView board={board} route={route} />
           ) : board ? (
             <Board
               board={board}

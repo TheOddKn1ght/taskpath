@@ -14,4 +14,6 @@ See the root [README](../../README.md) for setup, [AGENTS.md](../../AGENTS.md) f
 - [features/offline-sync.md](features/offline-sync.md): local edits, encrypted synchronization, and time-based board projections.
 - [features/files.md](features/files.md): encrypted attachments and separate upload state.
 - [features/telegram-admin.md](features/telegram-admin.md): button navigation and account action screens in the admin chat.
+- [features/time-tracking.md](features/time-tracking.md): optional timers, pause rules, encrypted persistence, and time statistics.
 - [infrastructure/client-release.md](infrastructure/client-release.md): client build identity and service-worker update constraints.
+- [infrastructure/routing.md](infrastructure/routing.md): shared route matching and server, offline, and navigation boundaries.

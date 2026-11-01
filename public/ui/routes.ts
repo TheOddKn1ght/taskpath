@@ -1,4 +1,5 @@
 import type { Route } from '../types.js';
+import { parseWorkspaceHash } from '../router.js';
 import { normalizeTags } from '../tags.js';
 export const emptyRoute: Route = {
   view: 'board',
@@ -7,15 +8,15 @@ export const emptyRoute: Route = {
   tag: '',
 };
 export function readRoute(hash: string): Route {
-  const match = hash.match(/^#(board|calendar|stats|archive|files)(?:\?(.*))?$/);
+  const match = parseWorkspaceHash(hash);
   if (!match) return { ...emptyRoute };
-  const params = new URLSearchParams(match[2] || '');
+  const { view, params } = match;
   let tag = '';
   try {
     if (params.get('tag')) tag = normalizeTags([params.get('tag')])[0];
   } catch {}
   return {
-    view: match[1] as Route['view'],
+    view,
     query: params.get('q') || '',
     category:
       params.get('category') === 'work'
@@ -24,7 +25,7 @@ export function readRoute(hash: string): Route {
           ? 'personal'
           : 'all',
     tag,
-    ...(match[1] === 'board' && params.get('focus') === 'today' ? { focus: 'today' as const } : {}),
+    ...(view === 'board' && params.get('focus') === 'today' ? { focus: 'today' as const } : {}),
   };
 }
 export function routeHash(route: Route) {

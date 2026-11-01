@@ -1,4 +1,7 @@
 /* Workspace navigation and archive share the vault's locked/inert boundary. */
+.time-label-mobile {
+  display: none;
+}
 #main {
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);

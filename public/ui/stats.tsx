@@ -3,6 +3,8 @@ import type { Board, Route } from '../types.js';
 import { computeStats, LEAD_WINDOW_DAYS } from '../stats.js';
 import { shiftDate } from '../picker-model.js';
 import { Icon } from './icons';
+import { useTrackingClock } from './time-tracking';
+import { formatTrackedTime } from '../time-tracking.js';
 const format = (day: string, options: Intl.DateTimeFormatOptions) =>
   new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
 const number = (n: number) => n.toLocaleString();
@@ -165,6 +167,10 @@ function Breakdown({
   );
 }
 export function StatsView({ board, route }: { board: Board; route: Route }) {
+  const now = useTrackingClock(
+    board.serverTime,
+    board.tasks.some((task) => !!task.timeTracking?.startedAt),
+  );
   const stats = useMemo(
     () =>
       computeStats(
@@ -173,9 +179,9 @@ export function StatsView({ board, route }: { board: Board; route: Route }) {
             (route.category === 'all' || t.category === route.category) &&
             (!route.tag || t.tags.includes(route.tag)),
         ),
-        { day: board.day, week: board.week, timezone: board.timezone },
+        { day: board.day, week: board.week, timezone: board.timezone, now },
       ),
-    [board.tasks, board.day, board.week, board.timezone, route.category, route.tag],
+    [board.tasks, board.day, board.week, board.timezone, route.category, route.tag, now],
   );
   const scope = [
     route.category !== 'all' ? (route.category === 'work' ? 'Work' : 'Personal') : '',
@@ -279,6 +285,48 @@ export function StatsView({ board, route }: { board: Board; route: Route }) {
           />
         </div>
       </section>
+      <section className="stats-group" aria-labelledby="stats-tracked">
+        <h3 id="stats-tracked">Tracked work time</h3>
+        {stats.tracking.count ? (
+          <>
+            <div className="stat-tiles">
+              <Tile label="Total tracked" value={formatTrackedTime(stats.tracking.totalMs)} />
+              <Tile label="Tracked tasks" value={number(stats.tracking.count)} />
+              <Tile label="Running timers" value={number(stats.tracking.running)} />
+              <Tile
+                label="Average per tracked task"
+                value={formatTrackedTime(stats.tracking.averageMs)}
+              />
+            </div>
+            <div className="tracking-table-wrap">
+              <table className="tracking-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Task</th>
+                    <th scope="col">Time spent</th>
+                    <th scope="col">Timer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.tracking.tasks.map((task) => (
+                    <tr key={task.id}>
+                      <th scope="row">{task.title}</th>
+                      <td>{formatTrackedTime(task.elapsedMs)}</td>
+                      <td>{task.running ? 'Running' : 'Paused'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <p className="stats-empty">Add a task in Time tracking to start an optional timer.</p>
+        )}
+        <p className="stats-caption">
+          All-time tracked work, including archived tasks and running timers. Paused time is
+          excluded. Untracked tasks do not affect the average.
+        </p>
+      </section>
       <section className="stats-group" aria-labelledby="stats-lead">
         <h3 id="stats-lead">Time to complete</h3>
         {stats.lead ? (
@@ -303,8 +351,8 @@ export function StatsView({ board, route }: { board: Board; route: Route }) {
         )}
       </section>
       <p className="stats-caption">
-        Based on each task's latest completion, including archived tasks. Reopening a task removes
-        it from these numbers.
+        Completion statistics use each task's latest completion, including archived tasks. Reopening
+        a task removes it from completion statistics; tracked work time is retained.
       </p>
     </section>
   );

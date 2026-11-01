@@ -1,4 +1,122 @@
 /* Statistics: stat tiles, thin single-hue columns and meters in theme colors. */
+.time-search {
+  max-width: 460px;
+  margin-bottom: 20px;
+}
+
+.time-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.time-add-form .field {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 460px;
+}
+
+.time-add-form button {
+  min-height: 44px;
+}
+
+.time-task-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.time-task {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.time-task.is-running {
+  border-color: var(--accent);
+}
+
+.time-task-copy {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.time-task-copy h3 {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.time-task-copy p {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.time-task-total {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.time-task button {
+  min-width: 80px;
+  min-height: 44px;
+}
+
+.time-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .time-task-copy {
+    flex-basis: 100%;
+  }
+  .time-task {
+    gap: 12px;
+  }
+}
+
+.tracking-table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.tracking-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 12px;
+}
+
+.tracking-table th,
+.tracking-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tracking-table tbody th {
+  overflow-wrap: anywhere;
+  min-width: 100px;
+  font-weight: 400;
+}
+
+.tracking-table td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .stats-group {
   margin-top: 28px;
 }

@@ -5,6 +5,8 @@ import { Icon } from './icons';
 import { Select } from './pickers';
 import { TaskMenu } from './task-menu';
 import { dueLabel } from '../dates.js';
+import { useTrackingClock } from './time-tracking';
+import { formatTrackedTime, trackedTime } from '../time-tracking.js';
 export const dateLabel = (iso: string | null) =>
   iso
     ? new Date(iso).toLocaleString('en-US', {
@@ -32,6 +34,10 @@ export function Board({
   route: Route;
   actions: Actions;
 }) {
+  const trackingNow = useTrackingClock(
+    board.serverTime,
+    board.tasks.some((task) => !!task.timeTracking?.startedAt),
+  );
   const [context, setContext] = useState<{
       task: Task;
       x: number;
@@ -62,6 +68,10 @@ export function Board({
       (!route.tag || t.tags.includes(route.tag)),
   );
   const run = (fn: () => Promise<unknown>) => void fn().catch((e) => actions.notify(message(e)));
+  async function addToTracking(task: Task) {
+    await mutate(`/api/tasks/${task.id}/timer`, 'POST', { action: 'add' });
+    actions.notify('Task added to time tracking.');
+  }
   function clear() {
     cancelAnimationFrame(raf.current);
     dragId.current = null;
@@ -276,6 +286,18 @@ export function Board({
           </div>
         )}
         <div className={archived ? 'archive-actions' : 'task-bottom'}>
+          {t.timeTracking && (
+            <button
+              type="button"
+              className="task-tracking"
+              onClick={() => navigate({ view: 'time' })}
+              aria-label={`Track time for ${t.title}`}
+            >
+              <Icon name="clock" />
+              {t.timeTracking.startedAt ? 'Running · ' : ''}
+              {formatTrackedTime(trackedTime(t, trackingNow))}
+            </button>
+          )}
           <div className="task-actions">
             {archived ? (
               <button
@@ -331,6 +353,12 @@ export function Board({
               </>
             )}
             <TaskMenu title={t.title}>
+              {!archived && t.status !== 'done' && !t.timeTracking && (
+                <button type="button" role="menuitem" onClick={() => run(() => addToTracking(t))}>
+                  <Icon name="clock" />
+                  Add to time tracking
+                </button>
+              )}
               <button type="button" role="menuitem" onClick={() => actions.edit(t)}>
                 <Icon name={archived ? 'info' : 'edit'} />
                 {archived ? 'View details' : 'Edit task'}
@@ -505,6 +533,17 @@ export function Board({
               label: context.task.archivedAt ? 'View details' : 'Edit task',
               fn: () => actions.edit(context.task),
             },
+            ...(!context.task.archivedAt &&
+            context.task.status !== 'done' &&
+            !context.task.timeTracking
+              ? [
+                  {
+                    icon: 'clock',
+                    label: 'Add to time tracking',
+                    fn: () => run(() => addToTracking(context.task)),
+                  },
+                ]
+              : []),
             ...(context.task.archivedAt
               ? [
                   {

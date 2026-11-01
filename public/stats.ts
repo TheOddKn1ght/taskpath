@@ -1,8 +1,16 @@
 import type { Category, Task } from './types.js';
 import { calendarAt } from './offline-model.js';
 import { shiftDate } from './picker-model.js';
+import { trackedTime } from './time-tracking.js';
 // Derived only from current tasks: completedAt holds the latest completion, so reopened tasks drop out.
 export interface Stats {
+  tracking: {
+    totalMs: number;
+    averageMs: number;
+    count: number;
+    running: number;
+    tasks: { id: string; title: string; elapsedMs: number; running: boolean }[];
+  };
   open: { today: number; week: number; later: number };
   done: number;
   overdue: number;
@@ -26,7 +34,12 @@ function quantile(sorted: number[], q: number) {
 }
 export function computeStats(
   tasks: Task[],
-  { day, week, timezone }: { day: string; week: string; timezone: string },
+  {
+    day,
+    week,
+    timezone,
+    now = Date.now(),
+  }: { day: string; week: string; timezone: string; now?: number },
 ): Stats {
   const live = tasks.filter((t) => !t.deletedAt);
   const current = live.filter((t) => !t.archivedAt),
@@ -77,7 +90,24 @@ export function computeStats(
     .filter((c) => c.day >= since && Number.isFinite(Date.parse(c.task.createdAt)))
     .map((c) => Math.max(0, c.at - Date.parse(c.task.createdAt)) / DAY)
     .sort((a, b) => a - b);
+  const tracked = live
+    .filter((task) => task.timeTracking)
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      elapsedMs: trackedTime(task, now),
+      running: !!task.timeTracking?.startedAt,
+    }))
+    .sort((a, b) => b.elapsedMs - a.elapsedMs || a.id.localeCompare(b.id));
+  const totalMs = tracked.reduce((sum, task) => sum + task.elapsedMs, 0);
   return {
+    tracking: {
+      totalMs,
+      averageMs: tracked.length ? totalMs / tracked.length : 0,
+      count: tracked.length,
+      running: tracked.filter((task) => task.running).length,
+      tasks: tracked,
+    },
     open: {
       today: open.filter((t) => t.status === 'today').length,
       week: open.filter((t) => t.status === 'week').length,

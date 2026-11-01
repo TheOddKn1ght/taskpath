@@ -29,7 +29,7 @@
     display: none;
   }
   #sidebar nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 4px;
     max-width: 600px;
     margin: auto;
@@ -54,6 +54,12 @@
   .sidebar-collapsed #sidebar .nav-label {
     max-width: none;
     opacity: 1;
+  }
+  #sidebar .time-label-desktop {
+    display: none;
+  }
+  #sidebar .time-label-mobile {
+    display: inline;
   }
   #sidebar [aria-current='page'] {
     background: color-mix(in srgb, var(--selection) 55%, transparent);

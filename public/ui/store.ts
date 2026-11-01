@@ -1,3 +1,4 @@
+import { parseWorkspaceHash } from '../router.js';
 import { startAutoLock } from '../auto-lock.js';
 import { fileState } from '../file-persistence.js';
 import type { Board, Route, Task, MutationResult, ArchiveResult } from '../types.js';
@@ -205,7 +206,7 @@ export function startRuntime(immediate: (fn: () => void) => void) {
   window.addEventListener(
     'hashchange',
     () => {
-      if (!location.hash || /^#(board|calendar|stats|archive|files)(\?|$)/.test(location.hash))
+      if (!location.hash || parseWorkspaceHash(location.hash))
         publish({ route: readRoute(location.hash) });
     },
     options,
