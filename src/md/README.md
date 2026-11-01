@@ -17,3 +17,4 @@ See the root [README](../../README.md) for setup, [AGENTS.md](../../AGENTS.md) f
 - [features/time-tracking.md](features/time-tracking.md): optional timers, pause rules, encrypted persistence, and time statistics.
 - [infrastructure/client-release.md](infrastructure/client-release.md): client build identity and service-worker update constraints.
 - [infrastructure/routing.md](infrastructure/routing.md): shared route matching and server, offline, and navigation boundaries.
+- [infrastructure/managed-updates.md](infrastructure/managed-updates.md): scoped Nginx reconciliation, validation, and host recovery.

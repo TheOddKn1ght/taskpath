@@ -460,7 +460,7 @@ There is no reset or recovery mechanism. The server cannot decrypt your tasks. A
    }
    ```
 
-The Nginx `15g` ceiling allows request bodies up to 15 GiB; Taskpath still enforces its separate per-user quota and per-file limits. This does not enable 15 GB individual files: the current single-blob SQLite storage and in-memory encryption path require a chunked implementation for that size. Managed `taskpath update` leaves host Nginx unchanged, so apply and reload this configuration manually.
+The Nginx `15g` ceiling allows request bodies up to 15 GiB; Taskpath still enforces its separate per-user quota and per-file limits. This does not enable 15 GB individual files: the current single-blob SQLite storage and in-memory encryption path require a chunked implementation for that size. Current managed updaters detect the Taskpath Nginx server and reconcile this upload location. Run `sudo taskpath self-update` first to install that updater behavior; custom or ambiguous host layouts require manual configuration.
 
 4. Validate and reload Nginx using your usual `nginx -t` / service reload procedure. Rebuild and recreate Taskpath using the existing update instructions so Compose passes the new quota setting. The server adds file tables transactionally. No reset, new account or new volume is needed.
 5. Open Taskpath online on each device, close all tabs and PWA windows, then reopen. The browser storage upgrade may ask you to close another tab. Never clear site data to resolve an update.
@@ -480,8 +480,9 @@ Open the update online, then close every Taskpath tab and PWA window and reopen.
 ## Managed updates for an existing Docker installation
 
 The updater provides the same manual update command and optional hourly timer as `lll`.
-It adopts the running multi-user Compose service without changing host Nginx,
-certificates, the old source directory, or its `.env`. No Bun installation is
+It adopts the running multi-user Compose service and reconciles the Taskpath
+Nginx upload allowance while preserving certificates, other host settings,
+the old source directory, and its `.env`. No Bun installation is
 needed on the host. Install Python 3, Git and util-linux if absent; Docker Compose
 must support `up --wait`. Run on the existing Ubuntu/Debian VPS with systemd.
 
@@ -562,8 +563,25 @@ sudo docker compose --project-name taskpath-managed \
 
 The same Compose prefix supports `exec taskpath bun run admin ...`. Settings are
 captured from the existing container, so preserve its public origin and timezone.
-The updater does not modify Nginx; apply the encrypted-file upload location from
-the file-vault section separately if upgrading from a version without it.
+Run `sudo taskpath self-update` before `sudo taskpath update` to install the
+current updater on an existing managed host. Every update checks Nginx, including
+when the application revision is already current. If Nginx is installed, the
+updater uses `nginx -T`, `TASKPATH_ORIGIN`, and the managed loopback port to find
+one matching server. It sets only the exact `/api/files` upload allowance to
+`15g`; a missing location copies the root proxy policy. Certificates, other
+routes, and other virtual hosts are retained. Custom includes, regex routing
+that prevents safe insertion, missing matches, or multiple matches stop the
+update for manual attention before stopping the application.
+
+Before writing, the updater keeps a private backup under
+`/opt/taskpath-updater/nginx-*/previous.conf` and records recovery state in
+`nginx-pending`. It validates with `nginx -t` and reloads Nginx only after a
+successful check. Failed validation or reload restores and reloads the previous
+configuration. Interrupted work is restored by `sudo taskpath recover`; failed
+restoration keeps its marker for retry. If the host file was independently
+edited after interruption, recovery refuses to overwrite it. Inspect the saved
+backup and resolve those edits manually before retrying. Hosts without a local
+Nginx executable log a skip and continue the application update.
 After updating, open each device online, close all Taskpath tabs/PWA windows,
 then reopen. Keep browser storage intact, including unsynced edits and files.
 

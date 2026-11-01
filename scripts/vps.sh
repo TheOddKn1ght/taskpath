@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adopt the existing Docker service; keep host nginx, certificates and source intact.
+# Adopt the existing Docker service; reconcile only the host Nginx upload allowance.
 set -Eeuo pipefail
 umask 077
 ROOT=/opt/taskpath-updater
@@ -27,7 +27,7 @@ Adopt an existing multi-user Docker Compose installation (Ubuntu/Debian):
   sudo taskpath disable-auto-updates
 
 Requires Docker Compose v2 with --wait, Python 3, Git, flock and systemd.
-Existing nginx, HTTPS, accounts, settings and browser storage are preserved.
+Nginx upload limits are reconciled; HTTPS, accounts and browser storage are preserved.
 No fresh installation or legacy plaintext/single-owner migration is performed.
 HELP
 }
@@ -97,7 +97,7 @@ fetch_release() {
   fi
 }
 self_update() {
-  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" && ! -f "$ROOT/nginx-pending" ]] || die 'Run sudo taskpath recover first.'
   fetch_release || return $?
   local staging bundle launcher backup help
   mkdir -p "$ROOT/updaters" "$ROOT/updater-backups" || return $?
@@ -192,6 +192,7 @@ remove_probe() {
     -f "$ROOT/probe.json" down
 }
 recover() {
+  helper nginx-recover "$ROOT" || return $?;
   if [[ -f "$ROOT/telegram-pending" ]]; then telegram_recover || return $?; fi
   # current is the durable commit boundary, written BEFORE publishing any ports.
   # Never restore older data after a new deployment could have accepted writes.
@@ -204,15 +205,16 @@ recover() {
 on_exit() {
   local status=$?
   trap - EXIT
-  if [[ $status != 0 && ( -f "$ROOT/pending" || -f "$ROOT/telegram-pending" ) ]]; then
+  if [[ $status != 0 && ( -f "$ROOT/pending" || -f "$ROOT/telegram-pending" || -f "$ROOT/nginx-pending" ) ]]; then
     log 'Operation failed; resuming the committed deployment. All volumes and backups are retained.'
     recover || log 'Recovery needs attention. Run sudo taskpath recover.'
   fi
   exit "$status"
 }
 update() {
-  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" && ! -f "$ROOT/nginx-pending" ]] || die 'Run sudo taskpath recover first.'
   fetch_release
+  helper nginx-update "$ROOT/settings.json" "$ROOT"
   if [[ -f "$ROOT/current" && $(current_revision) == "$SHA" ]]; then log 'Already up to date.'; return; fi
   build_release
   IMAGE="taskpath-managed:$SHA"
@@ -259,7 +261,7 @@ telegram_configure() {
   # Never trace interactive secrets, even when invoked with bash -x.
   set +x
   local mode=$1 directory image volume token admin_id
-  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+  [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" && ! -f "$ROOT/nginx-pending" ]] || die 'Run sudo taskpath recover first.'
   [[ -f "$ROOT/current" ]] || die 'Run sudo taskpath update to create a managed deployment first.'
   image=$(get "$(current)" services.taskpath.image)
   volume=$(get "$(current)" volumes.data.name)
@@ -334,7 +336,7 @@ main() {
     status) if [[ -f "$ROOT/current" ]]; then compose "$(current)" ps; else docker ps --filter "id=$(get "$ROOT/settings.json" container)"; fi ;;
     logs) flock -u 9; if [[ -f "$ROOT/current" ]]; then compose "$(current)" logs --tail 100 -f; else docker logs --tail 100 -f "$(get "$ROOT/settings.json" container)"; fi ;;
     backup)
-      [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" ]] || die 'Run sudo taskpath recover first.'
+      [[ ! -f "$ROOT/pending" && ! -f "$ROOT/telegram-pending" && ! -f "$ROOT/nginx-pending" ]] || die 'Run sudo taskpath recover first.'
       if [[ -f "$ROOT/current" ]]; then IMAGE="taskpath-managed:$(current_revision)"
       else IMAGE=$(docker inspect --format '{{.Image}}' "$(get "$ROOT/settings.json" container)"); fi
       touch "$ROOT/pending"

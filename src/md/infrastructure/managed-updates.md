@@ -1,0 +1,7 @@
+# Managed host configuration
+
+Managed updates reconcile the Nginx upload allowance even when the application revision is unchanged. Detect the active configuration through `nginx -T`, the configured public hostname, and the managed loopback upstream port. Change only the exact `/api/files` location in one unambiguous server block. Preserve certificates, other hosts, routes, headers, and access controls. When adding the location, copy the existing root location so local proxy policy is retained; refuse regex locations or included server fragments that make this unsafe to infer.
+
+Keep a private backup and a durable recovery marker before replacing a host file. Validate the installed configuration before reloading Nginx. On validation or reload failure restore the previous file, validate and reload it, and leave recovery pending if restoration cannot complete. Recover interrupted Nginx work before application work. Update Nginx before stopping the application writer so configuration failures leave the live deployment running. An absent Nginx installation is reported and skipped; an installed but ambiguous configuration fails with a manual-action message.
+
+The managed scope currently covers the upload ceiling of 15 GiB. This does not raise application storage limits or replace the full host configuration from a repository template. Existing updater installations require `taskpath self-update` to acquire this behavior.

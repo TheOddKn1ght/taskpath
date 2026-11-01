@@ -42,7 +42,7 @@ snapshot() { record backup; BACKUP="$ROOT/snapshot.tar"; }
 clone_volume() { record clone; }
 preflight() { record preflight; }
 remove_probe() { record remove-probe; }
-helper() { record config; printf '{}'; }
+helper() { if [[ $1 == nginx-* ]]; then return; fi; record config; printf '{}'; }
 compose() { record validate; }
 trap on_exit EXIT
 ${body}`,
@@ -694,4 +694,30 @@ self_update
 `);
   expect(result.code).toBe(1);
   expect(result.events).toEqual(['fetch', 'preserved']);
+});
+
+test('update reconciles Nginx even when the application revision is current', () => {
+  const result = shell(`touch "$ROOT/current"
+current_revision() { printf '${sha}'; }
+helper() { [[ $1 == nginx-update ]] || die 'Unexpected helper.'; record nginx-update; }
+update`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toEqual(['fetch', 'nginx-update']);
+});
+
+test('Nginx failure stops an update before building or stopping the application', () => {
+  const result = shell(`helper() { record nginx-failed; return 1; }
+update`);
+  expect(result.code).toBe(1);
+  expect(result.events).toEqual(['fetch', 'nginx-failed']);
+});
+
+test('Nginx recovery precedes application recovery and retains failure state', () => {
+  const result = shell(`touch "$ROOT/nginx-pending" "$ROOT/pending"
+helper() { record nginx-recovery; return 1; }
+trap - EXIT
+if recover; then die 'Failed recovery succeeded.'; fi
+[[ -f "$ROOT/nginx-pending" && -f "$ROOT/pending" ]]`);
+  expect(result.code, result.output).toBe(0);
+  expect(result.events).toEqual(['nginx-recovery']);
 });
