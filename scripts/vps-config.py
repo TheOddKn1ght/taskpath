@@ -172,8 +172,13 @@ def nginx_patch(text, hostname, port, public_port):
     locations = [child for child in children if child['words'][0] == 'location']
     exact = [child for child in locations if child['words'] == ['location', '=', '/api/files']]
     roots = [child for child in locations if child['words'] == ['location', '/']]
-    if len(exact) > 1 or len(roots) != 1 or any(child['words'][0] == 'include' for child in children):
+    if len(exact) > 1 or len(roots) != 1:
         raise ValueError('Unsupported Taskpath Nginx layout; update /api/files manually.')
+    # An existing exact location has already been validated by nginx -T.
+    # Updating its body limit preserves included TLS and access policy. Only
+    # insertion needs us to rule out locations hidden in server includes.
+    if not exact and any(child['words'][0] == 'include' for child in children):
+        raise ValueError('Included server fragments prevent safe /api/files insertion; update Nginx manually.')
     root = roots[0]
     if root['children'] is None or [child['words'] for child in root['children'] if child['words'][0] == 'proxy_pass'] != [upstream]:
         raise ValueError('Taskpath Nginx upstream does not match the managed port; update manually.')

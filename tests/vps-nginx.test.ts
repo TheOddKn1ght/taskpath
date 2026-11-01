@@ -170,3 +170,26 @@ for directive in ['include custom.conf;', 'location ~ /api/ { deny all; }']:
     except ValueError:
         pass`);
 });
+
+for (const allowance of ['11m', '15g']) {
+  test(`Certbot server includes allow an existing ${allowance} upload location`, () => {
+    scenario(`text = source.replace('tasks.example.com', 'taskpath.oddknight.space').replace('11m;', '${allowance};')
+text = text.replace('    ssl_protocols TLSv1.2 TLSv1.3;', '    include /etc/letsencrypt/options-ssl-nginx.conf;\\n    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;')
+conf.write_text(text)
+settings['environment']['TASKPATH_ORIGIN'] = 'https://taskpath.oddknight.space'
+snippet = root / 'options-ssl-nginx.conf'
+snippet.write_text('ssl_session_cache shared:le_nginx_SSL:10m;\\nssl_protocols TLSv1.2 TLSv1.3;\\n')
+original = m.nginx_run
+def run(*args):
+    result = original(*args)
+    if args == ('nginx', '-T'):
+        result += '\\n# configuration file ' + str(snippet) + ':\\n' + snippet.read_text()
+    return result
+m.nginx_run = run
+m.nginx_update(settings, root)
+assert conf.read_text() == text.replace('11m;', '15g;')
+assert snippet.read_text() == 'ssl_session_cache shared:le_nginx_SSL:10m;\\nssl_protocols TLSv1.2 TLSv1.3;\\n'
+assert events == ${allowance === '15g' ? "[('nginx', '-T')]" : "[('nginx', '-T'), ('nginx', '-t'), ('systemctl', 'reload', 'nginx')]"}
+assert not (root / 'nginx-pending').exists()`);
+  });
+}

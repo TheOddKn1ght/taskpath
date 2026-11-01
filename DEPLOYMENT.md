@@ -569,9 +569,10 @@ when the application revision is already current. If Nginx is installed, the
 updater uses `nginx -T`, `TASKPATH_ORIGIN`, and the managed loopback port to find
 one matching server. It sets only the exact `/api/files` upload allowance to
 `15g`; a missing location copies the root proxy policy. Certificates, other
-routes, and other virtual hosts are retained. Custom includes, regex routing
-that prevents safe insertion, missing matches, or multiple matches stop the
-update for manual attention before stopping the application.
+routes, and other virtual hosts are retained. Existing explicit upload locations
+support server-level includes, including Certbot TLS settings. Includes or regex
+routing that prevent safe insertion of a missing location, missing matches, or
+multiple matches stop the update for manual attention before stopping the application.
 
 Before writing, the updater keeps a private backup under
 `/opt/taskpath-updater/nginx-*/previous.conf` and records recovery state in
