@@ -127,7 +127,9 @@ export function syncFiles(): Promise<void> {
               s.files[id].error =
                 error instanceof Error ? error.message : 'Could not transfer file.';
           });
-          if (error instanceof RequestError && error.status === 507) {
+          // An allowance can shrink while a file is queued offline. Keep its
+          // bytes and error, but let other transfers make progress.
+          if (error instanceof RequestError && [413, 507].includes(error.status)) {
             continue;
           }
           throw error;

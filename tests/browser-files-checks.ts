@@ -24,6 +24,7 @@ export async function fileChecks(assert: (value: unknown, message: string) => vo
     loseReply = false,
     failBefore = false;
   let manifestReads = 0;
+  let rejectLargeUpload = false;
   const uploads: Uint8Array[] = [];
   window.fetch = async (input, init) => {
     if (String(input).split('?')[0] === '/api/files' && (!init?.method || init.method === 'GET'))
@@ -37,6 +38,10 @@ export async function fileChecks(assert: (value: unknown, message: string) => vo
           throw new TypeError('Interrupted before server commit');
         }
         if (full) return new Response('{}', { status: 507 });
+        if (rejectLargeUpload && (init.body as Uint8Array).length > 4096)
+          return new Response(JSON.stringify({ error: 'File exceeds the new file limit.' }), {
+            status: 413,
+          });
         if (loseReply) {
           loseReply = false;
           await nativeFetch(input, init);
@@ -48,7 +53,7 @@ export async function fileChecks(assert: (value: unknown, message: string) => vo
   };
   try {
     const { userId, secondUserId } = await apiRequest<{ userId: string; secondUserId: string }>(
-      '/test-account',
+      '/test-account?fresh=1',
     );
     await switchAccount(secondUserId);
     const config = (
@@ -305,6 +310,44 @@ export async function fileChecks(assert: (value: unknown, message: string) => vo
       Object.values((await fileState()).files).every((f) => !f.pending),
       'pending files resume when space becomes available',
     );
+    offline = true;
+    await addFile(new File([new Uint8Array(8192)], 'queued-before-limit-change.bin'));
+    await addFile(new File(['small'], 'within-new-limit.txt'));
+    await syncFiles();
+    const queued = (await listFiles()).files;
+    const blocked = queued.find((f) => f.details.name === 'queued-before-limit-change.bin')!;
+    const allowed = queued.find((f) => f.details.name === 'within-new-limit.txt')!;
+    // Also prove that a rejected upload cannot starve downloads of retained files.
+    await writeFiles(secondUserId, epoch, (s, b) => {
+      s.files[id].cached = false;
+      b.delete([secondUserId, id]);
+    });
+    rejectLargeUpload = true;
+    offline = false;
+    await syncFiles();
+    state = await fileState();
+    assert(
+      state.files[blocked.envelope.fileId].pending === 'upload' &&
+        state.files[blocked.envelope.fileId].error?.includes('413') &&
+        (await readStoredFile(blocked.envelope.fileId)).bytes.length === 8192,
+      'size rejection preserves the queued file, its error, and downloadable local bytes',
+    );
+    assert(
+      state.files[allowed.envelope.fileId].uploaded &&
+        !state.files[allowed.envelope.fileId].pending &&
+        state.files[id].cached,
+      'size rejection does not block other uploads or retained file downloads',
+    );
+    rejectLargeUpload = false;
+    await syncFiles();
+    assert(
+      !(await fileState()).files[blocked.envelope.fileId].pending &&
+        !(await fileState()).files[blocked.envelope.fileId].error,
+      'size-blocked uploads resume and clear their error when the limit permits them',
+    );
+    await deleteStoredFile(blocked.envelope.fileId);
+    await deleteStoredFile(allowed.envelope.fileId);
+    await syncFiles();
     await apiRequest('/api/auth/logout', 'POST', {});
     offline = true;
     await renameStoredFile(id, 'AFTER_EXPIRY.txt');

@@ -43,7 +43,7 @@ test('automatic lock expires in the background and prevents remembered reopening
   page,
 }) => {
   test.setTimeout(30_000);
-  const response = await page.request.get('/test-account');
+  const response = await page.request.get('/test-account?fresh=1');
   const { userId } = await response.json();
   await page.goto('/');
   await page.locator('#unlock-user').fill(userId);
@@ -87,7 +87,7 @@ test('automatic lock expires in the background and prevents remembered reopening
 test('phone layout fits six tabs and task views without horizontal scroll', async ({ page }) => {
   test.setTimeout(30_000);
   await page.setViewportSize({ width: 390, height: 844 });
-  const { userId } = await (await page.request.get('/test-account')).json();
+  const { userId } = await (await page.request.get('/test-account?fresh=1')).json();
   await page.goto('/');
   await page.locator('#unlock-user').fill(userId);
   await page.locator('#unlock-password').fill('browser harness password 2026');
@@ -129,12 +129,63 @@ test('phone layout fits six tabs and task views without horizontal scroll', asyn
   expect(await noHorizontalScroll()).toBe(true);
 });
 
+test('reminders can be saved independently and survive clearing only the due date', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { userId } = await (await page.request.get('/test-account?fresh=1')).json();
+  await page.goto('/');
+  await page.locator('#unlock-user').fill(userId);
+  await page.locator('#unlock-password').fill('browser harness password 2026');
+  await page.locator('#unlock-submit').click();
+  await expect(page.locator('#main')).toBeVisible();
+  const title = `Reminder without due date ${Date.now()}`;
+  await page.locator('#new-task').click();
+  await page.locator('#task-title').fill(title);
+  await page.locator('#task-schedule summary').click();
+  const due = page.getByRole('checkbox', { name: 'Due date', exact: true });
+  const reminder = page.getByRole('button', { name: /^Remind me:/ });
+  await expect(due).not.toBeChecked();
+  await expect(reminder).toBeVisible();
+  await reminder.click();
+  await page.getByRole('textbox', { name: 'Date (YYYY-MM-DD)', exact: true }).fill('2099-01-01');
+  await page.getByRole('textbox', { name: 'Time (HH:mm)', exact: true }).fill('09:30');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  const save = async () => {
+    await page.locator('#save-task').click();
+    await expect(page.locator('#task-dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: title, exact: true }).click();
+  };
+  await save();
+  await expect(due).not.toBeChecked();
+  await expect(reminder).toHaveText('2099-01-01 · 09:30');
+  await due.check();
+  await save();
+  await expect(due).toBeChecked();
+  await due.uncheck();
+  await expect(reminder).toHaveText('2099-01-01 · 09:30');
+  await save();
+  await expect(due).not.toBeChecked();
+  await expect(reminder).toHaveText('2099-01-01 · 09:30');
+  await due.check();
+  await page.getByRole('button', { name: /^Due date:/ }).click();
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(due).not.toBeChecked();
+  await expect(reminder).toHaveText('2099-01-01 · 09:30');
+  await page.getByRole('button', { name: 'Clear dates', exact: true }).click();
+  await save();
+  await page.locator('#task-schedule summary').click();
+  await expect(due).not.toBeChecked();
+  await expect(reminder).toHaveText('Choose date');
+});
+
 test('optional task timers pause, survive reload, work offline, and appear in scoped stats', async ({
   page,
 }) => {
   test.setTimeout(30_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const { userId } = await (await page.request.get('/test-account')).json();
+  const { userId } = await (await page.request.get('/test-account?fresh=1')).json();
   await page.goto('/');
   await page.locator('#unlock-user').fill(userId);
   await page.locator('#unlock-password').fill('browser harness password 2026');
@@ -225,7 +276,8 @@ test('optional task timers pause, survive reload, work offline, and appear in sc
   await expect(dialog).toContainText('Running');
   await expect(page.locator('#save-status')).toContainText('All changes synced');
   await page.waitForLoadState('networkidle');
-  await page.route('**/api/**', (route) => route.abort());
+  // Disconnect workers too; page request routing cannot block their sync traffic.
+  await page.context().setOffline(true);
   await page.clock.install();
   await page.clock.fastForward(65_000);
   await expect(dialog.getByLabel('Tracked time')).toContainText('01m');

@@ -8,4 +8,8 @@ Downloads are paged. Server cursors are signed and bound to the account and vaul
 
 Calendar behavior uses the workspace timezone and server-time offset. A new day moves unfinished Today tasks back to Week; a new week moves old planned tasks to Later. An active reminder due today brings its task into Today. Keep these rules in the shared pure model so the page and worker agree.
 
+Due dates and reminders are independent. The editor must allow a reminder without a due date, and clearing a due date must preserve the reminder. The explicit Clear dates action clears both.
+
+Overlapping UI refreshes share a pending result and repeat the board read when another refresh arrives. A save must wait for those reads to finish before reporting completion, so immediately reopening a task cannot capture an older board snapshot.
+
 Key sources: `public/offline.ts`, `public/offline-model.ts`, `public/persistence.ts`, `public/sw.ts`, `src/store.ts`, and `src/db/workspace.ts`. Relevant checks include `tests/sync.test.ts`, `tests/incremental-sync.test.ts`, and `tests/reminder-today.test.ts`.

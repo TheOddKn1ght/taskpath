@@ -65,47 +65,50 @@ export function navigate(patch: Partial<Route>, replace = false) {
     );
   publish({ route });
 }
-let refreshing = false,
-  refreshAgain = false;
-export async function refresh() {
-  if (!isUnlocked()) return;
+let refreshing: Promise<void> | null = null;
+let refreshAgain = false;
+export function refresh(): Promise<void> {
+  if (!isUnlocked()) return Promise.resolve();
   if (refreshing) {
     refreshAgain = true;
-    return;
+    return refreshing;
   }
-  refreshing = true;
-  const epoch = snapshot.epoch,
-    account = selectedAccount();
-  try {
-    const board = await offlineRequest('/api/board');
-    const local = await localState();
-    if (!isUnlocked() || epoch !== snapshot.epoch || account !== selectedAccount()) return;
-    publish({
-      board,
-      error: local.error || '',
-      authRequired: !!local.authRequired,
-      syncComplete: !!local.syncComplete,
-      connection: local.authRequired
-        ? `Sign in to sync · ${local.pending.length} pending`
-        : local.error
-          ? `Sync paused · ${local.pending.length} pending`
-          : local.pending.length
-            ? `${local.pending.length} changes saved on this device`
-            : local.online && !local.syncComplete
-              ? 'Syncing tasks…'
-              : local.online
-                ? 'All changes synced'
-                : 'Offline · Saved on this device',
-    });
-  } catch (e) {
-    if (epoch === snapshot.epoch && isUnlocked()) publish({ error: message(e) });
-  } finally {
-    refreshing = false;
-    if (refreshAgain) {
+  const run = async () => {
+    do {
       refreshAgain = false;
-      void refresh();
-    }
-  }
+      const epoch = snapshot.epoch,
+        account = selectedAccount();
+      try {
+        const board = await offlineRequest('/api/board');
+        const local = await localState();
+        if (!isUnlocked() || epoch !== snapshot.epoch || account !== selectedAccount()) continue;
+        publish({
+          board,
+          error: local.error || '',
+          authRequired: !!local.authRequired,
+          syncComplete: !!local.syncComplete,
+          connection: local.authRequired
+            ? `Sign in to sync · ${local.pending.length} pending`
+            : local.error
+              ? `Sync paused · ${local.pending.length} pending`
+              : local.pending.length
+                ? `${local.pending.length} changes saved on this device`
+                : local.online && !local.syncComplete
+                  ? 'Syncing tasks…'
+                  : local.online
+                    ? 'All changes synced'
+                    : 'Offline · Saved on this device',
+        });
+      } catch (e) {
+        if (epoch === snapshot.epoch && isUnlocked()) publish({ error: message(e) });
+      }
+    } while (refreshAgain && isUnlocked());
+  };
+  refreshing = run().finally(() => {
+    refreshing = null;
+    if (refreshAgain && isUnlocked()) return refresh();
+  });
+  return refreshing;
 }
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function mutate(

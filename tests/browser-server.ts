@@ -10,17 +10,21 @@ import { resolve } from 'node:path';
 import { releaseForDirectory } from '../src/client-release';
 const store = new Store(),
   auth = new AuthManager(store.db);
-const vault = await createVault('browser harness password 2026');
-const invite = auth.createInvitation();
-await auth.setup(invite.userId, invite.token, vault.config, vault.credential);
-const secondInvite = auth.createInvitation(),
-  secondVault = await createVault('browser second password 2026');
-await auth.setup(
-  secondInvite.userId,
-  secondInvite.token,
-  secondVault.config,
-  secondVault.credential,
-);
+async function testAccounts() {
+  const vault = await createVault('browser harness password 2026');
+  const invite = auth.createInvitation();
+  await auth.setup(invite.userId, invite.token, vault.config, vault.credential);
+  const secondInvite = auth.createInvitation(),
+    secondVault = await createVault('browser second password 2026');
+  await auth.setup(
+    secondInvite.userId,
+    secondInvite.token,
+    secondVault.config,
+    secondVault.credential,
+  );
+  return { userId: invite.userId, secondUserId: secondInvite.userId };
+}
+const accounts = await testAccounts();
 const pendingInvite = auth.createInvitation();
 const mode = process.env.QA_ASSETS || 'source';
 if (!['source', 'built'].includes(mode)) throw new Error('QA_ASSETS must be source or built');
@@ -79,7 +83,9 @@ const server = Bun.serve({
       );
     }
     if (path === '/test-account')
-      return Response.json({ userId: invite.userId, secondUserId: secondInvite.userId });
+      return Response.json(
+        new URL(request.url).searchParams.has('fresh') ? await testAccounts() : accounts,
+      );
     // A fake subscription exercises persisted scheduling without contacting any push provider.
     if (path === '/test-push') {
       const userId = auth.identity(request);

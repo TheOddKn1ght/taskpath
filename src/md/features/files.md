@@ -6,6 +6,8 @@ Keep file content and descriptive metadata encrypted in the browser. The server 
 
 Local file persistence and synchronization must preserve retryable work across connectivity failures. Changes to task sync must also account for pending attachments; clearing browser storage before synchronization can lose browser-only data.
 
+A size or quota rejection applies to the affected upload. Retain its encrypted local bytes and show the error while continuing other uploads, renames, and downloads. A file queued under an older allowance must not block the rest of the vault after an administrator lowers that allowance.
+
 Key sources: `public/file-format.ts`, `public/file-crypto.ts`, `public/file-persistence.ts`, `public/file-sync.ts`, `public/ui/files.tsx`, and `src/db/files.ts`. See `tests/files.test.ts` and the [file regression record](../../../docs/files-regression.md).
 
 Administrators can persist a per-account quota override in decimal MB, including zero to block new uploads, or reset it to the configured server default. Read overrides on every manifest and upload so changes apply without a restart. Lowering a quota never deletes files or prevents downloads, renames, deletions, or identical upload retries. Keep the per-file limit and file-count limit independent of total quota. Store overrides as account-scoped settings so existing databases and full backups retain them without rewriting encrypted data.

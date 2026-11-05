@@ -99,7 +99,7 @@ try {
     tx.oncomplete = resolve;
   });
   const { userId, secondUserId } = await apiRequest<{ userId: string; secondUserId: string }>(
-    '/test-account',
+    '/test-account?fresh=1',
   );
   await selectAccount(userId);
   const { config } = await apiRequest<{ config: VaultConfig }>('/api/auth/config?userId=' + userId),

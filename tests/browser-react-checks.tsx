@@ -321,6 +321,50 @@ try {
     ),
     'React create preserves normalized tags',
   );
+  await syncAfterCurrent();
+  await refresh();
+  const raceTask = getSnapshot().board!.tasks.find((t) => t.title === 'REACT_PRIVATE_TASK')!;
+  const originalDecrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+  let releaseDecrypt = () => {},
+    holdDecrypt = true,
+    decryptWaiting = false,
+    queuedRefreshFinished = false;
+  const decryptGate = new Promise<void>((resolve) => {
+    releaseDecrypt = resolve;
+  });
+  crypto.subtle.decrypt = async (...args) => {
+    if (holdDecrypt) {
+      holdDecrypt = false;
+      decryptWaiting = true;
+      await decryptGate;
+    }
+    return originalDecrypt(...args);
+  };
+  offline = true;
+  const staleRefresh = refresh();
+  try {
+    await until(() => decryptWaiting, 'paused board decryption');
+    await offlineRequest(`/api/tasks/${raceTask.id}`, 'PATCH', {
+      notes: 'Concurrent refresh edit',
+    });
+    const queuedRefresh = refresh().then(() => {
+      queuedRefreshFinished = true;
+    });
+    await Promise.resolve();
+    assert(!queuedRefreshFinished, 'overlapping refresh callers wait for the queued board read');
+    releaseDecrypt();
+    await Promise.all([staleRefresh, queuedRefresh]);
+    assert(
+      getSnapshot().board!.tasks.find((t) => t.id === raceTask.id)?.notes ===
+        'Concurrent refresh edit',
+      'refresh resolves only after publishing the edit that arrived during an older read',
+    );
+  } finally {
+    releaseDecrypt();
+    crypto.subtle.decrypt = originalDecrypt;
+    await staleRefresh;
+    offline = false;
+  }
   const toastStyle = getComputedStyle(node('#toast'));
   assert(
     toastStyle.position === 'fixed' && toastStyle.display === 'flex' && toastStyle.gap === '16px',
@@ -1233,7 +1277,7 @@ try {
       !document.body.textContent?.includes('REACT_PRIVATE_EDIT'),
     'account switching clears private UI and selected ID',
   );
-  const accounts = (await (await originalFetch('/test-account')).json()) as {
+  const accounts = (await (await originalFetch('/test-account?fresh=1')).json()) as {
     secondUserId: string;
   };
   input('#unlock-user', accounts.secondUserId);

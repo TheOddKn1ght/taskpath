@@ -3,9 +3,8 @@ export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.pw.ts',
   timeout: 180_000,
-  // Deliberate: the harnesses sign in to one shared in-memory account and
-  // mutate it, so parallel workers would race. CI parallelizes this suite by
-  // running it alongside the unit suite instead, not by raising `workers`.
+  // Keep concurrency bounded for these stateful persistence harnesses. Each
+  // harness requests fresh in-memory accounts, including across browser projects.
   workers: 1,
   fullyParallel: false,
   // Same suite against every engine; CI runs one job per project.
