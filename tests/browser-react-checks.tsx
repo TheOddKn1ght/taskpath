@@ -7,6 +7,7 @@ const originalFetch = window.fetch.bind(window),
   requests: string[] = [];
 let offline = false,
   configGate: Promise<void> | null = null;
+let workspaceBusy = () => false;
 window.fetch = async (input, init) => {
   requests.push(String(input));
   if (init?.body) requests.push(String(init.body));
@@ -21,7 +22,9 @@ function assert(value: unknown, message: string): asserts value {
 }
 async function until(check: () => unknown, label: string) {
   const end = Date.now() + 10000;
-  while (!check()) {
+  // A board update can render before its save finishes. Do not dispatch the
+  // next action until the current mutation has also released the workspace.
+  while (!check() || workspaceBusy()) {
     if (Date.now() > end)
       throw new Error(
         'Timed out: ' + label + ' ' + document.querySelector('[role="alert"]')?.textContent,
@@ -90,6 +93,7 @@ try {
     import('../public/offline.js'),
     import('../public/persistence.js'),
   ]);
+  workspaceBusy = () => getSnapshot().busy;
   const idle = () => until(() => !getSnapshot().busy, 'idle');
   const cleanup = startRuntime(flushSync),
     root = createRoot(node('#root'));

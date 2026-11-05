@@ -42,7 +42,8 @@ snapshot() { record backup; BACKUP="$ROOT/snapshot.tar"; }
 clone_volume() { record clone; }
 preflight() { record preflight; }
 remove_probe() { record remove-probe; }
-helper() { if [[ $1 == nginx-* ]]; then return; fi; record config; printf '{}'; }
+# Bare return inside an EXIT trap can retain its failure status in Bash 5.
+helper() { if [[ $1 == nginx-* ]]; then return 0; fi; record config; printf '{}'; }
 compose() { record validate; }
 trap on_exit EXIT
 ${body}`,
