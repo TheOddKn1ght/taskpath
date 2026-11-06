@@ -4,7 +4,7 @@ This guide deploys an invite-only Taskpath installation with private per-user va
 
 **Already running the multi-user version?** Follow [Update Taskpath](#10-update-taskpath), then [Enable background reminders](#enable-background-reminders). Keep your existing `.env`, accounts, and volume. The picker update (`accounts-v16`) preserves the database and encrypted browser storage; it does not require a new vault, password, or migration command. Only older plaintext/single-owner installations need the separate fresh-start procedure.
 
-The image uses Bun **1.4.4**. Docker installs the versions in `bun.lock`, including React, Drizzle ORM and `web-push`, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
+The image uses Bun **1.4.4** on Debian slim (`oven/bun:1.4.4-slim`) for both build and runtime stages. It uses glibc and runs as the non-root `bun` user (UID/GID 1000). Docker installs the versions in `bun.lock`, including React, Drizzle ORM and `web-push`, and minifies the client during the image build. You do not need Bun or `node_modules` on the VPS host. The Drizzle refactor uses the same multi-user SQLite database; no migration command, new volume, or account setup is needed.
 
 You need:
 
@@ -281,13 +281,13 @@ For a consistent backup, briefly stop Taskpath, archive the entire named volume,
   test -n "$TASKPATH_VOLUME"
   sudo docker volume inspect "$TASKPATH_VOLUME" >/dev/null
   TASKPATH_BACKUP="taskpath-$(date -u +%Y%m%dT%H%M%SZ)-$$.tgz"
-  sudo docker pull alpine
+  sudo docker pull debian:trixie-slim
   trap 'sudo docker compose start taskpath' EXIT
   sudo docker compose stop taskpath
   sudo docker run --rm \
     --mount "type=volume,src=$TASKPATH_VOLUME,dst=/data,readonly" \
     --mount "type=bind,src=/var/backups/taskpath,dst=/backup" \
-    alpine tar -czf "/backup/$TASKPATH_BACKUP" -C /data .
+    debian:trixie-slim tar -czf "/backup/$TASKPATH_BACKUP" -C /data .
   sudo chmod 600 "/var/backups/taskpath/$TASKPATH_BACKUP"
   printf 'Backup saved: /var/backups/taskpath/%s\n' "$TASKPATH_BACKUP"
 )
