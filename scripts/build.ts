@@ -55,6 +55,7 @@ export async function buildClient() {
     const files = [...new Bun.Glob('**/*').scanSync({ cwd: source, onlyFiles: true })].sort();
     for (const name of files) {
       if (name.endsWith('.d.ts') || name.startsWith('ui/')) continue;
+      if (/\.[tj]sx?$/.test(name) && !['app.tsx', 'sw.ts', 'theme.ts'].includes(name)) continue;
       const input = Bun.file(resolve(source, name));
       const destination = resolve(staging, name.replace(/\.tsx?$/, '.js'));
       await mkdir(dirname(destination), { recursive: true });
@@ -90,15 +91,10 @@ export async function buildClient() {
         extension === '.js' ||
         extension === '.css'
       ) {
-        const bundled = name === 'app.tsx' || name === 'sw.ts';
         const result = await Bun.build({
           entrypoints: [resolve(source, name)],
           target: 'browser',
           format: name === 'theme.ts' ? 'iife' : 'esm',
-          // Bundle each runtime once, so all app consumers share one offline
-          // state. Individual module URLs remain available for the harness,
-          // but are neither imported by the production app nor precached.
-          external: bundled ? [] : ['*'],
           minify: true,
           sourcemap: 'none',
           env: 'disable',
@@ -172,7 +168,7 @@ export async function buildClient() {
     await rm(output, { recursive: true, force: true });
     await rename(staging, output);
     console.log(
-      `Client ${release.version} built: standalone app and worker bundles; ${(after / 1024).toFixed(1)} KiB total text assets (including standalone modules for checks; ${(before / 1024).toFixed(1)} KiB source).`,
+      `Client ${release.version} built: app and worker bundles with separate theme script; ${(after / 1024).toFixed(1)} KiB total text assets (${(before / 1024).toFixed(1)} KiB entry sources).`,
     );
   } finally {
     await rm(staging, { recursive: true, force: true });

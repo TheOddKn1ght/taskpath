@@ -42,6 +42,11 @@ test.skipIf(!hasBuild)(
   async () => {
     const scan = new Bun.Transpiler({ loader: 'js' });
     const files = [...new Bun.Glob('**/*').scanSync({ cwd: built, onlyFiles: true })];
+    expect(files.filter((name) => name.endsWith('.js')).sort()).toEqual([
+      'app.js',
+      'sw.js',
+      'theme.js',
+    ]);
     expect(files.some((name) => name.endsWith('.map') || name.endsWith('.ts'))).toBe(false);
     for (const name of files.filter((name) => name.endsWith('.js'))) {
       const output = await Bun.file(resolve(built, name)).text();
@@ -71,6 +76,19 @@ test.skipIf(!hasBuild)(
     const store = new Store();
     try {
       const handler = createHandler(store, undefined, undefined, undefined, built);
+      for (const name of ['offline.js', 'snooze.js', 'vendor/marked.js']) {
+        const response = (await handler(
+          new Request(`http://localhost/assets/${ASSET_VERSION}/${name}`),
+        ))!;
+        expect(response.status).toBe(404);
+        expect(await response.text()).toBe('Not found');
+        const head = (await handler(
+          new Request(`http://localhost/assets/${ASSET_VERSION}/${name}`, { method: 'HEAD' }),
+        ))!;
+        expect(head.status).toBe(response.status);
+        expect([...head.headers]).toEqual([...response.headers]);
+        expect(await head.text()).toBe('');
+      }
       for (const name of files.filter((name) =>
         /\.(js|css|html|webmanifest|png|svg)$/.test(name),
       )) {

@@ -7,7 +7,8 @@ import { AuthManager } from '../src/auth';
 import { createHandler } from '../src/server';
 import { createVault } from '../public/crypto.js';
 import { resolve } from 'node:path';
-import { releaseForDirectory } from '../src/client-release';
+import { releaseForDirectory, SOURCE_DIRECTORY } from '../src/client-release';
+import { browserFixtures } from './browser-fixtures';
 const store = new Store(),
   auth = new AuthManager(store.db);
 async function testAccounts() {
@@ -32,6 +33,7 @@ const hub = new Realtime();
 const directory = resolve(import.meta.dir, mode === 'built' ? '../dist/public' : '../public');
 const release = releaseForDirectory(directory),
   ASSET_VERSION = release.version;
+const fixtures = browserFixtures(release);
 const app = createHandler(store, auth, undefined, hub, directory);
 const server = Bun.serve({
   hostname: '127.0.0.1',
@@ -40,6 +42,17 @@ const server = Bun.serve({
   websocket: hub.websocket,
   async fetch(request, server) {
     const path = new URL(request.url).pathname;
+    const prefix = `/assets/${ASSET_VERSION}/`;
+    if (mode === 'built' && path.startsWith(prefix) && path.endsWith('.js')) {
+      const name = path.slice(prefix.length);
+      if (
+        !release.assets!.has(name) &&
+        (fixtures.sources!.has(name.replace(/\.js$/, '.ts')) || fixtures.sources!.has(name))
+      )
+        return new Response(await clientAsset(SOURCE_DIRECTORY, name, fixtures), {
+          headers: { 'content-type': 'text/javascript' },
+        });
+    }
     if (path === '/browser-files-checks.js')
       return new Response(await clientAsset(import.meta.dir, 'browser-files-checks.js', release), {
         headers: { 'content-type': 'text/javascript' },

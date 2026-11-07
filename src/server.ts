@@ -46,6 +46,7 @@ const assets = new Map<string, [string, string]>([
   ['/search.js', ['search.js', 'text/javascript; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/dates.js', ['dates.js', 'text/javascript; charset=utf-8']],
+  ['/snooze.js', ['snooze.js', 'text/javascript; charset=utf-8']],
   ['/theme.js', ['theme.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],
@@ -241,6 +242,11 @@ export function createHandler(
           (shell || route?.name === 'worker' || path.startsWith(`/assets/${assetVersion}/`))
         ) {
           const [file, type] = assets.get(assetPath)!;
+          if (release.assets && !release.assets.has(file))
+            return new Response(request.method === 'HEAD' ? null : 'Not found', {
+              status: 404,
+              headers,
+            });
           const socketOrigin = origin.replace(/^http/, 'ws');
           const versioned = path.startsWith(`/assets/${assetVersion}/`);
           // Only public text assets are compressed/cached; authenticated APIs
