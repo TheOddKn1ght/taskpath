@@ -12,6 +12,17 @@
   opacity: 1;
 }
 
+.snooze-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.snooze-trigger > svg {
+  width: 14px;
+  height: 14px;
+}
+
 @media (max-width: 760px) {
   .action-menu-popover button {
     min-height: 44px;

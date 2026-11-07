@@ -8,11 +8,15 @@ export function ActionMenu({
   children,
   triggerClassName,
   popupClassName,
+  triggerContent,
+  disabled = false,
 }: {
   label: string;
   children: ReactNode;
   triggerClassName: string;
   popupClassName: string;
+  triggerContent?: ReactNode;
+  disabled?: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -23,6 +27,10 @@ export function ActionMenu({
     setOpen(false);
   };
   useLayoutEffect(() => {
+    if (disabled) {
+      setOpen(false);
+      return;
+    }
     if (!open) return;
     const popup = menu.current!,
       anchor = trigger.current!;
@@ -36,7 +44,10 @@ export function ActionMenu({
     };
     position();
     const opened = anchor.getBoundingClientRect();
-    popup.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    (
+      popup.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not(:disabled)') ??
+      popup.querySelector<HTMLButtonElement>('button:not(:disabled)')
+    )?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
       if (!popup.contains(event.target as Node) && !anchor.contains(event.target as Node)) close();
     };
@@ -55,13 +66,14 @@ export function ActionMenu({
       document.removeEventListener('scroll', scroll, true);
       window.removeEventListener('resize', resize);
     };
-  }, [open]);
+  }, [open, disabled]);
   return (
     <>
       <button
         type="button"
         ref={trigger}
-        className={`icon-button ${triggerClassName}`}
+        className={`${triggerContent === undefined ? 'icon-button ' : ''}${triggerClassName}`}
+        disabled={disabled}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -74,7 +86,7 @@ export function ActionMenu({
           }
         }}
       >
-        <Icon name="more" />
+        {triggerContent ?? <Icon name="more" />}
       </button>
       {open &&
         createPortal(

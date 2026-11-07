@@ -3,6 +3,7 @@ import { snoozeOptions } from '../snooze.js';
 import type { Task } from '../types.js';
 import { Icon } from './icons';
 import { dateLabel } from './board';
+import { ActionMenu } from './action-menu';
 export function ReminderPanel({
   tasks,
   busy,
@@ -24,21 +25,32 @@ export function ReminderPanel({
             <strong>{t.title}</strong>
             <span>{dateLabel(t.reminderAt)}</span>
           </button>
-          <select
-            aria-label={`Snooze duration for ${t.title}`}
-            className="subtle-button"
+          <ActionMenu
+            label={`Snooze duration for ${t.title}`}
+            triggerClassName="subtle-button snooze-trigger"
+            popupClassName="snooze-menu"
             disabled={busy}
-            value={minutes[t.id] ?? 10}
-            onChange={(event) =>
-              setMinutes((current) => ({ ...current, [t.id]: Number(event.target.value) }))
+            triggerContent={
+              <>
+                {snoozeOptions.find((option) => option.minutes === (minutes[t.id] ?? 10))?.label}
+                <Icon name="chevron-down" />
+              </>
             }
           >
             {snoozeOptions.map((option) => (
-              <option key={option.minutes} value={option.minutes}>
-                {option.label}
-              </option>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={option.minutes === (minutes[t.id] ?? 10)}
+                key={option.minutes}
+                disabled={busy}
+                onClick={() => setMinutes((current) => ({ ...current, [t.id]: option.minutes }))}
+              >
+                <Icon name={option.minutes === (minutes[t.id] ?? 10) ? 'check' : 'clock'} />
+                <span>{option.label}</span>
+              </button>
             ))}
-          </select>
+          </ActionMenu>
           {(['snooze', 'dismiss'] as const).map((action) => (
             <button
               key={action}

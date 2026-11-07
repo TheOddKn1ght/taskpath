@@ -369,9 +369,12 @@ test('due reminders offer snooze durations and snooze offline', async ({ page, c
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await page.locator('#save-task').click();
   const panel = page.locator('#reminder-panel');
-  const duration = panel.getByRole('combobox', { name: 'Snooze duration for Snooze test' });
-  await expect(duration).toHaveValue('10');
-  await expect(duration.locator('option')).toHaveText([
+  const duration = panel.getByRole('button', { name: 'Snooze duration for Snooze test' });
+  const menu = page.getByRole('menu', { name: 'Snooze duration for Snooze test' });
+  await expect(panel.locator('select')).toHaveCount(0);
+  await expect(duration).toHaveText('10 minutes');
+  await duration.click();
+  await expect(menu.getByRole('menuitemradio')).toHaveText([
     '5 minutes',
     '10 minutes',
     '30 minutes',
@@ -379,8 +382,38 @@ test('due reminders offer snooze durations and snooze offline', async ({ page, c
     '3 hours',
     '24 hours',
   ]);
+  await expect(
+    menu.getByRole('menuitemradio', { name: '10 minutes', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemradio', { name: '10 minutes', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(duration).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('End');
+  await expect(menu.getByRole('menuitemradio', { name: '24 hours', exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(menu.getByRole('menuitemradio', { name: '5 minutes', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(menu).toHaveCount(0);
+  await expect(duration).toHaveText('30 minutes');
+  await expect(duration).toBeFocused();
+  await duration.click();
+  await page.locator('#reminder-panel > .reminder-row > svg').click();
+  await expect(menu).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await duration.click();
+  const bounds = (await menu.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  await page.keyboard.press('Escape');
   await context.setOffline(true);
-  await duration.selectOption('60');
+  await duration.click();
+  await menu.getByRole('menuitemradio', { name: '1 hour', exact: true }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(duration).toHaveText('1 hour');
   await panel.getByRole('button', { name: 'Snooze', exact: true }).click();
   await expect(panel).toHaveCount(0);
   await context.setOffline(false);

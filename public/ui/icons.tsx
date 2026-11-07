@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 const paths: Record<string, ReactNode> = {
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
