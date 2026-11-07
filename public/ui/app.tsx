@@ -598,10 +598,11 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
               tasks={board.reminders}
               busy={state.busy}
               edit={edit}
-              act={(task, action) =>
+              act={(task, action, snoozeMinutes) =>
                 run(() =>
                   mutate(`/api/tasks/${task.id}/reminder`, 'POST', {
                     action,
+                    snoozeMinutes,
                     reminderAt: task.reminderAt,
                   }),
                 )

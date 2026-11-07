@@ -10,6 +10,8 @@ Calendar behavior uses the workspace timezone and server-time offset. A new day 
 
 Due dates and reminders are independent. The editor must allow a reminder without a due date, and clearing a due date must preserve the reminder. The explicit Clear dates action clears both.
 
+Due reminders offer snoozes of 5, 10, or 30 minutes, 1 or 3 hours, and 24 hours, with 10 minutes selected initially. Durations start at the action time (using the server-time offset), not the old reminder time; 24 hours is an elapsed duration rather than a calendar-day shortcut. Snoozing works offline, preserves task details, and rearms delivery with a new reminder token. Unsupported durations are rejected; callers that omit the duration retain the 10-minute default.
+
 Overlapping UI refreshes share a pending result and repeat the board read when another refresh arrives. A save must wait for those reads to finish before reporting completion, so immediately reopening a task cannot capture an older board snapshot.
 
 Key sources: `public/offline.ts`, `public/offline-model.ts`, `public/persistence.ts`, `public/sw.ts`, `src/store.ts`, and `src/db/workspace.ts`. Relevant checks include `tests/sync.test.ts`, `tests/incremental-sync.test.ts`, and `tests/reminder-today.test.ts`.

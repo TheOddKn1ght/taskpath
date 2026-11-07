@@ -351,3 +351,37 @@ test('optional task timers pause, survive reload, work offline, and appear in sc
   });
   await expect(row).toContainText(total);
 });
+
+test('due reminders offer snooze durations and snooze offline', async ({ page, context }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { userId } = await (await page.request.get('/test-account?fresh=1')).json();
+  await page.goto('/');
+  await page.locator('#unlock-user').fill(userId);
+  await page.locator('#unlock-password').fill('browser harness password 2026');
+  await page.locator('#unlock-submit').click();
+  await expect(page.locator('#main')).toBeVisible();
+  await page.locator('#new-task').click();
+  await page.locator('#task-title').fill('Snooze test');
+  await page.locator('#task-schedule summary').click();
+  await page.getByRole('button', { name: /^Remind me:/ }).click();
+  await page.getByRole('textbox', { name: 'Date (YYYY-MM-DD)', exact: true }).fill('2020-01-01');
+  await page.getByRole('textbox', { name: 'Time (HH:mm)', exact: true }).fill('09:30');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await page.locator('#save-task').click();
+  const panel = page.locator('#reminder-panel');
+  const duration = panel.getByRole('combobox', { name: 'Snooze duration for Snooze test' });
+  await expect(duration).toHaveValue('10');
+  await expect(duration.locator('option')).toHaveText([
+    '5 minutes',
+    '10 minutes',
+    '30 minutes',
+    '1 hour',
+    '3 hours',
+    '24 hours',
+  ]);
+  await context.setOffline(true);
+  await duration.selectOption('60');
+  await panel.getByRole('button', { name: 'Snooze', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await context.setOffline(false);
+});

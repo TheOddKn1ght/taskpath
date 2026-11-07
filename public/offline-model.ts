@@ -7,6 +7,7 @@ import type {
   MutationResult,
   ArchiveResult,
 } from './types.js';
+import { snoozeOptions } from './snooze.js';
 import { normalizeTags } from './tags.js';
 import { offlineRoutes } from './router.js';
 import { validId } from './crypto.js';
@@ -328,7 +329,10 @@ export function queueChange(
       throw new Error('This reminder has changed.');
     if (input.action === 'dismiss') task.reminderDismissedAt = editedAt;
     else if (input.action === 'snooze') {
-      task.reminderAt = new Date(time + 600000).toISOString();
+      const minutes = input.snoozeMinutes === undefined ? 10 : input.snoozeMinutes;
+      if (!snoozeOptions.some((option) => option.minutes === minutes))
+        throw new Error('Choose a supported snooze duration.');
+      task.reminderAt = new Date(time + Number(minutes) * 60000).toISOString();
       task.reminderDismissedAt = null;
       task.reminderNotifiedAt = null;
     } else throw new Error('Choose Dismiss or Snooze.');
