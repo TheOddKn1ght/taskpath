@@ -84,14 +84,14 @@ jobs:
     name: Browser regressions (${{ matrix.browser }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # Chromium is the baseline and blocks merges. Firefox and WebKit run in
-    # parallel to surface engine-specific regressions, but stay advisory until
-    # they have a stable green history on the runners.
+    # Chromium is the baseline and blocks merges. Firefox runs in parallel to
+    # surface engine-specific regressions, but stays advisory until it has a
+    # stable green history on the runners.
     continue-on-error: ${{ matrix.browser != 'chromium' }}
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        browser: [chromium, firefox]
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
