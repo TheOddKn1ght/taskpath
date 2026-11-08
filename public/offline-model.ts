@@ -8,7 +8,7 @@ import type {
   ArchiveResult,
 } from './types.js';
 import { snoozeOptions } from './snooze.js';
-import { normalizeTags } from './tags.js';
+import { availableTags, normalizeTagCatalog, normalizeTags } from './tags.js';
 import { offlineRoutes } from './router.js';
 import { validId } from './crypto.js';
 import { pauseTracking } from './time-tracking.js';
@@ -456,4 +456,49 @@ export function queueArchiveBatch(
   record.pending = copy.pending;
   record.lastEdit = copy.lastEdit;
   return { archived: undo.length, restored, skipped, undo };
+}
+
+// Queue the entire operation before persistence so catalog and assignments commit together.
+export function queueTagManagement(
+  record: PlainRecord & { board: PlainBoard },
+  raw: Record<string, unknown>,
+  now = Date.now(),
+) {
+  const board = project(record, now + record.offset);
+  const names = availableTags(board);
+  const name = normalizeTags([raw.name])[0];
+  const action = raw.action;
+  if (action !== 'add' && action !== 'rename' && action !== 'delete')
+    throw new Error('Choose Add, Rename or Delete.');
+  if (action !== 'add' && !names.includes(name)) throw new Error('That tag no longer exists.');
+  const replacement = action === 'rename' ? normalizeTags([raw.replacement])[0] : name;
+  const savedTags = normalizeTagCatalog(
+    action === 'add'
+      ? [...(board.savedTags ?? []), name]
+      : [...names.filter((t) => t !== name), ...(action === 'rename' ? [replacement] : [])],
+  );
+  const updates =
+    action === 'add'
+      ? []
+      : board.tasks
+          .filter((t) => t.tags.includes(name))
+          .map((task) => ({
+            ...task,
+            tags: normalizeTags(
+              task.tags.flatMap((t) =>
+                t === name ? (action === 'rename' ? [replacement] : []) : [t],
+              ),
+            ),
+          }));
+  for (const task of updates) {
+    const time = Math.max(now + record.offset, record.lastEdit + 1);
+    const editedAt = new Date(time).toISOString();
+    record.pending.push({
+      task: { ...task, updatedAt: editedAt },
+      editedAt,
+      changeId: crypto.randomUUID(),
+    });
+    record.lastEdit = time;
+  }
+  return { savedTags, affected: updates.length };
 }

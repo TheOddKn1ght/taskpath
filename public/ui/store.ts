@@ -112,6 +112,11 @@ export function refresh(): Promise<void> {
 }
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function mutate(
+  path: '/api/tags',
+  method: string,
+  body: unknown,
+): Promise<{ affected: number }>;
+export function mutate(
   path: '/api/import/markdown',
   method: string,
   body?: unknown,

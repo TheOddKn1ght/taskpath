@@ -19,8 +19,14 @@ import type {
   TaskInput,
 } from './types.js';
 import { RequestError, errorMessage, errorStatus } from './errors.js';
-import { importTaskKey } from './tags.js';
-import { project, queueChange, queueArchiveBatch, validate } from './offline-model.js';
+import { importTaskKey, normalizeTagCatalog } from './tags.js';
+import {
+  project,
+  queueChange,
+  queueArchiveBatch,
+  queueTagManagement,
+  validate,
+} from './offline-model.js';
 import { exportMarkdown } from './export-markdown.js';
 import { parseMarkdown } from './markdown.js';
 import {
@@ -432,8 +438,10 @@ async function plaintext(record: EncryptedRecord, token: number) {
   );
   const all = [...rows, ...pending.map((c) => c.task)];
   for (const task of all) {
-    if (task.id === PROFILE_ID) normalizeNickname(task.nickname);
-    else validate(task);
+    if (task.id === PROFILE_ID) {
+      normalizeNickname(task.nickname);
+      normalizeTagCatalog(task.savedTags ?? []);
+    } else validate(task);
   }
   const isTask = (task: (typeof rows)[number]): task is (typeof rows)[number] & Task =>
     task.id !== PROFILE_ID;
@@ -451,6 +459,8 @@ async function plaintext(record: EncryptedRecord, token: number) {
     nickname: typeof profile?.nickname === 'string' ? profile.nickname : '',
     board: {
       ...record.board!,
+      nickname: typeof profile?.nickname === 'string' ? profile.nickname : '',
+      savedTags: normalizeTagCatalog(profile?.savedTags ?? []),
       changeIds: Object.fromEntries(record.board!.rows.map((e) => [e.taskId, e.changeId])),
       rows: rows.filter(isTask),
     },
@@ -472,7 +482,10 @@ export async function readBoard(): Promise<Board & { userId?: string | null }> {
 }
 let writing = Promise.resolve();
 async function write<T>(
-  operation: (record: PlainRecord & { board: PlainBoard }, profiles: Change<Profile>[]) => T,
+  operation: (
+    record: PlainRecord & { board: PlainBoard; syncComplete?: boolean },
+    profiles: Change<Profile>[],
+  ) => T,
 ) {
   const token = generation;
   const run = async () => {
@@ -558,6 +571,11 @@ export function previewImport(
   }
   return { tasks: result, skipped };
 }
+export function offlineRequest(
+  path: '/api/tags',
+  method: string,
+  body: unknown,
+): Promise<{ affected: number }>;
 export function offlineRequest(path: '/api/board', method?: string): Promise<Board>;
 export function offlineRequest(
   path: '/api/export?format=markdown',
@@ -648,18 +666,24 @@ export async function offlineRequest(path: string, method = 'GET', input?: unkno
   }
   if (method === 'GET') throw new Error('Unsupported task operation.');
   return write((record, profiles) => {
-    if (route?.name === 'profile') {
-      const nickname = normalizeNickname(body.nickname);
+    if (route?.name === 'profile' || route?.name === 'tags') {
+      const managing = route.name === 'tags';
+      if (managing && method !== 'POST') throw new Error('Use POST to manage tags.');
+      if (managing && !record.syncComplete)
+        throw new Error('Wait for the initial download before managing tags.');
+      const result = managing ? queueTagManagement(record, body) : null;
+      const nickname = managing ? record.board.nickname || '' : normalizeNickname(body.nickname);
+      const savedTags = result?.savedTags ?? record.board.savedTags ?? [];
       const editedAt = new Date(
         Math.max(Date.now() + (record.offset || 0), (record.lastEdit || 0) + 1),
       ).toISOString();
       record.lastEdit = Date.parse(editedAt);
       profiles.push({
-        task: { id: PROFILE_ID, updatedAt: editedAt, nickname },
+        task: { id: PROFILE_ID, updatedAt: editedAt, nickname, savedTags },
         changeId: crypto.randomUUID(),
         editedAt,
       });
-      return { nickname };
+      return result ? { affected: result.affected } : { nickname };
     }
     if (route?.name === 'importMarkdown') {
       const preview = previewImport(body.tasks, record);

@@ -92,6 +92,7 @@ export const offlineRoutes = createRouter({
   importMarkdown: '/api/import/markdown',
   claimReminders: '/api/reminders/claim',
   profile: '/api/profile',
+  tags: '/api/tags',
   archiveCompleted: '/api/tasks/archive-completed',
   archiveUndo: '/api/tasks/archive-undo',
   tasks: '/api/tasks',

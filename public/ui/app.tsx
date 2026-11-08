@@ -1,3 +1,5 @@
+import { TagManager } from './tags';
+import { availableTags } from '../tags.js';
 import { HistoryDialog, AutoLockDialog } from './recovery';
 import { TaskSearch } from './search';
 import { emptySearch } from '../search.js';
@@ -76,6 +78,7 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
     } | null>(null),
     [details, setDetails] = useState<string | null>(null),
     [modal, setModal] = useState<
+      | 'tags'
       | 'password'
       | 'nickname'
       | 'push'
@@ -457,7 +460,7 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
     };
   }
   const tags = [
-    ...new Set([...(board?.tasks.flatMap((t) => t.tags) || []), ...(route.tag ? [route.tag] : [])]),
+    ...new Set([...(board ? availableTags(board) : []), ...(route.tag ? [route.tag] : [])]),
   ].sort();
   const archived = board?.tasks.find((t) => t.id === details && t.archivedAt);
   const completed = board?.tasks.filter((t) => !t.archivedAt && t.status === 'done').length || 0;
@@ -482,6 +485,7 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
       fn: () => run(toggleNotifications),
     },
     { icon: 'bell', label: 'Background reminders…', fn: () => setModal('push') },
+    { icon: 'edit', label: 'Manage tags…', fn: () => setModal('tags') },
     { icon: 'upload', label: 'Import Markdown…', fn: () => setModal('import') },
     { icon: 'download', label: 'Export Markdown', fn: () => run(() => download(true)) },
     { icon: 'download', label: 'Export JSON', fn: () => run(() => download(false)) },
@@ -724,6 +728,9 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
             })
           }
         />
+      )}
+      {modal === 'tags' && board && (
+        <TagManager board={board} close={() => setModal(null)} syncComplete={state.syncComplete} />
       )}
       {modal === 'history' && <HistoryDialog close={() => setModal(null)} notify={notify} />}
       {modal === 'auto-lock' && <AutoLockDialog close={() => setModal(null)} />}

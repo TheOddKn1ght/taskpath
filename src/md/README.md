@@ -12,6 +12,7 @@ See the root [README](../../README.md) for setup, [AGENTS.md](../../AGENTS.md) f
 
 - [data/encrypted-accounts.md](data/encrypted-accounts.md): account access, encryption boundaries, and recovery constraints.
 - [features/offline-sync.md](features/offline-sync.md): local edits, encrypted synchronization, and time-based board projections.
+- [features/tags.md](features/tags.md): reusable encrypted tags, rename/merge, and deletion rules.
 - [features/files.md](features/files.md): encrypted attachments and separate upload state.
 - [features/telegram-admin.md](features/telegram-admin.md): button navigation and account action screens in the admin chat.
 - [features/time-tracking.md](features/time-tracking.md): optional timers, pause rules, encrypted persistence, and time statistics.

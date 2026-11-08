@@ -1,5 +1,5 @@
 import type { TaskInput } from './types.js';
-export function normalizeTags(value: unknown) {
+export function normalizeTagCatalog(value: unknown): string[] {
   if (!Array.isArray(value)) throw new Error('Tags must be a list of names.');
   const tags = value.map((name) => {
     if (typeof name !== 'string' || /[\p{Cc}]/u.test(name))
@@ -10,8 +10,17 @@ export function normalizeTags(value: unknown) {
     return tag;
   });
   const result = [...new Set(tags)].sort();
-  if (result.length > 10) throw new Error('Use at most 10 tags per task.');
   return result;
+}
+
+export function normalizeTags(value: unknown) {
+  const tags = normalizeTagCatalog(value);
+  if (tags.length > 10) throw new Error('Use at most 10 tags per task.');
+  return tags;
+}
+
+export function availableTags(board: { savedTags?: string[]; tasks: { tags: string[] }[] }) {
+  return normalizeTagCatalog([...(board.savedTags ?? []), ...board.tasks.flatMap((t) => t.tags)]);
 }
 
 export function importTaskKey(task: TaskInput) {

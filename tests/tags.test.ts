@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test';
 import { ClientStore as Store } from './client-helpers';
-import { normalizeTags, importTaskKey } from '../public/tags.js';
+import { queueTagManagement } from '../public/offline-model.js';
+import { availableTags, normalizeTags, importTaskKey } from '../public/tags.js';
 import { exportMarkdown, parseMarkdown } from '../public/markdown.js';
 
 const time = '2026-09-08T12:00:00.000Z';
@@ -79,5 +80,50 @@ test('Markdown tags round-trip punctuation and Unicode; deduplication includes n
     expect(() => parseMarkdown('- [ ] Test\n  - Tags: []\n  - Tags: []')).toThrow();
   } finally {
     store.close();
+  }
+});
+
+test('tag management merges active and archived assignments while preserving task details', () => {
+  const store = makeStore();
+  const active = store.create({ title: 'Active', tags: ['old', 'target'], notes: 'Keep notes' });
+  const archived = store.create({ title: 'Archived', tags: ['old'], archivedAt: time });
+  const deleted = store.create({ title: 'Deleted', tags: ['old'] });
+  store.remove(deleted.id);
+  const before = store.board().tasks.find((t) => t.id === archived.id)!;
+  const result = queueTagManagement(
+    store.record,
+    { action: 'rename', name: ' OLD ', replacement: 'TARGET' },
+    Date.parse(time),
+  );
+  expect(result.affected).toBe(2);
+  expect(result.savedTags).toEqual(['target']);
+  expect(store.board().tasks.find((t) => t.id === active.id)).toMatchObject({
+    tags: ['target'],
+    notes: 'Keep notes',
+  });
+  const after = store.board().tasks.find((t) => t.id === archived.id)!;
+  expect({ ...after, tags: before.tags, updatedAt: before.updatedAt }).toEqual(before);
+  expect(store.board().rows.find((t) => t.id === deleted.id)!.tags).toEqual(['old']);
+  store.record.board.savedTags = result.savedTags;
+  expect(queueTagManagement(store.record, { action: 'delete', name: 'target' }).affected).toBe(2);
+  expect(store.board().tasks.every((t) => !t.tags.length)).toBe(true);
+});
+
+test('unused reusable tags have no per-task limit and invalid operations keep pending changes intact', () => {
+  const store = makeStore();
+  store.record.board.savedTags = Array.from({ length: 12 }, (_, i) => `tag${i}`);
+  const added = queueTagManagement(store.record, { action: 'add', name: ' CAFÉ ' });
+  expect(added.savedTags).toHaveLength(13);
+  expect(added.affected).toBe(0);
+  expect(availableTags({ tasks: [], savedTags: added.savedTags })).toContain('café');
+  const before = structuredClone(store.record);
+  for (const input of [
+    { action: 'rename', name: 'tag0', replacement: '' },
+    { action: 'delete', name: 'missing' },
+    { action: 'unsupported', name: 'tag0' },
+    { action: ['delete'], name: 'tag0' },
+  ]) {
+    expect(() => queueTagManagement(store.record, input)).toThrow();
+    expect(store.record).toEqual(before);
   }
 });

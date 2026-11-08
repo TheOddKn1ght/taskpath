@@ -418,3 +418,87 @@ test('due reminders offer snooze durations and snooze offline', async ({ page, c
   await expect(panel).toHaveCount(0);
   await context.setOffline(false);
 });
+
+test('tag manager creates reusable names, merges assignments and deletes offline', async ({
+  page,
+  context,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { userId } = await (await page.request.get('/test-account?fresh=1')).json();
+  await page.goto('/');
+  await page.locator('#unlock-user').fill(userId);
+  await page.locator('#unlock-password').fill('browser harness password 2026');
+  await page.locator('[name="remember"]').check();
+  await page.locator('#unlock-submit').click();
+  await expect(page.locator('#save-status')).toContainText('All changes synced');
+  const openManager = async () => {
+    await page.locator('.app-menu').click();
+    await page.getByRole('menuitem', { name: 'Manage tags…', exact: true }).click();
+  };
+  await openManager();
+  const manager = page.locator('#tags-dialog');
+  await manager.getByRole('textbox', { name: 'New tag name' }).fill('Reusable');
+  await manager.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(manager.getByRole('region', { name: 'Tag reusable', exact: true })).toContainText(
+    '0 tasks',
+  );
+  await manager.getByRole('button', { name: 'Close Manage tags' }).click();
+  await page.locator('#new-task').click();
+  await page.locator('#task-title').fill('Managed tag task');
+  await page.locator('#browse-tags').click();
+  await page.getByRole('option', { name: 'reusable', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('#task-tag-input').fill('target');
+  await page.locator('#add-tag').click();
+  await page.locator('#save-task').click();
+  await expect(page.locator('#save-status')).toContainText('All changes synced');
+  await page.waitForLoadState('networkidle');
+  await context.setOffline(true);
+  await openManager();
+  await manager.getByRole('button', { name: 'Rename reusable', exact: true }).click();
+  await manager.getByRole('textbox', { name: 'New name for reusable', exact: true }).fill('target');
+  await manager.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(manager.getByRole('region', { name: 'Tag reusable', exact: true })).toHaveCount(0);
+  await expect(manager.getByRole('region', { name: 'Tag target', exact: true })).toContainText(
+    '1 task',
+  );
+  await manager.getByRole('button', { name: 'Delete target', exact: true }).click();
+  await manager.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(manager.getByRole('region', { name: 'Tag target', exact: true })).toBeVisible();
+  await manager.getByRole('button', { name: 'Delete target', exact: true }).click();
+  await manager.getByRole('button', { name: 'Confirm delete', exact: true }).click();
+  await expect(manager.getByRole('region', { name: 'Tag target', exact: true })).toHaveCount(0);
+  await manager.getByRole('textbox', { name: 'New tag name' }).fill('offline name');
+  await manager.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(
+    manager.getByRole('region', { name: 'Tag offline name', exact: true }),
+  ).toBeVisible();
+  await context.setOffline(false);
+  await manager.getByRole('button', { name: 'Close Manage tags' }).click();
+  await expect(page.locator('#save-status')).toContainText('All changes synced');
+  await page.reload();
+  await expect(page.locator('#main')).toBeVisible();
+  await openManager();
+  await expect(
+    manager.getByRole('region', { name: 'Tag offline name', exact: true }),
+  ).toContainText('0 tasks');
+  await expect(manager.getByRole('region', { name: 'Tag target', exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const inputBounds = (await manager.getByRole('textbox', { name: 'New tag name' }).boundingBox())!;
+  expect(inputBounds.x).toBeGreaterThanOrEqual(0);
+  expect(inputBounds.x + inputBounds.width).toBeLessThanOrEqual(320);
+  await manager.getByRole('button', { name: 'Close Manage tags' }).click();
+  await page.locator('.app-menu').click();
+  await page.getByRole('menuitem', { name: 'Nickname…', exact: true }).click();
+  await page.locator('[name="nickname"]').fill('Tag keeper');
+  await page.locator('#nickname-dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await openManager();
+  await manager.getByRole('textbox', { name: 'New tag name' }).fill('kept');
+  await manager.getByRole('button', { name: 'Add tag', exact: true }).click();
+  await expect(manager.getByRole('region', { name: 'Tag kept', exact: true })).toBeVisible();
+  await expect(
+    manager.getByRole('region', { name: 'Tag offline name', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('#greeting')).toContainText('Tag keeper');
+});

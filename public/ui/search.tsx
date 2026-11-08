@@ -1,3 +1,4 @@
+import { availableTags } from '../tags.js';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Board, Task } from '../types.js';
 import {
@@ -79,9 +80,7 @@ export function TaskSearch({
   const visible = results.slice(0, limit);
   const active = visible.findIndex((r) => r.task.id === selected);
   const index = active >= 0 ? active : 0;
-  const tags = [
-    ...new Set([...state.tags, ...board.tasks.filter((t) => !t.deletedAt).flatMap((t) => t.tags)]),
-  ].sort();
+  const tags = [...new Set([...state.tags, ...availableTags(board)])].sort();
   const patch = (s: Partial<SearchState>) => {
     scroll.current = 0;
     if (list.current) list.current.scrollTop = 0;

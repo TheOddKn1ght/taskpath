@@ -26,6 +26,7 @@ export interface Task {
 }
 export interface Profile {
   id: '_profile';
+  savedTags?: string[];
   nickname: string;
   updatedAt: string;
 }
@@ -83,6 +84,7 @@ export interface SyncResult extends SyncBoard {
   reminderAcknowledged?: { taskId: string; changeId: string }[];
 }
 export interface PlainBoard {
+  savedTags?: string[];
   rows: Task[];
   changeIds: Record<string, string>;
   timezone: string;

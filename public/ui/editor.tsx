@@ -1,3 +1,4 @@
+import { availableTags } from '../tags.js';
 import { useState, useRef, useEffect } from 'react';
 import type { Board, Task, Status, Category, TaskDraft } from '../types.js';
 import { Dialog } from './dialog';
@@ -227,11 +228,7 @@ export function Editor({
             <button type="button" id="add-tag" className="secondary-button" onClick={add}>
               Add
             </button>
-            <TagButton
-              available={[...new Set(board.tasks.flatMap((t) => t.tags))]}
-              tags={tags}
-              onChange={setTags}
-            />
+            <TagButton available={availableTags(board)} tags={tags} onChange={setTags} />
           </div>
           <p className="schedule-hint">Press Enter to add · up to 10 tags</p>
         </div>
