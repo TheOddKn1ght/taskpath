@@ -10,6 +10,7 @@ See the root [README](../../README.md) for setup, [AGENTS.md](../../AGENTS.md) f
 
 ## File Index
 
+- [features/workspace-ui.md](features/workspace-ui.md): workspace hierarchy, theme-aware presentation, and accessible interaction states.
 - [data/encrypted-accounts.md](data/encrypted-accounts.md): account access, encryption boundaries, and recovery constraints.
 - [features/offline-sync.md](features/offline-sync.md): local edits, encrypted synchronization, and time-based board projections.
 - [features/tags.md](features/tags.md): reusable encrypted tags, rename/merge, and deletion rules.

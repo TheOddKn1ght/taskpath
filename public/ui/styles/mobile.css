@@ -146,7 +146,7 @@
     font-size: 14px;
   }
   .toolbar > .search {
-    grid-area: 2 / 1 / auto / -1;
+    grid-area: 3 / 1 / auto / -1;
     width: 100%;
     min-height: 46px;
     border: 1px solid var(--line);
@@ -162,7 +162,7 @@
     min-height: 44px;
   }
   .task-filters {
-    grid-area: 3 / 1 / auto / -1;
+    grid-area: 4 / 1 / auto / -1;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -217,11 +217,13 @@
   .task-list {
     min-height: 56px;
   }
-  .task-card {
+  .task-card,
+  .column .task-card {
     padding: 12px;
     border-radius: 12px;
   }
-  .task-title {
+  .task-title,
+  .column .task-title {
     font-size: 15px;
     line-height: 1.5;
     min-height: 44px;
@@ -279,7 +281,8 @@
     width: 44px;
     height: 44px;
   }
-  .quick-add {
+  .quick-add,
+  .quick-add-trigger {
     min-height: 44px;
   }
   .quick-add input,
@@ -311,8 +314,8 @@
   .board-footer > p {
     display: none;
   }
-  .board-footer .save-status {
-    margin-left: auto;
+  .workspace-sync {
+    grid-area: 2 / 1 / auto / -1;
   }
   .toast {
     bottom: calc(var(--mobile-tabs-height) + env(safe-area-inset-bottom) + 12px);

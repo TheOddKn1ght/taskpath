@@ -1,9 +1,17 @@
 #open-search {
   text-align: left;
   min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+#open-search:hover {
+  border-color: var(--card-hover);
 }
 #open-search:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 #open-search span {
   flex: 1;

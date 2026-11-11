@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Route } from '../types.js';
 import { Icon } from './icons';
 import { ThemeIcon } from './theme';
@@ -13,7 +14,9 @@ export function WorkspaceHeader({
   createTask,
   options,
   openSearch,
+  syncStatus,
 }: {
+  syncStatus: ReactNode;
   openSearch: () => void;
   route: Route;
   tags: string[];
@@ -36,6 +39,7 @@ export function WorkspaceHeader({
           {week}
         </span>
       </div>
+      <div className="workspace-sync">{syncStatus}</div>
       <div className="toolbar">
         <button
           id="open-search"

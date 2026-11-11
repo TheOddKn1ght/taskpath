@@ -591,7 +591,10 @@ try {
   submit(quick);
   submit(quick);
   await until(
-    () => !getSnapshot().busy && getSnapshot().board!.tasks.some((t) => t.title === 'QOL_QUICK'),
+    () =>
+      !getSnapshot().busy &&
+      getSnapshot().board!.tasks.some((t) => t.title === 'QOL_QUICK') &&
+      !node<HTMLInputElement>(quick + ' input').disabled,
     'quick add saved',
   );
   await until(() => document.activeElement === node(quick + ' input'), 'quick add refocused');

@@ -5,6 +5,7 @@ import { seedQaWorkspace } from '../scripts/qa-seed';
 import { createVault, decryptEnvelope, unlockVault } from '../public/crypto';
 import { project, validate } from '../public/offline-model';
 import { Store } from '../src/store';
+import { computeStats } from '../public/stats';
 
 const root = resolve(import.meta.dir, '..');
 // Static, side-effect, dynamic and require imports: anything that could pull QA code in.
@@ -60,13 +61,38 @@ test('QA opens a disposable workspace pre-filled with tasks and files', async ()
     });
     const columns = new Set(view.tasks.map((task) => task.status));
     expect([...columns].sort()).toEqual(['done', 'later', 'today', 'week']);
-    expect(view.tasks.some((task) => task.archivedAt)).toBe(true);
+    for (const status of columns) {
+      expect(
+        view.tasks.filter((task) => task.status === status && !task.archivedAt).length,
+      ).toBeGreaterThanOrEqual(5);
+    }
+    expect(view.tasks.filter((task) => task.archivedAt).length).toBeGreaterThanOrEqual(3);
+    expect(new Set(view.tasks.map((task) => task.category)).size).toBe(2);
+    expect(view.tasks.some((task) => task.reminderAt && !task.dueDate)).toBe(true);
+    expect(
+      view.tasks.some((task) => task.dueDate && task.dueDate < view.day && task.status !== 'done'),
+    ).toBe(true);
+    expect(view.tasks.some((task) => task.dueDate && task.dueDate > view.day)).toBe(true);
+    expect(view.tasks.some((task) => task.notes.includes('\n\n##'))).toBe(true);
+    const stats = computeStats(view.tasks, {
+      day: view.day,
+      week: view.week,
+      timezone: view.timezone,
+    });
+    expect(stats.tracking.running).toBeGreaterThan(0);
+    expect(stats.tracking.count).toBeGreaterThan(5);
+    expect(stats.tracking.totalMs).toBeGreaterThan(0);
+    expect(stats.lead?.count).toBeGreaterThan(5);
+    expect(stats.weeks.filter((week) => week.count > 0).length).toBeGreaterThanOrEqual(3);
+    expect(
+      view.tasks.some((task) => task.timeTracking?.elapsedMs === 0 && !task.timeTracking.startedAt),
+    ).toBe(true);
     const manifest = await (
       await fetch(session.origin + '/api/files', {
         headers: { Cookie: cookie, 'x-taskpath-user': data.userId },
       })
     ).json();
-    expect(manifest.files.length).toBeGreaterThan(0);
+    expect(manifest.files.length).toBeGreaterThanOrEqual(5);
     expect(manifest.usedBytes).toBeGreaterThan(0);
   } finally {
     await session.stop();

@@ -547,6 +547,25 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
         />
         <div className="workspace-content">
           <WorkspaceHeader
+            syncStatus={
+              <>
+                <span id="save-status" className="save-status" role="status">
+                  <span className="status-dot" />
+                  {state.connection}
+                </span>
+                {state.authRequired && (
+                  <a
+                    href="/login"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      run(lock);
+                    }}
+                  >
+                    Sign in to sync
+                  </a>
+                )}
+              </>
+            }
             openSearch={() => setSearchOpen(true)}
             route={route}
             tags={tags}
@@ -669,21 +688,6 @@ function Workspace({ theme, privacy }: { theme: () => void; privacy: () => void 
             <button className="subtle-button" onClick={privacy}>
               Privacy notice
             </button>
-            {state.authRequired && (
-              <a
-                href="/login"
-                onClick={(e) => {
-                  e.preventDefault();
-                  run(lock);
-                }}
-              >
-                Sign in to sync
-              </a>
-            )}
-            <span id="save-status" className="save-status" role="status">
-              <span className="status-dot" />
-              {state.connection}
-            </span>
           </footer>
         </div>
       </main>
