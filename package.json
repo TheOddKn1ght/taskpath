@@ -5,7 +5,7 @@
   "type": "module",
   "description": "A little space to plan your week and focus your day.",
   "engines": {
-    "bun": ">=1.4.4"
+    "bun": ">=1.4.5"
   },
   "scripts": {
     "start": "NODE_ENV=production bun run src/server.ts",

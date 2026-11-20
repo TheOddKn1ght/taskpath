@@ -2,7 +2,7 @@
 
 Invite-only task board with encrypted accounts, offline edits, reminders, and file attachments. Built with React, Bun, and SQLite.
 
-Requires Bun 1.4.4+.
+Requires Bun 1.4.5+.
 
 ```sh
 bun install --frozen-lockfile --ignore-scripts
