@@ -110,13 +110,33 @@ export class AuthManager {
   isAuthenticated(request: Request) {
     return this.identity(request) !== null;
   }
+  private fail(key: string, limit: number, now: number) {
+    const before = this.attempts.get(key),
+      failures = (before?.failures || 0) + 1;
+    this.attempts.delete(key);
+    this.attempts.set(key, {
+      failures,
+      at: before?.at || now,
+      until: failures >= limit ? now + 900000 : 0,
+    });
+    return failures >= limit;
+  }
   private async verify(client: string, userId: string, credential: string) {
     const now = this.now(),
-      rateKey = client + ':' + userId;
+      clientKey = 'client:' + client,
+      rateKey = client + ':' + (validUserId(userId) ? userId : 'invalid');
     for (const [key, a] of this.attempts)
       if (a.until <= now && now - a.at >= 600000) this.attempts.delete(key);
+    // Evicting an active lockout would let junk failures reset it; drop unlocked counters first.
+    for (const [key, a] of this.attempts) {
+      if (this.attempts.size <= 5000) break;
+      if (a.until <= now) this.attempts.delete(key);
+    }
     while (this.attempts.size > 5000) this.attempts.delete(this.attempts.keys().next().value!);
-    if ((this.attempts.get(rateKey)?.until || 0) > now)
+    if (
+      (this.attempts.get(rateKey)?.until || 0) > now ||
+      (this.attempts.get(clientKey)?.until || 0) > now
+    )
       throw new InputError('Too many attempts. Wait 15 minutes and try again.', 429);
     this.validateCredential(credential);
     const row = validUserId(userId) ? this.row(userId) : null;
@@ -125,18 +145,12 @@ export class AuthManager {
       row.status !== 'active' ||
       !(await Bun.password.verify(credential, row.verifier!).catch(() => false))
     ) {
-      const before = this.attempts.get(rateKey),
-        failures = (before?.failures || 0) + 1;
-      this.attempts.set(rateKey, {
-        failures,
-        at: before?.at || now,
-        until: failures >= 5 ? now + 900000 : 0,
-      });
+      const blocked = [this.fail(rateKey, 5, now), this.fail(clientKey, 20, now)].some(Boolean);
       throw new InputError(
-        failures >= 5
+        blocked
           ? 'Too many attempts. Wait 15 minutes and try again.'
           : 'User ID or password is incorrect.',
-        failures >= 5 ? 429 : 401,
+        blocked ? 429 : 401,
       );
     }
     this.attempts.delete(rateKey);

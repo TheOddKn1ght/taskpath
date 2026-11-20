@@ -189,3 +189,33 @@ test('login rate limit and bounded JSON bodies remain enforced behind proxy', as
     store.close();
   }
 });
+test('login lockouts survive junk failures and cap failures per client', async () => {
+  const { store, handle } = await fixture();
+  const attempt = async (userId: string, credential: string, ip: string) =>
+    (await handle(
+      new Request(`${origin}/api/auth/login`, {
+        method: 'POST',
+        headers: { origin, 'content-type': 'application/json', 'x-real-ip': ip },
+        body: JSON.stringify({ userId, credential, revision: 1 }),
+      }),
+    ))!;
+  try {
+    for (let i = 0; i < 5; i++) await attempt(testUserId, base64(random(32)), 'attacker-0');
+    expect((await attempt(testUserId, testVault.credential, 'attacker-0')).status).toBe(429);
+    // Junk failures from other clients must not evict an active lockout.
+    for (let i = 0; i < 5100; i++)
+      await attempt('u_' + i.toString(16).padStart(32, '0'), base64(random(32)), `junk-${i}`);
+    expect((await attempt(testUserId, testVault.credential, 'attacker-0')).status).toBe(429);
+    // A single client cannot spread guesses across many user IDs.
+    for (let i = 0; i < 19; i++)
+      expect(
+        (await attempt('u_' + i.toString(16).padStart(32, 'f'), base64(random(32)), 'spray'))
+          .status,
+      ).toBe(401);
+    expect((await attempt('u_' + 'e'.repeat(32), base64(random(32)), 'spray')).status).toBe(429);
+    expect((await attempt(testUserId, testVault.credential, 'spray')).status).toBe(429);
+    expect((await attempt(testUserId, testVault.credential, 'other')).status).toBe(200);
+  } finally {
+    store.close();
+  }
+});

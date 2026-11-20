@@ -6,6 +6,8 @@ Password derivation happens in the page. The password derives separate authentic
 
 Encryption does not hide all metadata. The server needs account and record identifiers, revision information, and limited reminder scheduling data. Treat new server-visible fields as an explicit design decision. Do not send task text or file names merely to simplify a server feature.
 
+Failed sign-ins are limited in memory per client and account (5 failures) and per client across all accounts (20 failures), each with a 15-minute lockout. The attempt table is bounded, so pruning must evict unlocked counters before active lockouts; otherwise cheap failures against random user IDs would reset a lockout. Distributed guessing across many addresses is not covered and relies on the slow client-side key derivation and random user IDs.
+
 The encryption is custom and unaudited. Preserve that qualification in user-facing documentation. HTTPS is still required outside localhost.
 
 Key sources: `public/crypto.ts`, `public/ui/auth.tsx`, `src/auth.ts`, `src/store.ts`, and `src/db/accounts.ts`. Whole-database backups preserve authentication state as well as encrypted data; see the [backup guide](../../../docs/database-backups.md).
