@@ -3,6 +3,7 @@ import { assetEncoding, compressAsset } from './asset-encoding';
 import { clientAsset } from './client-assets';
 import type { Server } from 'bun';
 import { Realtime, type RealtimeData } from './realtime';
+import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { SOURCE_DIRECTORY, sourceRelease, releaseForDirectory } from './client-release';
 import { AuthManager } from './auth';
@@ -116,6 +117,7 @@ export function createHandler(
   ),
   push = new PushService(store),
   quota = fileQuota(process.env.TASKPATH_FILE_QUOTA_MB),
+  trustProxy = process.env.TASKPATH_TRUST_PROXY === '1',
 ) {
   const fixedRelease =
     resolve(assetDirectory) === SOURCE_DIRECTORY ? null : releaseForDirectory(assetDirectory);
@@ -141,7 +143,7 @@ export function createHandler(
   };
   const json = (value: unknown, status = 200, extra = {}) =>
     Response.json(value, { status, headers: { ...headers, ...extra } });
-  return async (request: Request, server?: Pick<Server<RealtimeData>, 'upgrade'>) => {
+  return async (request: Request, server?: Pick<Server<RealtimeData>, 'upgrade' | 'requestIP'>) => {
     try {
       const url = new URL(request.url),
         path = url.pathname;
@@ -165,10 +167,13 @@ export function createHandler(
           fileUpload ? 'Use application/octet-stream.' : 'Use application/json.',
           415,
         );
-      const body = async () => {
-        const limit = route?.name === 'sync' ? 2 * 1024 * 1024 : 32768;
-        if (Number(request.headers.get('content-length')) > limit)
-          throw new InputError('Request is too large.', 413);
+      const readBody = async (
+        limit: number,
+        userId?: string,
+        tooLarge = (_size: number) => new InputError('Request is too large.', 413),
+      ) => {
+        const declared = Number(request.headers.get('content-length'));
+        if (declared > limit) throw tooLarge(declared);
         const chunks: Uint8Array[] = [];
         let size = 0;
         const reader = request.body?.getReader();
@@ -179,37 +184,42 @@ export function createHandler(
             size += value.byteLength;
             if (size > limit) {
               await reader.cancel();
-              throw new InputError('Request is too large.', 413);
+              throw tooLarge(size);
             }
             chunks.push(value);
           }
+        if (userId && auth.identity(request, secure) !== userId)
+          throw new InputError('Sign in again.', 401);
+        return Buffer.concat(chunks, size);
+      };
+      const body = async (userId?: string) => {
+        const bytes = await readBody(route?.name === 'sync' ? 2 * 1024 * 1024 : 32768, userId);
         try {
-          return object(JSON.parse(Buffer.concat(chunks).toString()));
+          return object(JSON.parse(bytes.toString()));
         } catch (error) {
           if (error instanceof InputError) throw error;
           throw new InputError('Invalid JSON.');
         }
       };
-      const client = trustedOrigin
-        ? (request.headers.get('x-real-ip') || 'direct-client').slice(0, 100)
-        : 'direct-client';
+      const forwarded = trustProxy && trustedOrigin ? request.headers.get('x-real-ip') : null;
+      const client =
+        forwarded && isIP(forwarded)
+          ? forwarded
+          : server?.requestIP(request)?.address || 'direct-client';
       if (route?.name === 'health' && read) return json({ ok: true });
       if (route?.name === 'authConfig' && read)
         return json({ config: auth.configuration(url.searchParams.get('userId') || '') });
-      if (route?.name === 'authStatus' && read)
-        return json({
-          enabled: true,
-          authenticated: auth.isAuthenticated(request),
-          userId: auth.identity(request),
-        });
+      if (route?.name === 'authStatus' && read) {
+        const userId = auth.identity(request, secure);
+        return json({ enabled: true, authenticated: Boolean(userId), userId });
+      }
       if (route?.name === 'authSetup' && request.method === 'POST') {
         const data = await body();
         if (Object.keys(data).some((k) => !['userId', 'token', 'config', 'credential'].includes(k)))
           throw new InputError('Unsupported setup payload.');
         if (typeof data.userId !== 'string' || typeof data.credential !== 'string')
           throw new InputError('Invalid setup payload.');
-        await auth.setup(data.userId, data.token, data.config, data.credential);
-        const session = await auth.login(client, data.userId, data.credential, 1);
+        const session = await auth.setup(data.userId, data.token, data.config, data.credential);
         return json({ ok: true }, 201, {
           'Set-Cookie': auth.cookie(session.token, session.maxAge, secure),
         });
@@ -290,7 +300,7 @@ export function createHandler(
           });
         }
       }
-      const userId = auth.identity(request);
+      const userId = auth.identity(request, secure);
       if (!userId)
         return json(
           { error: 'Sign in to sync. Encrypted pending changes remain on this device.' },
@@ -308,26 +318,23 @@ export function createHandler(
         if (route?.name === 'files' && request.method === 'GET')
           return json(files.manifest(userId, vaultId));
         if (fileUpload) {
-          const limit = files.transferLimit(userId) + FILE_HEADER_MAX + 20;
-          if (Number(request.headers.get('content-length')) > limit)
-            throw new InputError('File is too large.', 413);
-          const chunks: Uint8Array[] = [];
-          let size = 0;
-          const reader = request.body?.getReader();
-          if (reader)
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              size += value.length;
-              if (size > limit) {
-                await reader.cancel();
-                throw new InputError('File is too large.', 413);
-              }
-              chunks.push(value);
-            }
+          const { fileBytes, quotaBytes } = files.transferLimits(userId);
+          const overhead = FILE_HEADER_MAX + 20;
+          const bytes = await readBody(
+            Math.min(fileBytes, quotaBytes) + overhead,
+            userId,
+            (size) =>
+              size > fileBytes + overhead
+                ? new InputError('File is too large.', 413)
+                : new InputError(
+                    'Waiting for space. Free storage or increase the file quota.',
+                    507,
+                  ),
+          );
+
           let decoded;
           try {
-            decoded = decodeFile(new Uint8Array(Buffer.concat(chunks)), userId, vaultId);
+            decoded = decodeFile(bytes, userId, vaultId);
           } catch {
             throw new InputError('Invalid encrypted file.');
           }
@@ -346,9 +353,10 @@ export function createHandler(
             },
           });
         if (request.method === 'PATCH') {
+          const data = await body(userId);
           let e;
           try {
-            e = fileEnvelope(await body(), userId, vaultId);
+            e = fileEnvelope(data, userId, vaultId);
           } catch {
             throw new InputError('Invalid encrypted file metadata.');
           }
@@ -364,12 +372,12 @@ export function createHandler(
         }
       }
       if (route?.name === 'authLogout' && request.method === 'POST') {
-        auth.logout(request);
+        auth.logout(request, secure);
         realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
       }
       if (route?.name === 'authPassword' && request.method === 'POST') {
-        const data = await body();
+        const data = await body(userId);
         if (
           Object.keys(data).some(
             (k) => !['revision', 'config', 'currentCredential', 'credential'].includes(k),
@@ -389,6 +397,7 @@ export function createHandler(
           data.credential,
           data.config,
           data.revision,
+          secure,
         );
         realtime?.checkSessions();
         return json({ ok: true }, 200, { 'Set-Cookie': auth.cookie('', 0, secure) });
@@ -405,7 +414,7 @@ export function createHandler(
           return json({ error: 'WebSocket upgrade required.' }, 426);
         if (
           server.upgrade(request, {
-            data: { userId, authorized: () => auth.identity(request) === userId },
+            data: { userId, authorized: () => auth.identity(request, secure) === userId },
           })
         )
           return;
@@ -422,26 +431,26 @@ export function createHandler(
       if (route?.name === 'sync' && request.method === 'GET')
         return json(store.syncBoard(userId, url.searchParams.get('cursor')));
       if (route?.name === 'sync' && request.method === 'POST') {
-        const result = store.sync(userId, await body());
+        const result = store.sync(userId, await body(userId));
         if (result.changed) realtime?.notify(userId);
         const { changed, ...response } = result;
         return json(response);
       }
       if (route?.name === 'reminders' && request.method === 'POST') {
-        const data = await body();
+        const data = await body(userId);
         if (Object.keys(data).some((k) => k !== 'tokens'))
           throw new InputError('Use opaque reminder tokens.');
         return json(store.claim(userId, data.tokens));
       }
       if (route?.name === 'push' && request.method === 'GET') return json(push.status(userId));
       if (route?.name === 'push' && request.method === 'POST') {
-        const data = await body();
+        const data = await body(userId);
         if (Object.keys(data).some((k) => k !== 'subscription'))
           throw new InputError('Use a browser push subscription.');
         return json(push.subscribe(userId, data.subscription));
       }
       if (route?.name === 'push' && request.method === 'DELETE') {
-        const data = await body();
+        const data = await body(userId);
         if (Object.keys(data).some((k) => k !== 'id'))
           throw new InputError('Use a subscription ID.');
         return json(push.remove(userId, data.id));

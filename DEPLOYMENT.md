@@ -97,17 +97,13 @@ exit
 On your computer, run this command from the Taskpath project directory:
 
 ```sh
-rsync -av \
-  --exclude '.git/' \
-  --exclude '.env' \
-  --exclude 'data/' \
-  --exclude 'node_modules/' \
-  --exclude 'dist/' \
-  --exclude 'coverage/' \
+git ls-files -z | rsync -av --from0 --files-from=- \
+  --exclude='.env' --exclude='data/' --exclude='node_modules/' \
+  --exclude='dist/' --exclude='coverage/' \
   ./ ubuntu@203.0.113.10:/opt/taskpath/
 ```
 
-The exclusions prevent local credentials, development data, and generated files from being copied. For existing plaintext tasks, use the manual export/import upgrade procedure below. Do not copy a plaintext database into this release.
+Run this in the Git checkout. The file list excludes untracked credentials, backups, and temporary files. The exclusions also protect the server’s environment file and data directory. For existing plaintext tasks, use the manual export/import upgrade procedure below. Do not copy a plaintext database into this release.
 
 Reconnect and verify the files:
 
@@ -133,12 +129,15 @@ Edit `.env` with your domain and timezone:
 PORT=3000
 TASKPATH_TIMEZONE=Europe/Moscow
 TASKPATH_ORIGIN=https://tasks.example.com
+TASKPATH_TRUST_PROXY=1
 TASKPATH_SESSION_DAYS=30
 # Optional; defaults to TASKPATH_ORIGIN for push delivery:
 # TASKPATH_PUSH_SUBJECT=mailto:admin@example.com
 ```
 
 Remove legacy `TASKPATH_USERNAME`, `TASKPATH_PASSWORD`, and `TASKPATH_PASSWORD_HASH` values. Passwords are chosen only in the browser; there is no password-hash command. Optional `TASKPATH_START_SCRIPT=start:smol` enables Bun's lower-memory mode. Leave `HOST` and `DATABASE_PATH` at the container defaults.
+
+Set `TASKPATH_TRUST_PROXY=1` only when the application is reachable exclusively through a trusted proxy that overwrites `X-Real-IP`, as in the Nginx template. Without this setting, sign-in throttling uses the socket peer, so clients behind the same proxy share a limit.
 
 The HTTPS origin also enables server push delivery. Signing keys are generated once and stored in SQLite; do not generate or paste VAPID keys manually. `TASKPATH_PUSH_SUBJECT`, when supplied, must be an HTTPS contact URL or `mailto:` address. Allow outbound DNS and HTTPS from the container to browser push providers. No additional incoming port or Nginx configuration is needed for push.
 
@@ -310,7 +309,7 @@ These steps are for an existing **multi-user** installation:
 
 1. Open each device online and wait for **All changes synced**. Do not clear browser storage: it may contain unsynced edits.
 2. [Back up the volume](#9-back-up-the-database).
-3. Repeat the `rsync` command from step 4 on your computer. Keep the `.env`, `data/`, `node_modules/`, and `dist/` exclusions, and include `bun.lock` and `scripts/`.
+3. Repeat the `rsync` command from step 4 on your computer. Use the tracked file list so local data and credentials stay on your computer.
 4. On the VPS, review new settings in `.env.example` and merge them into your existing `.env`. Keep the same Compose project/volume name and `TASKPATH_ORIGIN`. Do not replace `.env` with the example.
 5. Rebuild and recreate the service:
 
@@ -456,6 +455,8 @@ There is no reset or recovery mechanism. The server cannot decrypt your tasks. A
    ```nginx
    location = /api/files {
        client_max_body_size 15g;
+       proxy_http_version 1.1;
+       proxy_request_buffering off;
        proxy_pass http://127.0.0.1:3000;
    }
    ```
@@ -567,8 +568,7 @@ Run `sudo taskpath self-update` before `sudo taskpath update` to install the
 current updater on an existing managed host. Every update checks Nginx, including
 when the application revision is already current. If Nginx is installed, the
 updater uses `nginx -T`, `TASKPATH_ORIGIN`, and the managed loopback port to find
-one matching server. It sets only the exact `/api/files` upload allowance to
-`15g`; a missing location copies the root proxy policy. Certificates, other
+one matching server. For the exact `/api/files` location it sets a `15g` upload ceiling and streams request bodies over HTTP/1.1. A missing location copies the root proxy policy when that policy governs the upload path. Certificates, other
 routes, and other virtual hosts are retained. Existing explicit upload locations
 support server-level includes, including Certbot TLS settings. Includes or regex
 routing that prevent safe insertion of a missing location, missing matches, or

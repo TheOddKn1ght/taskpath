@@ -7,15 +7,17 @@ import { validateConfig, unbase64, validUserId } from '../public/crypto.js';
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const sessionCookieName = 'taskpath_session';
 export const secureSessionCookieName = '__Host-taskpath_session';
-function cookieValue(request: Request) {
-  const parts = (request.headers.get('cookie') || '').split(';').map((p) => p.trim().split('='));
-  return (
-    parts.find((p) => p[0] === secureSessionCookieName)?.[1] ||
-    parts.find((p) => p[0] === sessionCookieName)?.[1]
-  );
+function cookieValue(request: Request, secure: boolean) {
+  const name = secure ? secureSessionCookieName : sessionCookieName;
+  return (request.headers.get('cookie') || '')
+    .split(';')
+    .map((part) => part.trim().split('='))
+    .find(([key]) => key === name)?.[1];
 }
+type Attempts = { failures: number; pending: number; at: number; until: number };
 export class AuthManager {
-  private attempts = new Map<string, { failures: number; at: number; until: number }>();
+  private attempts = new Map<string, Attempts>();
+  private passwordJobs = 0;
   private sessionSeconds: number;
   private accounts: AccountRepository;
   constructor(
@@ -27,6 +29,26 @@ export class AuthManager {
       throw new Error('TASKPATH_SESSION_DAYS must be from 1 to 365.');
     this.sessionSeconds = sessionDays * 86400;
     this.accounts = new AccountRepository(connect(db));
+  }
+  private async passwordWork<T>(work: () => Promise<T>) {
+    // Each Argon2 job needs 64 MiB. Reject excess work before queueing it in Bun.
+    if (this.passwordJobs >= 4)
+      throw new InputError('Authentication is busy. Try again shortly.', 503);
+    this.passwordJobs++;
+    try {
+      return await work();
+    } finally {
+      this.passwordJobs--;
+    }
+  }
+  private hashCredential(credential: string) {
+    return this.passwordWork(() =>
+      Bun.password.hash(credential, {
+        algorithm: 'argon2id',
+        memoryCost: 65536,
+        timeCost: 2,
+      }),
+    );
   }
   private row(userId: string) {
     return this.accounts.get(userId);
@@ -91,70 +113,75 @@ export class AuthManager {
     }
     if (config.revision !== 1) throw new InputError('Invalid initial revision.');
     this.validateCredential(credential);
-    const verifier = await Bun.password.hash(credential, {
-      algorithm: 'argon2id',
-      memoryCost: 65536,
-      timeCost: 2,
-    });
-    this.accounts.transaction(() => {
+    const verifier = await this.hashCredential(credential);
+    return this.accounts.transaction(() => {
       if (!this.validSetup(userId, token))
         throw new InputError('Invitation has already been used or expired.', 409);
       this.accounts.activate(userId, JSON.stringify(config), verifier);
+      return this.createSession(userId, config.revision);
     });
   }
-  identity(request: Request): string | null {
-    const token = cookieValue(request);
+  identity(request: Request, secure = new URL(request.url).protocol === 'https:'): string | null {
+    const token = cookieValue(request, secure);
     if (!token || token.length > 128) return null;
     return this.accounts.sessionIdentity(digest(token), this.now());
   }
-  isAuthenticated(request: Request) {
-    return this.identity(request) !== null;
-  }
-  private fail(key: string, limit: number, now: number) {
-    const before = this.attempts.get(key),
-      failures = (before?.failures || 0) + 1;
-    this.attempts.delete(key);
-    this.attempts.set(key, {
-      failures,
-      at: before?.at || now,
-      until: failures >= limit ? now + 900000 : 0,
-    });
-    return failures >= limit;
-  }
   private async verify(client: string, userId: string, credential: string) {
-    const now = this.now(),
-      clientKey = 'client:' + client,
-      rateKey = client + ':' + (validUserId(userId) ? userId : 'invalid');
-    for (const [key, a] of this.attempts)
-      if (a.until <= now && now - a.at >= 600000) this.attempts.delete(key);
-    // Evicting an active lockout would let junk failures reset it; drop unlocked counters first.
+    const now = this.now();
+    const keys = [
+      'client:' + client,
+      'account:' + client + ':' + (validUserId(userId) ? userId : 'invalid'),
+    ];
     for (const [key, a] of this.attempts) {
-      if (this.attempts.size <= 5000) break;
-      if (a.until <= now) this.attempts.delete(key);
+      if (!a.pending && a.until <= now && now - a.at >= 600000) this.attempts.delete(key);
     }
-    while (this.attempts.size > 5000) this.attempts.delete(this.attempts.keys().next().value!);
-    if (
-      (this.attempts.get(rateKey)?.until || 0) > now ||
-      (this.attempts.get(clientKey)?.until || 0) > now
-    )
+    const missing = keys.filter((key) => !this.attempts.has(key)).length;
+    if (this.attempts.size + missing > 5000) {
+      for (const [key, a] of this.attempts) {
+        if (!a.pending && a.until <= now && !keys.includes(key)) this.attempts.delete(key);
+        if (this.attempts.size + missing <= 5000) break;
+      }
+      if (this.attempts.size + missing > 5000)
+        throw new InputError('Authentication is busy. Try again shortly.', 503);
+    }
+    const limits = [20, 5];
+    const counters = keys.map(
+      (key) => this.attempts.get(key) ?? { failures: 0, pending: 0, at: now, until: 0 },
+    );
+    if (counters.some((a) => a.until > now))
       throw new InputError('Too many attempts. Wait 15 minutes and try again.', 429);
+    if (counters.some((a, i) => a.failures + a.pending >= limits[i]!))
+      throw new InputError('Authentication is busy. Try again shortly.', 503);
     this.validateCredential(credential);
-    const row = validUserId(userId) ? this.row(userId) : null;
-    if (
-      !row ||
-      row.status !== 'active' ||
-      !(await Bun.password.verify(credential, row.verifier!).catch(() => false))
-    ) {
-      const blocked = [this.fail(rateKey, 5, now), this.fail(clientKey, 20, now)].some(Boolean);
-      throw new InputError(
-        blocked
-          ? 'Too many attempts. Wait 15 minutes and try again.'
-          : 'User ID or password is incorrect.',
-        blocked ? 429 : 401,
-      );
+    for (const [i, a] of counters.entries()) {
+      this.attempts.set(keys[i]!, a);
+      a.pending++;
     }
-    this.attempts.delete(rateKey);
-    return row;
+    try {
+      const row = validUserId(userId) ? this.row(userId) : null;
+      if (
+        row?.status === 'active' &&
+        (await this.passwordWork(() =>
+          Bun.password.verify(credential, row.verifier!).catch(() => false),
+        ))
+      ) {
+        counters[1]!.failures = 0;
+        return row;
+      }
+      const failedAt = this.now();
+      for (const [i, a] of counters.entries()) {
+        if (!a.failures) a.at = failedAt;
+        if (++a.failures >= limits[i]!) a.until = failedAt + 900000;
+      }
+      if (counters.some((a) => a.until > failedAt))
+        throw new InputError('Too many attempts. Wait 15 minutes and try again.', 429);
+      throw new InputError('User ID or password is incorrect.', 401);
+    } finally {
+      for (const [i, a] of counters.entries()) {
+        a.pending--;
+        if (!a.pending && !a.failures) this.attempts.delete(keys[i]!);
+      }
+    }
   }
   async login(client: string, userId: string, credential: string, revision: number) {
     const row = await this.verify(client, userId, credential);
@@ -166,12 +193,15 @@ export class AuthManager {
       current.revision !== row.revision
     )
       throw new InputError('Account changed. Sign in again.', 409);
+    return this.createSession(userId, revision);
+  }
+  private createSession(userId: string, revision: number) {
     const token = randomBytes(32).toString('base64url');
     this.accounts.deleteExpiredSessions(this.now());
     this.accounts.createSession(
       digest(token),
       userId,
-      row.revision!,
+      revision,
       this.now() + this.sessionSeconds * 1000,
     );
     return { token, maxAge: this.sessionSeconds };
@@ -183,8 +213,9 @@ export class AuthManager {
     credential: string,
     rawConfig: unknown,
     revision: number,
+    secure = new URL(request.url).protocol === 'https:',
   ) {
-    const userId = this.identity(request);
+    const userId = this.identity(request, secure);
     if (!userId) throw new InputError('Sign in again.', 401);
     const row = await this.verify(client, userId, currentCredential);
     let config: ReturnType<typeof validateConfig>;
@@ -201,20 +232,16 @@ export class AuthManager {
       config.kdf.salt === JSON.parse(row.config!).kdf.salt
     )
       throw new InputError('Credential revision changed. Try again.', 409);
-    const verifier = await Bun.password.hash(credential, {
-      algorithm: 'argon2id',
-      memoryCost: 65536,
-      timeCost: 2,
-    });
+    const verifier = await this.hashCredential(credential);
     this.accounts.transaction(() => {
-      if (this.identity(request) !== userId || this.row(userId)?.revision !== revision)
+      if (this.identity(request, secure) !== userId || this.row(userId)?.revision !== revision)
         throw new InputError('Credential revision changed. Sign in again.', 409);
       this.accounts.replaceCredentials(userId, config.revision, JSON.stringify(config), verifier);
       this.accounts.revokeSessions(userId);
     });
   }
-  logout(request: Request) {
-    const token = cookieValue(request);
+  logout(request: Request, secure = new URL(request.url).protocol === 'https:') {
+    const token = cookieValue(request, secure);
     if (token) this.accounts.deleteSession(digest(token));
   }
   cookie(token: string, age: number, secure: boolean) {

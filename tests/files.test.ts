@@ -181,6 +181,7 @@ test('file endpoints require session, Origin and account binding before binary s
         'x-taskpath-user': 'u_' + '2'.repeat(32),
       }))!.status,
     ).toBe(401);
+    expect((await req('PUT', '/api/files', new Uint8Array(32_000)))!.status).toBe(507);
     expect((await req('PUT', '/api/files', new Uint8Array(10)))!.status).toBe(400);
     expect((await req('PUT', '/api/files', encodeFile(a.envelope, a.ciphertext)))!.status).toBe(
       200,
@@ -240,6 +241,7 @@ test('per-account quotas apply live, retain existing files, and reset to default
     const a = await make();
     files.upload(a.envelope, a.ciphertext);
     files.setQuota(testUserId, '0');
+    expect(files.transferLimits(testUserId).quotaBytes).toBe(payload.length);
     expect(files.manifest(testUserId, a.envelope.vaultId).quotaBytes).toBe(0);
     files.upload(a.envelope, a.ciphertext);
     expect(files.content(testUserId, a.envelope.fileId)).toEqual(a.ciphertext);

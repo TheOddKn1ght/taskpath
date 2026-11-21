@@ -185,28 +185,33 @@ def nginx_patch(text, hostname, port, public_port):
     target = exact[0] if exact else root
     if target['children'] is None or [child['words'] for child in target['children'] if child['words'][0] == 'proxy_pass'] != [upstream]:
         raise ValueError('Custom /api/files upstream; update Nginx manually.')
-    if not exact and any(len(child['words']) > 1 and child['words'][1] in ('~', '~*') for child in locations):
-        raise ValueError('Regex Nginx locations prevent safe /api/files insertion; update manually.')
-    limits = [child for child in target['children'] if child['words'][0] == 'client_max_body_size']
-    if len(limits) > 1:
-        raise ValueError('Duplicate Nginx upload limit; update manually.')
-    if exact and limits and limits[0]['words'] == ['client_max_body_size', '15g']:
-        return text
+    if not exact:
+        for location in locations:
+            words = location['words']
+            if location is root or (len(words) == 3 and words[1] == '='):
+                continue
+            pattern = words[-1]
+            if len(words) == 2 and pattern.startswith('@'):
+                continue
+            if (words[1].startswith('~') or not re.fullmatch(r'/[a-zA-Z0-9_./-]*', pattern)
+                    or '/api/files'.startswith(pattern) or pattern == '/api/files/'):
+                raise ValueError('Overlapping Nginx locations prevent safe /api/files insertion; update manually.')
+        if any(child['words'][0] in ('include', 'location') for child in root['children']):
+            raise ValueError('Custom root routing prevents safe /api/files insertion; update manually.')
+
+    directives = {'client_max_body_size': '15g', 'proxy_request_buffering': 'off', 'proxy_http_version': '1.1'}
+    start = target['opening'] + 1
+    end = target['end'] - 1
+    body = text[start:end]
+    for child in reversed(target['children']):
+        name = child['words'][0]
+        if name in directives:
+            value = directives.pop(name)
+            if child['words'] != [name, value]:
+                body = body[:child['start'] - start] + f'{name} {value};' + body[child['end'] - start:]
+    body = ''.join(f'\n        {name} {value};' for name, value in directives.items()) + body
     if exact:
-        if limits:
-            limit = limits[0]
-            return text[:limit['start']] + 'client_max_body_size 15g;' + text[limit['end']:]
-        at = target['opening'] + 1
-        return text[:at] + '\n        client_max_body_size 15g;' + text[at:]
-    # Clone local root policy, including authentication and proxy headers.
-    body = text[root['opening'] + 1:root['end'] - 1]
-    if limits:
-        limit = limits[0]
-        start = limit['start'] - root['opening'] - 1
-        end = limit['end'] - root['opening'] - 1
-        body = body[:start] + 'client_max_body_size 15g;' + body[end:]
-    else:
-        body = '\n        client_max_body_size 15g;' + body
+        return text[:start] + body + text[end:]
     at = server['end'] - 1
     return text[:at] + '    location = /api/files {' + body + '}\n' + text[at:]
 
@@ -277,7 +282,7 @@ def nginx_update(settings, root):
         raise ValueError('Could not uniquely detect the Taskpath Nginx configuration; update /api/files manually.')
     path, before, after = candidates[0]
     if before == after:
-        print('Nginx upload allowance is already 15g.')
+        print('Nginx upload streaming and allowance are current.')
         return
     directory = Path(tempfile.mkdtemp(prefix='nginx-', dir=root))
     backup = directory / 'previous.conf'
@@ -293,7 +298,7 @@ def nginx_update(settings, root):
     except Exception:
         nginx_recover(root)
         raise
-    print('Nginx upload allowance updated to 15g; backup: ' + str(backup))
+    print('Nginx upload streaming and 15g allowance configured; backup: ' + str(backup))
 
 
 if __name__ == '__main__':

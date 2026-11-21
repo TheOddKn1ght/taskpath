@@ -8,3 +8,13 @@ tests
 !public/vendor/marked.LICENSE.md
 !public/vendor/README.md
 dist/
+tmp/
+test-results/
+reports/
+playwright-report/
+.aws/
+.agents/
+.codex/
+*.sqlite
+*.sqlite-*
+.env.*

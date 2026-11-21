@@ -162,7 +162,7 @@ assert events == []
 start = source.index('    location = /api/files {')
 end = source.index('\\n    }', start) + len('\\n    }')
 text = source[:start] + source[end:]
-for directive in ['include custom.conf;', 'location ~ /api/ { deny all; }']:
+for directive in ['include custom.conf;', 'location ~ /api/ { deny all; }', 'location ^~ /api/ { deny all; }', 'location /api/files { deny all; }']:
     unsafe = text.replace('    listen 443 ssl;', '    listen 443 ssl;\\n' + directive)
     try:
         m.nginx_patch(unsafe, 'tasks.example.com', '3000', 443)
@@ -193,3 +193,10 @@ assert events == ${allowance === '15g' ? "[('nginx', '-T')]" : "[('nginx', '-T')
 assert not (root / 'nginx-pending').exists()`);
   });
 }
+
+test('existing buffered uploads are switched to HTTP/1.1 streaming on the file route', () => {
+  scenario(`text = source.replace('proxy_request_buffering off;', 'proxy_request_buffering on;').replace('proxy_http_version 1.1;', 'proxy_http_version 1.0;')
+updated = m.nginx_patch(text, 'tasks.example.com', '3000', 443)
+assert updated == source.replace('11m;', '15g;').replace('proxy_http_version 1.1;', 'proxy_http_version 1.0;', 1)
+assert m.nginx_patch(updated, 'tasks.example.com', '3000', 443) == updated`);
+});

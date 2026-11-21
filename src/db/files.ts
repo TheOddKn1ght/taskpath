@@ -39,7 +39,7 @@ export class FileRepository {
       inherited: value === undefined,
     };
   }
-  transferLimit(userId: string) {
+  transferLimits(userId: string) {
     // Retained files may be larger than a newly lowered allowance. Allow their
     // immutable retries while bounding request reads before buffering the body.
     const retained = this.db
@@ -47,10 +47,14 @@ export class FileRepository {
       .from(encryptedFiles)
       .where(eq(encryptedFiles.userId, userId))
       .get()!.bytes;
-    return Math.min(
-      FILE_TRANSFER_MAX,
-      Math.max(this.fileLimitInfo(userId).fileLimitBytes, retained),
-    );
+    const { usedBytes, quotaBytes } = this.quotaInfo(userId);
+    return {
+      fileBytes: Math.min(
+        FILE_TRANSFER_MAX,
+        Math.max(this.fileLimitInfo(userId).fileLimitBytes, retained),
+      ),
+      quotaBytes: Math.max(quotaBytes - usedBytes, retained),
+    };
   }
   setFileLimit(userId: string, value: string) {
     return this.setQuota(userId, value, true);

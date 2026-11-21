@@ -190,7 +190,17 @@ test('login rate limit and bounded JSON bodies remain enforced behind proxy', as
   }
 });
 test('login lockouts survive junk failures and cap failures per client', async () => {
-  const { store, handle } = await fixture();
+  const { store, auth } = await fixture();
+  const handle = createHandler(
+    store,
+    auth,
+    origin,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    true,
+  );
   const attempt = async (userId: string, credential: string, ip: string) =>
     (await handle(
       new Request(`${origin}/api/auth/login`, {
@@ -200,21 +210,132 @@ test('login lockouts survive junk failures and cap failures per client', async (
       }),
     ))!;
   try {
-    for (let i = 0; i < 5; i++) await attempt(testUserId, base64(random(32)), 'attacker-0');
-    expect((await attempt(testUserId, testVault.credential, 'attacker-0')).status).toBe(429);
+    for (let i = 0; i < 5; i++) await attempt(testUserId, base64(random(32)), '192.0.2.1');
+    expect((await attempt(testUserId, testVault.credential, '192.0.2.1')).status).toBe(429);
     // Junk failures from other clients must not evict an active lockout.
     for (let i = 0; i < 5100; i++)
-      await attempt('u_' + i.toString(16).padStart(32, '0'), base64(random(32)), `junk-${i}`);
-    expect((await attempt(testUserId, testVault.credential, 'attacker-0')).status).toBe(429);
+      await attempt(
+        'u_' + i.toString(16).padStart(32, '0'),
+        base64(random(32)),
+        `2001:db8::${i.toString(16)}`,
+      );
+    expect((await attempt(testUserId, testVault.credential, '192.0.2.1')).status).toBe(429);
     // A single client cannot spread guesses across many user IDs.
     for (let i = 0; i < 19; i++)
       expect(
-        (await attempt('u_' + i.toString(16).padStart(32, 'f'), base64(random(32)), 'spray'))
+        (await attempt('u_' + i.toString(16).padStart(32, 'f'), base64(random(32)), '192.0.2.2'))
           .status,
       ).toBe(401);
-    expect((await attempt('u_' + 'e'.repeat(32), base64(random(32)), 'spray')).status).toBe(429);
-    expect((await attempt(testUserId, testVault.credential, 'spray')).status).toBe(429);
-    expect((await attempt(testUserId, testVault.credential, 'other')).status).toBe(200);
+    expect((await attempt('u_' + 'e'.repeat(32), base64(random(32)), '192.0.2.2')).status).toBe(
+      429,
+    );
+    expect((await attempt(testUserId, testVault.credential, '192.0.2.2')).status).toBe(429);
+    expect((await attempt(testUserId, testVault.credential, '192.0.2.3')).status).toBe(200);
+  } finally {
+    store.close();
+  }
+});
+
+test('HTTPS cookie selection uses the public origin behind TLS termination', async () => {
+  const { store, handle } = await fixture();
+  try {
+    const { cookie } = await login(handle);
+    const status = async (value: string) =>
+      (await handle(
+        new Request('http://localhost/api/auth/status', {
+          headers: { cookie: value },
+        }),
+      ))!.json();
+    expect(await status(cookie)).toMatchObject({ authenticated: true });
+    expect(await status(cookie.replace('__Host-', ''))).toMatchObject({ authenticated: false });
+  } finally {
+    store.close();
+  }
+});
+
+test('direct handlers ignore forwarded client addresses even with a configured public origin', async () => {
+  const { store, handle } = await fixture();
+  try {
+    const statuses = [];
+    for (let i = 1; i <= 5; i++)
+      statuses.push(
+        (await handle(
+          new Request(origin + '/api/auth/login', {
+            method: 'POST',
+            headers: { origin, 'content-type': 'application/json', 'x-real-ip': '192.0.2.' + i },
+            body: JSON.stringify({
+              userId: 'unknown',
+              credential: testVault.credential,
+              revision: 1,
+            }),
+          }),
+        ))!.status,
+      );
+    expect(statuses).toEqual([401, 401, 401, 401, 429]);
+  } finally {
+    store.close();
+  }
+});
+
+test('pending password checks reserve remaining attempts until verification finishes', async () => {
+  const { store, auth } = await fixture();
+  try {
+    const check = () =>
+      auth.login('client', testUserId, base64(random(32)), 1).catch((error) => error.status);
+    for (let i = 0; i < 4; i++) expect(await check()).toBe(401);
+    expect(await Promise.all([check(), check()])).toEqual([429, 503]);
+    expect(await check()).toBe(429);
+  } finally {
+    store.close();
+  }
+});
+
+test('a revoked session cannot finish a pending private write', async () => {
+  const { store, auth, handle } = await fixture();
+  try {
+    const { cookie } = await login(handle);
+    let writer!: ReadableStreamDefaultController<Uint8Array>;
+    const request = new Request(origin + '/api/reminders/claim', {
+      method: 'POST',
+      headers: { origin, cookie, 'content-type': 'application/json' },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          writer = controller;
+        },
+      }),
+    });
+    const response = handle(request);
+    auth.logout(request);
+    writer.enqueue(new TextEncoder().encode(JSON.stringify({ tokens: [crypto.randomUUID()] })));
+    writer.close();
+    expect((await response)!.status).toBe(401);
+    expect(store.db.query('SELECT count(*) AS n FROM reminder_claims').get()).toEqual({ n: 0 });
+  } finally {
+    store.close();
+  }
+});
+
+test('invitation can be retried if its first session cannot be issued', async () => {
+  const store = new Store();
+  const auth = new AuthManager(store.db);
+  try {
+    const { userId, token } = auth.createInvitation();
+    store.db.exec(
+      "CREATE TEMP TRIGGER fail_session BEFORE INSERT ON auth_sessions BEGIN SELECT RAISE(ABORT, 'session unavailable'); END",
+    );
+    await expect(auth.setup(userId, token, testVault.config, testVault.credential)).rejects.toThrow(
+      'session unavailable',
+    );
+    expect(auth.configuration(userId)).toBeNull();
+    store.db.exec('DROP TRIGGER fail_session');
+    const session = await auth.setup(userId, token, testVault.config, testVault.credential);
+    expect(
+      auth.identity(
+        new Request(origin, {
+          headers: { cookie: auth.cookie(session.token, session.maxAge, true) },
+        }),
+      ),
+    ).toBe(userId);
   } finally {
     store.close();
   }

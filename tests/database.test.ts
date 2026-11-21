@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import webpush from 'web-push';
@@ -126,7 +126,9 @@ test('pre-Drizzle database retains schema, sessions, ciphertext, invitations, an
     expect(store.timezone).toBe('Europe/Moscow');
     expect(push.status(testUserId).publicKey).toBe(keys.publicKey);
     expect(
-      auth.identity(new Request(origin, { headers: { cookie: 'taskpath_session=' + session } })),
+      auth.identity(
+        new Request(origin, { headers: { cookie: '__Host-taskpath_session=' + session } }),
+      ),
     ).toBe(testUserId);
     expect(
       await decryptEnvelope(
@@ -216,10 +218,36 @@ test('disabling an account rolls back if session revocation fails', async () => 
     expect(new AccountRepository(store.orm).get(testUserId)?.status).toBe('active');
     expect(
       auth.identity(
-        new Request(origin, { headers: { cookie: 'taskpath_session=' + session.token } }),
+        new Request(origin, { headers: { cookie: '__Host-taskpath_session=' + session.token } }),
       ),
     ).toBe(testUserId);
   } finally {
     store.close();
+  }
+});
+
+test('SQLite files are owner-private on creation and when reopening an existing vault', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taskpath-permissions-'));
+  const path = join(dir, 'vault.sqlite');
+  try {
+    const check = () => {
+      for (const suffix of ['', '-wal', '-shm'])
+        expect(statSync(path + suffix).mode & 0o077).toBe(0);
+    };
+    const first = new Store(path);
+    try {
+      check();
+      for (const suffix of ['', '-wal', '-shm']) chmodSync(path + suffix, 0o644);
+      const next = new Store(path);
+      try {
+        check();
+      } finally {
+        next.close();
+      }
+    } finally {
+      first.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

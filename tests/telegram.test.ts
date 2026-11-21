@@ -187,7 +187,7 @@ test('disable confirmation is bound to sender and message, single-use, and revok
   try {
     const session = await f.auth.login('test', testUserId, testVault.credential, 1);
     const request = new Request(config.origin, {
-      headers: { cookie: `taskpath_session=${session.token}` },
+      headers: { cookie: `__Host-taskpath_session=${session.token}` },
     });
     await bot.handle(message(1, `/disable ${testUserId}`));
     const data = calls[0].reply_markup.inline_keyboard[0][0].callback_data;

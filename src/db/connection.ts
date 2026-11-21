@@ -1,5 +1,14 @@
 import { Database } from 'bun:sqlite';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
 import * as schema from './schema';
@@ -9,6 +18,7 @@ import * as schema from './schema';
 export function openDatabase(path: string, timezone: string) {
   new Intl.DateTimeFormat('en', { timeZone: timezone });
   // Inspect read-only BEFORE WAL, schema writes, or directory creation. Never migrate plaintext.
+  if (path !== ':memory:' && existsSync(path)) path = realpathSync(path);
   if (path !== ':memory:' && existsSync(path) && statSync(path).size) {
     const old = new Database(path, { readonly: true });
     try {
@@ -33,7 +43,26 @@ export function openDatabase(path: string, timezone: string) {
       old.close();
     }
   }
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
+  if (path !== ':memory:') {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    // Only close a descriptor we created exclusively. Closing an independent
+    // descriptor to a live SQLite file can release this process's POSIX locks.
+    try {
+      closeSync(openSync(path, 'wx', 0o600));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+      const file = path + suffix;
+      try {
+        const stat = lstatSync(file);
+        if (!stat.isFile()) throw new Error('Expected a regular SQLite file.');
+        if (stat.mode & 0o077) chmodSync(file, stat.mode & 0o600);
+      } catch (error) {
+        if (!suffix || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+  }
   const db = new Database(path);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS encrypted_format (version INTEGER NOT NULL);

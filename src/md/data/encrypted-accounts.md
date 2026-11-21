@@ -11,3 +11,7 @@ Failed sign-ins are limited in memory per client and account (5 failures) and pe
 The encryption is custom and unaudited. Preserve that qualification in user-facing documentation. HTTPS is still required outside localhost.
 
 Key sources: `public/crypto.ts`, `public/ui/auth.tsx`, `src/auth.ts`, `src/store.ts`, and `src/db/accounts.ts`. Whole-database backups preserve authentication state as well as encrypted data; see the [backup guide](../../../docs/database-backups.md).
+
+HTTPS requests must use the host-prefixed session cookie even when TLS terminates at a proxy. Recheck the session after reading a private request body so revocation during transfer takes effect before the write. Direct connections use the socket peer for throttling. Only deployments explicitly configured behind a proxy that overwrites X-Real-IP may use that header. Invitation activation and issuance of the first session commit together so a temporary capacity limit cannot consume an invitation without completing sign-in. Pending password checks count toward admission limits, and the server bounds concurrent Argon2 work across accounts.
+
+The live SQLite database and its sidecars contain credential verifiers, push secrets, and account data. Restrict these files to their owner when creating or reopening a supported database.

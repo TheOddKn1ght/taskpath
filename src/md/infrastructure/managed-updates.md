@@ -4,4 +4,6 @@ Managed updates reconcile the Nginx upload allowance even when the application r
 
 Keep a private backup and a durable recovery marker before replacing a host file. Validate the installed configuration before reloading Nginx. On validation or reload failure restore the previous file, validate and reload it, and leave recovery pending if restoration cannot complete. Recover interrupted Nginx work before application work. Update Nginx before stopping the application writer so configuration failures leave the live deployment running. An absent Nginx installation is reported and skipped; an installed but ambiguous configuration fails with a manual-action message.
 
-The managed scope currently covers the upload ceiling of 15 GiB. This does not raise application storage limits or replace the full host configuration from a repository template. Existing updater installations require `taskpath self-update` to acquire this behavior.
+The managed scope covers the upload ceiling of 15 GiB and upstream request streaming. This does not raise application storage limits or replace the full host configuration from a repository template. Existing updater installations require `taskpath self-update` to acquire this behavior.
+
+Stream file requests to the HTTP/1.1 upstream so Taskpath can authenticate and reject uploads before Nginx spools the full body. When inserting an exact upload location, refuse overlapping prefix locations and nested or included root routing that could give the upload path different access rules.
