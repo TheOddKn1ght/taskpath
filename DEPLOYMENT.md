@@ -668,7 +668,10 @@ Use a dedicated bot with only one running Taskpath instance polling it.
    settings. Remove a webhook using `deleteWebhook` in its current integration,
    or create a separate BotFather bot for Taskpath.
 6. Open your bot's private chat and send `/start`. Choose **Invite** or
-   **Accounts**, or use `/invite`, `/list`, `/reinvite USER_ID`, `/revoke USER_ID`,
+   **Accounts**. Use **Copy setup link** to share an invitation. In **Accounts**,
+   filter by status, open an account, then choose **File quota** or **File size limit**.
+   Choose a preset or tap **Custom amount** and reply in MB. **Help** lists the
+   slash commands, including `/invite`, `/list`, `/reinvite USER_ID`, `/revoke USER_ID`,
    and `/disable USER_ID`. Choose **Database backup** or send `/backup` to download
    a consistent SQLite snapshot. Disabling requires a confirmation button within five
    minutes, revokes sessions, and retains encrypted data. A restart invalidates

@@ -15,13 +15,62 @@ import { validUserId } from '../public/crypto';
 export const TELEGRAM_ADMIN_VERSION = 1;
 export const TELEGRAM_BACKUP_MAX_BYTES = 50_000_000;
 export type TelegramConfig = { token: string; adminId: number; origin: string };
-type Button = { text: string; callback_data: string };
-type Reply = { text: string; buttons?: Button[][]; confirmation?: string; backup?: boolean };
+type ButtonStyle = 'primary' | 'success' | 'danger';
+type Button = { text: string; style?: ButtonStyle } & (
+  { callback_data: string } | { copy_text: { text: string } }
+);
+const button = (text: string, callback_data: string, style?: ButtonStyle): Button => ({
+  text,
+  callback_data,
+  style,
+});
+const presetAmounts = ['0', '10', '50', '100', '500', '1000'];
+const filters = ['all', 'active', 'pending', 'disabled'] as const;
+type Filter = (typeof filters)[number];
+const labels = { all: 'All', active: 'Active', pending: 'Pending', disabled: 'Disabled' };
+const filterSuffix = (filter: Filter) => (filter === 'all' ? '' : '|' + filter);
+const html = (text: string) =>
+  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+function dateTime(ms: number) {
+  const fallback = new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  return `<tg-time unix="${Math.floor(ms / 1000)}" format="Dt">${fallback}</tg-time>`;
+}
+type Account = ReturnType<AuthManager['list']>[number];
+function accountStatus(account: Account, now: number) {
+  if (account.status === 'active') return '🟢 Active';
+  if (account.status === 'disabled') return '⛔ Disabled';
+  if (!account.expiresAt) return '⚪ Invite revoked';
+  if (account.expiresAt <= now) return '⌛ Invite expired';
+  return '🟡 Invited';
+}
+
+type LimitPrompt = { action: 'quota' | 'filelimit'; userId: string; filter: Filter };
+type Reply = {
+  text: string;
+  buttons?: Button[][];
+  confirmation?: string;
+  backup?: boolean;
+  prompt?: LimitPrompt;
+};
+function customAmount(prompt: LimitPrompt, error?: string): Reply {
+  const title = prompt.action === 'quota' ? 'Custom file quota' : 'Custom file size limit';
+  return {
+    prompt,
+    text: [
+      `<b>${title}</b>\n<code>${prompt.userId}</code>`,
+      error
+        ? html(error)
+        : 'Reply with a whole number of MB' + (prompt.action === 'filelimit' ? ' (0–1,000).' : '.'),
+      'Zero pauses new uploads.',
+    ].join('\n\n'),
+  };
+}
 type Message = {
   message_id: number;
   chat: { id: number; type: string };
   text?: string;
   from?: { id: number };
+  reply_to_message?: { message_id: number };
 };
 export type TelegramUpdate = {
   update_id: number;
@@ -62,6 +111,7 @@ export class TelegramAdmin {
   private controller = new AbortController();
   private running?: Promise<void>;
   private confirmations = new Map<string, Confirmation>();
+  private limitPrompt?: LimitPrompt & { messageId: number };
   private key: string;
   constructor(
     private db: Database,
@@ -113,115 +163,179 @@ export class TelegramAdmin {
     return data.result;
   }
   private menu(): Reply {
+    const counts = { active: 0, pending: 0, disabled: 0 };
+    const rows = this.auth.list();
+    for (const row of rows) counts[row.status]++;
+    const summary = rows.length
+      ? `<b>${rows.length}</b> ${rows.length === 1 ? 'account' : 'accounts'}\n🟢 ${counts.active} active  ·  🟡 ${counts.pending} pending  ·  ⛔ ${counts.disabled} disabled`
+      : 'Invite someone to create the first account.';
     return {
-      text: 'Taskpath admin\nChoose an action below. Open Accounts to manage an invitation or disable an account.\n\nCommands: /invite, /list, /reinvite USER_ID, /revoke USER_ID, /disable USER_ID, /quota USER_ID [MB|default], /filelimit USER_ID [MB|default], /backup',
+      text: `<b>Taskpath admin</b>\n\n${summary}`,
       buttons: [
-        [
-          { text: 'Invite', callback_data: 'invite' },
-          { text: 'Accounts', callback_data: 'list:0' },
-        ],
-        [{ text: 'Database backup', callback_data: 'backup' }],
+        [button('Invite', 'invite', 'success'), button('Accounts', 'list:0', 'primary')],
+        [button('Database backup', 'backup'), button('Help', 'help')],
       ],
     };
   }
-  private navigation(): Button[][] {
+  private navigation(list = 'list:0'): Button[][] {
+    return [[button('Accounts', list), button('Main menu', 'home')]];
+  }
+  private receiptButtons(userId?: string): Button[][] {
     return [
-      [
-        { text: 'Accounts', callback_data: 'list:0' },
-        { text: 'Main menu', callback_data: 'home' },
-      ],
+      ...(userId ? [[button('Account details', 'open:account:' + userId)]] : []),
+      [button('Accounts', 'open:list:0'), button('Main menu', 'open:home')],
     ];
   }
-  private account(userId: string): Reply {
-    const row = this.auth.list().find((account) => account.userId === userId);
+  private account(userId: string, filter: Filter): Reply {
+    const rows = this.auth.list();
+    const row = rows.find((account) => account.userId === userId);
     if (!row) throw new InputError('Account not found.');
+    const visible = rows.filter((r) => filter === 'all' || r.status === filter);
+    const page = Math.floor(Math.max(0, visible.indexOf(row)) / 10);
+    const suffix = filterSuffix(filter);
     const buttons: Button[][] = [];
-    if (row.status === 'pending')
-      buttons.push([
-        { text: 'New setup link', callback_data: `reinvite:${userId}` },
-        { text: 'Revoke invite', callback_data: `revoke:${userId}` },
-      ]);
-    if (row.status !== 'disabled')
-      buttons.push([{ text: 'Disable account', callback_data: `disable:${userId}` }]);
-    buttons.push([{ text: 'File quota', callback_data: `quota:${userId}` }]);
-    buttons.push([{ text: 'File size limit', callback_data: `filelimit:${userId}` }]);
-    buttons.push(...this.navigation());
+    if (row.status === 'pending') {
+      const actions = [button('New setup link', `reinvite:${userId}`, 'success')];
+      if (row.expiresAt && row.expiresAt > this.now())
+        actions.push(button('Revoke invite', `revoke:${userId}`));
+      buttons.push(actions);
+    }
+    buttons.push([
+      button('File quota', `quota:${userId}${suffix}`),
+      button('File size limit', `filelimit:${userId}${suffix}`),
+    ]);
+    if (row.status !== 'disabled') buttons.push([button('Disable account', `disable:${userId}`)]);
+    buttons.push(...this.navigation(`list:${page}${suffix}`));
     return {
-      text: `Account: ${userId}\nStatus: ${row.status}\n${this.quotaText(userId)}\nCreated: ${new Date(row.createdAt).toISOString()}${row.expiresAt ? `\nInvite expires: ${new Date(row.expiresAt).toISOString()}` : ''}`,
+      text: [
+        `<b>Account details</b>\n${accountStatus(row, this.now())}\n<code>${userId}</code>`,
+        `Created · ${dateTime(row.createdAt)}` +
+          (row.expiresAt ? `\nInvite expiry · ${dateTime(row.expiresAt)}` : ''),
+        '<b>Storage</b>\n' + this.storage(userId).text,
+      ].join('\n\n'),
       buttons,
     };
   }
   private fileRepository() {
     return new FileRepository(connect(this.db), this.defaultQuota);
   }
-  private quotaText(userId: string) {
-    const info = this.fileRepository().quotaInfo(userId);
-    return `Files: ${info.usedBytes / 1_000_000} / ${info.quotaBytes / 1_000_000} MB (${info.inherited ? 'server default' : 'custom quota'})\nPer file: ${this.fileRepository().fileLimitInfo(userId).fileLimitBytes / 1_000_000} MB (${this.fileRepository().fileLimitInfo(userId).inherited ? 'default' : 'custom limit'})`;
+  private storage(userId: string) {
+    const files = this.fileRepository(),
+      quota = files.quotaInfo(userId),
+      limit = files.fileLimitInfo(userId);
+    const used = (quota.usedBytes / 1_000_000).toLocaleString('en', { maximumFractionDigits: 6 });
+    return {
+      quota,
+      limit,
+      text: `Files: ${used} / ${quota.quotaBytes / 1_000_000} MB (${quota.inherited ? 'server default' : 'custom quota'})\nPer file: ${limit.fileLimitBytes / 1_000_000} MB (${limit.inherited ? 'default' : 'custom limit'})`,
+    };
   }
-  private quotaScreen(userId: string, perFile = false): Reply {
-    if (!validUserId(userId) || !this.auth.list().some((row) => row.userId === userId))
+  private quotaScreen(userId: string, perFile: boolean, filter: Filter, saved: boolean): Reply {
+    if (!this.auth.list().some((row) => row.userId === userId))
       throw new InputError('Account not found.');
     const action = perFile ? 'filelimit' : 'quota';
+    const { quota, limit, text } = this.storage(userId);
+    const inherited = perFile ? limit.inherited : quota.inherited;
+    const amount = String((perFile ? limit.fileLimitBytes : quota.quotaBytes) / 1_000_000);
+    const selected = inherited ? 'default' : presetAmounts.includes(amount) ? amount : 'custom';
+    const suffix = filterSuffix(filter);
+    const preset = (value: string, label: string) =>
+      button(
+        selected === value ? '✓ ' + label : label,
+        `${action}:${userId}:${value}${suffix}`,
+        selected === value ? 'primary' : undefined,
+      );
     return {
-      text: `Account: ${userId}\n${this.quotaText(userId)}\nChoose a ${perFile ? 'file size limit (maximum 1,000 MB)' : 'quota'}, or send /${action} ${userId} MB (whole decimal MB). Zero blocks new uploads. Existing files are retained.`,
+      text: `<b>${perFile ? 'File size limit' : 'File quota'}</b>\n<code>${userId}</code>\n\n${text}\n\n${saved ? '✓ Setting saved.\n' : ''}Zero pauses new uploads. Existing files stay available.`,
       buttons: [
-        ...['0', '10', '50', '100', '500', '1000', 'default'].map((value) => [
-          {
-            text:
-              value === 'default'
-                ? perFile
-                  ? 'Use default (10 MB)'
-                  : 'Use server default'
-                : `${value} MB`,
-            callback_data: `${action}:${userId}:${value}`,
-          },
-        ]),
-        [{ text: 'Account details', callback_data: `account:${userId}` }],
-        ...this.navigation(),
+        presetAmounts.slice(0, 3).map((v) => preset(v, v + ' MB')),
+        presetAmounts.slice(3).map((v) => preset(v, v + ' MB')),
+        [
+          preset('default', `Default · ${perFile ? '10' : this.defaultQuota / 1_000_000} MB`),
+          preset('custom', selected === 'custom' ? `Custom · ${amount} MB` : 'Custom amount…'),
+        ],
+        [button('‹ Account details', `account:${userId}${suffix}`), button('Main menu', 'home')],
       ],
     };
   }
-  private accounts(page: number): Reply {
-    const rows = this.auth.list();
+  private setLimit({ action, userId, filter }: LimitPrompt, value: string): Reply {
+    if (action === 'filelimit') this.fileRepository().setFileLimit(userId, value);
+    else this.fileRepository().setQuota(userId, value);
+    return this.quotaScreen(userId, action === 'filelimit', filter, true);
+  }
+  private amountReply(prompt: LimitPrompt, input: string): Reply {
+    if (!/^\d+$/.test(input))
+      return customAmount(prompt, 'Enter a nonnegative whole number of MB.');
+    try {
+      return this.setLimit(prompt, input);
+    } catch (error) {
+      if (!(error instanceof InputError)) throw error;
+      return customAmount(prompt, error.message);
+    }
+  }
+  private accounts(page: number, filter: Filter): Reply {
+    const rows = this.auth.list().filter((r) => filter === 'all' || r.status === filter);
     const pages = Math.max(1, Math.ceil(rows.length / 10));
     page = Math.min(page, pages - 1);
-    const selected = rows.slice(page * 10, page * 10 + 10);
-    const buttons: Button[][] = [];
-    for (const row of selected) {
+    const suffix = filterSuffix(filter);
+    const buttons: Button[][] = [
+      filters.map((f) =>
+        button(
+          (f === filter ? '✓ ' : '') + labels[f],
+          'list:0' + filterSuffix(f),
+          f === filter ? 'primary' : undefined,
+        ),
+      ),
+    ];
+    for (const row of rows.slice(page * 10, page * 10 + 10)) {
       buttons.push([
-        { text: `${row.status} · ${row.userId}`, callback_data: `account:${row.userId}` },
+        button(
+          `${accountStatus(row, this.now())} · …${row.userId.slice(-10)}`,
+          `account:${row.userId}${suffix}`,
+        ),
       ]);
     }
     const nav: Button[] = [];
-    if (page > 0) nav.push({ text: 'Previous', callback_data: `list:${page - 1}` });
-    if (page + 1 < pages) nav.push({ text: 'Next', callback_data: `list:${page + 1}` });
+    if (page > 0) nav.push(button('‹ Previous', `list:${page - 1}${suffix}`));
+    if (page + 1 < pages) nav.push(button('Next ›', `list:${page + 1}${suffix}`));
     if (nav.length) buttons.push(nav);
-    buttons.push([
-      { text: 'Invite', callback_data: 'invite' },
-      { text: 'Main menu', callback_data: 'home' },
-    ]);
+    buttons.push([button('Invite', 'invite', 'success'), button('Main menu', 'home')]);
+    const empty = filter === 'all' ? 'No accounts.' : `No ${filter} accounts.`;
+    const summary = rows.length
+      ? `${labels[filter]} · ${rows.length} ${rows.length === 1 ? 'account' : 'accounts'} · Page ${page + 1} of ${pages}`
+      : empty;
     return {
-      text:
-        `Accounts (${page + 1}/${pages})\n` +
-        (selected.length ? 'Choose an account to view details and actions.' : 'No accounts.'),
+      text: `<b>Accounts</b>\n${summary}`,
       buttons,
     };
   }
-  private command(action: string, arg: string | undefined, messageId?: number): Reply {
-    if (action === 'start' || action === 'help' || action === 'home') return this.menu();
+  private command(
+    action: string,
+    arg: string | undefined,
+    messageId?: number,
+    filter: Filter = 'all',
+  ): Reply {
+    if (action === 'start' || action === 'home') return this.menu();
+    if (action === 'help')
+      return {
+        text: '<b>Taskpath admin · Help</b>\n\n<b>Accounts</b>\n/start — dashboard\n/list — browse accounts\n/invite — create a setup link\n\n<b>Account actions</b>\n<code>/reinvite USER_ID</code> — replace a link\n<code>/revoke USER_ID</code> — revoke a link\n<code>/disable USER_ID</code> — review and confirm\n\n<b>Storage</b>\n<code>/quota USER_ID</code> — total quota\n<code>/filelimit USER_ID</code> — per-file limit\nAppend a whole MB amount or <code>default</code> to change it.\n/backup — download the database',
+        buttons: this.navigation(),
+      };
     if (action === 'account') {
       if (!validUserId(arg)) throw new InputError('Provide a valid USER_ID.');
-      return this.account(arg);
+      return this.account(arg, filter);
     }
     if (action === 'quota' || action === 'filelimit') {
       const [userId, value, ...extra] = (arg || '').split(/[:\s]+/);
       if (!validUserId(userId) || extra.length)
         throw new InputError(`Usage: /${action} USER_ID [MB|default]`);
-      if (value !== undefined) {
-        if (action === 'filelimit') this.fileRepository().setFileLimit(userId, value);
-        else this.fileRepository().setQuota(userId, value);
+      if (value === 'custom') {
+        if (!this.auth.list().some((row) => row.userId === userId))
+          throw new InputError('Account not found.');
+        return customAmount({ action, userId, filter });
       }
-      return this.quotaScreen(userId, action === 'filelimit');
+      if (value !== undefined) return this.setLimit({ action, userId, filter }, value);
+      return this.quotaScreen(userId, action === 'filelimit', filter, false);
     }
     if (action === 'backup') {
       if (arg !== undefined) throw new InputError('Usage: /backup');
@@ -229,7 +343,7 @@ export class TelegramAdmin {
     }
     if (action === 'list') {
       if (arg !== undefined && !/^\d{1,8}$/.test(arg)) throw new InputError('Invalid page.');
-      return this.accounts(Number(arg || 0));
+      return this.accounts(Number(arg || 0), filter);
     }
     if (action === 'confirm' || action === 'cancel') {
       const pending = this.confirmations.get(arg || '');
@@ -241,10 +355,12 @@ export class TelegramAdmin {
       )
         throw new InputError('Confirmation expired. Request the action again.');
       this.confirmations.delete(arg!);
-      if (action === 'cancel') return { text: 'Cancelled.' };
+      if (action === 'cancel')
+        return { text: 'Disable cancelled.', buttons: this.receiptButtons(pending.userId) };
       this.auth.disable(pending.userId);
       return {
-        text: `Account disabled: ${pending.userId}\nSessions revoked. Encrypted data retained.`,
+        text: `<b>Account disabled</b>\n<code>${pending.userId}</code>\nSessions revoked. Encrypted data retained.`,
+        buttons: this.receiptButtons(pending.userId),
       };
     }
     if (['reinvite', 'revoke', 'disable'].includes(action) && !validUserId(arg))
@@ -253,13 +369,21 @@ export class TelegramAdmin {
       if (action === 'invite' && arg !== undefined) throw new InputError('Usage: /invite');
       const invite =
         action === 'invite' ? this.auth.createInvitation() : this.auth.renewInvitation(arg!);
+      const url = invitationURL(this.config.origin, invite.userId, invite.token);
+      const buttons = this.receiptButtons(invite.userId);
+      if (url.length <= 256)
+        buttons.unshift([{ text: 'Copy setup link', copy_text: { text: url }, style: 'primary' }]);
       return {
-        text: `User ID: ${invite.userId}\nSetup link: ${invitationURL(this.config.origin, invite.userId, invite.token)}\nExpires: ${new Date(invite.expiresAt).toISOString()} (one use, 24 hours)`,
+        text: `<b>Invitation ready</b>\n<code>${invite.userId}</code>\n\nShare this link with the recipient (one use, 24 hours).\n<code>${html(url)}</code>\n\nExpires · ${dateTime(invite.expiresAt)}`,
+        buttons,
       };
     }
     if (action === 'revoke') {
       this.auth.revokeInvitation(arg!);
-      return { text: `Pending invitation revoked: ${arg}` };
+      return {
+        text: `<b>Invitation revoked</b>\n<code>${arg}</code>`,
+        buttons: this.receiptButtons(arg),
+      };
     }
     if (action === 'disable') {
       if (!this.auth.list().some((row) => row.userId === arg && row.status !== 'disabled'))
@@ -267,11 +391,11 @@ export class TelegramAdmin {
       const nonce = randomBytes(12).toString('hex');
       this.confirmations.set(nonce, { userId: arg!, expires: this.now() + 300_000 });
       return {
-        text: `Disable account ${arg}?\nThis revokes sessions and retains encrypted data. Confirmation expires in five minutes.`,
+        text: `<b>Disable this account?</b>\n<code>${arg}</code>\n\nAll sessions will close. Encrypted data is retained.\nConfirm within five minutes.`,
         confirmation: nonce,
         buttons: [
           [
-            { text: 'Confirm disable', callback_data: `confirm:${nonce}` },
+            button('Confirm disable', `confirm:${nonce}`, 'danger'),
             { text: 'Cancel', callback_data: `cancel:${nonce}` },
           ],
         ],
@@ -299,21 +423,37 @@ export class TelegramAdmin {
       if (authorized) {
         try {
           if (callback) {
+            const data = (callback.data || '').replace(/^open:(?=home$|list:|account:)/, '');
             const match =
-              /^(home|account|invite|list|reinvite|revoke|disable|confirm|cancel|backup|quota|filelimit)(?::(.+))?$/.exec(
-                callback.data || '',
+              /^(home|help|account|invite|list|reinvite|revoke|disable|confirm|cancel|backup|quota|filelimit)(?::([^|]+))?(?:\|(active|pending|disabled))?$/.exec(
+                data,
               );
-            if (match) reply = this.command(match[1]!, match[2], message!.message_id);
+            if (match)
+              reply = this.command(
+                match[1]!,
+                match[2],
+                message!.message_id,
+                match[3] as Filter | undefined,
+              );
           } else {
             const match =
               /^\/(start|help|invite|list|reinvite|revoke|disable|backup|quota|filelimit)(?:\s+(.+?))?\s*$/.exec(
                 message?.text || '',
               );
-            reply = match ? this.command(match[1]!, match[2]) : this.menu();
+            const prompt = this.limitPrompt;
+            const input = message?.text?.trim() || '';
+            if (match) reply = this.command(match[1]!, match[2]);
+            else if (prompt && message?.reply_to_message?.message_id === prompt.messageId)
+              reply = this.amountReply(prompt, input);
+            else if (message?.reply_to_message && /^\d+$/.test(input))
+              throw new InputError(
+                'That amount prompt has closed. Open the account and choose Custom amount again.',
+              );
+            else reply = this.menu();
           }
         } catch (error) {
           if (!(error instanceof InputError)) throw error;
-          reply = { text: error.message };
+          reply = { text: html(error.message) };
         }
       }
       this.db
@@ -323,6 +463,12 @@ export class TelegramAdmin {
         .run(this.key, String(update.update_id + 1));
     })();
     if (!consumed || !authorized) return;
+    if (
+      callback ||
+      message?.text?.startsWith('/') ||
+      message?.reply_to_message?.message_id === this.limitPrompt?.messageId
+    )
+      this.limitPrompt = undefined;
     if (callback) {
       try {
         await this.api('answerCallbackQuery', { callback_query_id: callback.id });
@@ -338,12 +484,17 @@ export class TelegramAdmin {
       const body = {
         chat_id: this.config.adminId,
         text: reply.text,
+        parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
-        reply_markup: {
-          inline_keyboard: reply.buttons?.length ? reply.buttons : this.navigation(),
-        },
+        reply_markup: reply.prompt
+          ? { force_reply: true, input_field_placeholder: 'Amount in MB' }
+          : { inline_keyboard: reply.buttons?.length ? reply.buttons : this.navigation() },
       };
-      if (callback && /^(home|list|account|quota|filelimit)(:|$)/.test(callback.data || '')) {
+      if (
+        callback &&
+        !reply.prompt &&
+        /^(home|help|list|account|quota|filelimit)(:|$)/.test(callback.data || '')
+      ) {
         try {
           await this.api('editMessageText', { ...body, message_id: message!.message_id });
           return;
@@ -354,6 +505,7 @@ export class TelegramAdmin {
         }
       }
       const result = await this.api('sendMessage', body);
+      if (reply.prompt) this.limitPrompt = { ...reply.prompt, messageId: result.message_id };
       if (reply.confirmation) {
         const pending = this.confirmations.get(reply.confirmation);
         if (pending) pending.messageId = result.message_id;
@@ -369,6 +521,7 @@ export class TelegramAdmin {
       if (statSync(path).size > TELEGRAM_BACKUP_MAX_BYTES) {
         await this.api('sendMessage', {
           chat_id: this.config.adminId,
+          reply_markup: { inline_keyboard: this.receiptButtons() },
           text: 'Database backup exceeds the 50 MB Telegram upload limit. Use sudo taskpath backup on the VPS instead.',
         });
         return;
@@ -383,12 +536,14 @@ export class TelegramAdmin {
         'caption',
         'Full Taskpath database backup. Contains all accounts, encrypted tasks and files, sessions, and push state. Keep private. Vault passwords are still required.',
       );
+      form.set('reply_markup', JSON.stringify({ inline_keyboard: this.receiptButtons() }));
       await this.api('sendDocument', form);
     } catch {
       if (!this.controller.signal.aborted) {
         this.report('Telegram database backup failed.');
         await this.api('sendMessage', {
           chat_id: this.config.adminId,
+          reply_markup: { inline_keyboard: this.receiptButtons() },
           text: 'Could not create or deliver the database backup. Retry /backup, or use sudo taskpath backup on the VPS.',
         });
       }
@@ -457,6 +612,7 @@ export class TelegramAdmin {
   }
   async stop() {
     this.controller.abort();
+    this.limitPrompt = undefined;
     this.confirmations.clear();
     await this.running;
   }

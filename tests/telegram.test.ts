@@ -143,18 +143,18 @@ test('accounts paginate with one button per account and edit navigation in place
     for (let i = 0; i < 11; i++) f.auth.createInvitation();
     await f.bot.handle(message(1, '/list'));
     const first = replies(f.calls).at(-1)!.body;
-    expect(first.text).toContain('Accounts (1/2)');
+    expect(first.text).toContain('Page 1 of 2');
     expect(
       first.reply_markup.inline_keyboard.filter((row: any[]) =>
         row[0].callback_data.startsWith('account:'),
       ),
     ).toHaveLength(10);
     expect(first.reply_markup.inline_keyboard.at(-2)).toEqual([
-      { text: 'Next', callback_data: 'list:1' },
+      { text: 'Next ›', callback_data: 'list:1' },
     ]);
     await f.bot.handle(callback(2, 'list:1', 101));
     const next = f.calls.filter((call) => call.method === 'editMessageText').at(-1)!.body;
-    expect(next.text).toContain('Accounts (2/2)');
+    expect(next.text).toContain('Page 2 of 2');
     expect(next.message_id).toBe(101);
     expect(
       next.reply_markup.inline_keyboard.filter((row: any[]) =>
@@ -166,7 +166,7 @@ test('accounts paginate with one button per account and edit navigation in place
     const detail = f.calls.at(-1)!.body;
     expect(detail.text).toContain(id);
     expect(detail.reply_markup.inline_keyboard[0]).toEqual([
-      { text: 'New setup link', callback_data: `reinvite:${id}` },
+      { text: 'New setup link', callback_data: `reinvite:${id}`, style: 'success' },
       { text: 'Revoke invite', callback_data: `revoke:${id}` },
     ]);
     await f.bot.handle(callback(4, 'home', 101));
@@ -542,7 +542,7 @@ test('empty lists, action results, and errors provide menu navigation', async ()
       await f.bot.handle(message(id, text));
       expect(replies(f.calls).at(-1)!.body.reply_markup.inline_keyboard.flat()).toContainEqual({
         text: 'Main menu',
-        callback_data: 'home',
+        callback_data: text === '/invite' ? 'open:home' : 'home',
       });
     }
   } finally {
@@ -590,6 +590,104 @@ test('file limit commands and buttons manage an independent per-file setting', a
     expect(f.calls.at(-1)!.body.text).toContain('Per file: 10 MB (default)');
     await f.bot.handle(message(5, `/filelimit ${userId} 1001`));
     expect(replies(f.calls).at(-1)!.body.text).toContain('1,000 MB');
+  } finally {
+    f.store.close();
+  }
+});
+
+test('dashboard counts, filtered pages and storage navigation keep the current account in view', async () => {
+  const f = setup();
+  try {
+    for (let i = 0; i < 11; i++) f.auth.createInvitation();
+    f.auth.disable(f.auth.createInvitation().userId);
+    await f.bot.handle(message(1, '/start'));
+    expect(f.calls.at(-1)!.body.text).toContain('11 pending');
+    expect(f.calls.at(-1)!.body.text).toContain('1 disabled');
+    await f.bot.handle(callback(2, 'list:1|pending', 101));
+    const page = f.calls.at(-1)!.body;
+    expect(page.text).toContain('Pending · 11 accounts · Page 2 of 2');
+    const entry = page.reply_markup.inline_keyboard
+      .flat()
+      .find((b: any) => b.callback_data.startsWith('account:'));
+    await f.bot.handle(callback(3, entry.callback_data, 101));
+    const detail = f.calls.at(-1)!.body;
+    expect(detail.reply_markup.inline_keyboard.flat()).toContainEqual({
+      text: 'Accounts',
+      callback_data: 'list:1|pending',
+    });
+    const quota = detail.reply_markup.inline_keyboard
+      .flat()
+      .find((b: any) => b.text === 'File quota');
+    await f.bot.handle(callback(4, quota.callback_data, 101));
+    const buttons = f.calls.at(-1)!.body.reply_markup.inline_keyboard.flat();
+    expect(buttons.some((b: any) => b.callback_data === entry.callback_data)).toBe(true);
+    expect(buttons.find((b: any) => b.text.startsWith('✓')).callback_data).toContain(
+      ':default|pending',
+    );
+    for (const b of buttons) expect(Buffer.byteLength(b.callback_data)).toBeLessThanOrEqual(64);
+    await f.bot.handle(callback(5, 'list:0|active', 101));
+    expect(f.calls.at(-1)!.body.text).toContain('No active accounts.');
+    await f.bot.handle(callback(6, 'help', 101));
+    expect(f.calls.at(-1)!.method).toBe('editMessageText');
+    expect(f.calls.at(-1)!.body.text).toContain('/quota USER_ID');
+  } finally {
+    f.store.close();
+  }
+});
+
+test('invitation copy keeps the full URL and opening account details preserves the receipt', async () => {
+  const f = setup();
+  try {
+    await f.bot.handle(message(1, '/invite'));
+    const receipt = f.calls.at(-1)!.body;
+    const [copy, account] = receipt.reply_markup.inline_keyboard.flat();
+    const url = new URL(copy.copy_text.text);
+    expect(receipt.parse_mode).toBe('HTML');
+    expect(receipt.text).toContain(copy.copy_text.text.replaceAll('&', '&amp;'));
+    expect(new URLSearchParams(url.hash.slice(1)).get('user')).toBe(f.auth.list()[0]!.userId);
+    await f.bot.handle(callback(2, account.callback_data, 101));
+    expect(f.calls.at(-1)!.method).toBe('sendMessage');
+    expect(f.calls.at(-1)!.body.text).toContain('Invited');
+    f.auth.revokeInvitation(f.auth.list()[0]!.userId);
+    await f.bot.handle(callback(3, account.callback_data, 101));
+    expect(f.calls.at(-1)!.body.text).toContain('Invite revoked');
+  } finally {
+    f.store.close();
+  }
+});
+
+test('custom limits accept only a reply to the current private prompt and can recover from invalid input', async () => {
+  const f = setup();
+  const userId = f.auth.createInvitation().userId;
+  const amount = (updateId: number, promptId: number, value: string, sender = 42) => {
+    const reply = message(updateId, value, sender);
+    reply.message!.reply_to_message = { message_id: promptId };
+    return reply;
+  };
+  try {
+    await f.bot.handle(callback(1, `filelimit:${userId}:custom|pending`, 88));
+    expect(f.calls.at(-1)!.method).toBe('sendMessage');
+    expect(f.calls.at(-1)!.body.reply_markup.force_reply).toBe(true);
+    const promptId = 100 + f.calls.length;
+    await f.bot.handle(amount(2, promptId, '99', 43));
+    await f.bot.handle(amount(3, promptId - 1, '99'));
+    expect(f.calls.at(-1)!.body.text).toContain('prompt has closed');
+    await f.bot.handle(amount(4, promptId, '1001'));
+    expect(f.calls.at(-1)!.body.text).toContain('1,000 MB');
+    expect(f.calls.at(-1)!.body.reply_markup.force_reply).toBe(true);
+    const retryId = 100 + f.calls.length;
+    await f.bot.handle(amount(5, retryId, '34'));
+    expect(f.calls.at(-1)!.body.text).toContain('Per file: 34 MB (custom limit)');
+    expect(
+      f.calls
+        .at(-1)!
+        .body.reply_markup.inline_keyboard.flat()
+        .some((b: any) => b.callback_data === `account:${userId}|pending`),
+    ).toBe(true);
+    await f.bot.handle(amount(6, retryId, '35'));
+    expect(f.calls.at(-1)!.body.text).toContain('prompt has closed');
+    await f.bot.handle(message(7, `/filelimit ${userId}`));
+    expect(f.calls.at(-1)!.body.text).toContain('Per file: 34 MB (custom limit)');
   } finally {
     f.store.close();
   }
